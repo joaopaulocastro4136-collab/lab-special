@@ -21,6 +21,29 @@ jobs:
         with:
           node-version: 22
 
+      - name: Grava e valida a chave da App Store
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          node -e '
+            const fs=require("fs"),crypto=require("crypto");
+            const kid=process.env.ASC_KEY_ID, iss=process.env.ASC_ISSUER_ID;
+            const key=fs.readFileSync(process.env.HOME+"/private_keys/AuthKey_"+kid+".p8","utf8");
+            console.log("Tamanho do arquivo da chave:", key.length, "| linhas:", key.trim().split("\n").length);
+            const now=Math.floor(Date.now()/1000);
+            const b64=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
+            const uns=b64({alg:"ES256",kid,typ:"JWT"})+"."+b64({iss,iat:now,exp:now+900,aud:"appstoreconnect-v1"});
+            const sig=crypto.sign("sha256",Buffer.from(uns),{key,dsaEncoding:"ieee-p1363"}).toString("base64url");
+            fetch("https://api.appstoreconnect.apple.com/v1/apps",{headers:{Authorization:"Bearer "+uns+"."+sig}}).then(r=>{
+              console.log("Resposta da Apple:", r.status, r.status===200 ? "— chave OK ✓" : "— CHAVE COM PROBLEMA ✗");
+              if(r.status!==200) process.exit(1);
+            });
+          '
+
       - name: Instala dependências
         run: npm ci
 
@@ -29,14 +52,6 @@ jobs:
 
       - name: Sincroniza com o projeto iOS
         run: npx cap sync ios
-
-      - name: Grava a chave da App Store
-        env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-        run: |
-          mkdir -p ~/private_keys
-          printf '%s' "$ASC_KEY_P8" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
       - name: Compila e assina (archive)
         run: |
