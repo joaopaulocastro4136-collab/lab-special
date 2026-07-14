@@ -35,6 +35,14 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>A câmera é usada para fotografar e filmar os trabalhos enviados ao laboratório.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O microfone é usado ao gravar vídeos dos trabalhos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>A galeria é usada para anexar fotos e vídeos aos trabalhos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Permite salvar fotos e arquivos dos trabalhos no aparelho.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

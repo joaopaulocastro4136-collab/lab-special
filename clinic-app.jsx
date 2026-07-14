@@ -10,6 +10,7 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock } from 'lucide-react';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyD8w3_SK27YHDFlsYpxAto3sNxCnh3tFcg',
@@ -128,8 +129,21 @@ function crc16Pix(str) {
   }
   return crc.toString(16).toUpperCase().padStart(4, '0');
 }
+// Normaliza a chave Pix para o formato que os bancos aceitam
+// (CPF/CNPJ só números; celular com +55; e-mail minúsculo)
+function normalizarChavePix(chave) {
+  const c = String(chave || '').trim();
+  if (c.includes('@')) return c.toLowerCase();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(c)) return c; // chave aleatória
+  const d = c.replace(/\D/g, '');
+  if (c.startsWith('+')) return '+' + d;
+  if (d.length === 14) return d; // CNPJ
+  if (d.length === 13 && d.startsWith('55')) return '+' + d; // celular com 55 na frente
+  if (d.length === 11) return d; // CPF
+  return c;
+}
 function gerarPixCopiaCola(chave, valor) {
-  const conta = tlvPix('00', 'br.gov.bcb.pix') + tlvPix('01', chave);
+  const conta = tlvPix('00', 'br.gov.bcb.pix') + tlvPix('01', normalizarChavePix(chave));
   let p = tlvPix('00', '01') + tlvPix('26', conta) + tlvPix('52', '0000') + tlvPix('53', '986');
   if (valor > 0) p += tlvPix('54', valor.toFixed(2));
   p += tlvPix('58', 'BR') + tlvPix('59', 'LABORATORIO SPECIAL') + tlvPix('60', 'PETROLINA') + tlvPix('62', tlvPix('05', '***'));
@@ -189,11 +203,22 @@ function TelaBase({ children }) {
 }
 
 const STATUS_INFO = {
-  'Em Produção': { cor: '#B54708', fundo: '#FDECD8', rotulo: 'Em produção' },
+  'Em Produção': { cor: '#E07C1F', fundo: '#FDECD8', rotulo: 'Em produção' },
   'Acabamento': { cor: '#7C3AED', fundo: '#EDE9FE', rotulo: 'Acabamento' },
-  'Pronto': { cor: '#166B3A', fundo: '#DCF3E4', rotulo: 'Pronto p/ entrega' },
-  'Entregue': { cor: '#57534E', fundo: '#F0EFEC', rotulo: 'Entregue' },
+  'Pronto': { cor: '#16A34A', fundo: '#DCF3E4', rotulo: 'Pronto p/ entrega' },
+  'Entregue': { cor: '#78716C', fundo: '#F0EFEC', rotulo: 'Entregue' },
 };
+
+// Etiqueta de status premium: fundo branco, ponto colorido e texto na cor do estado
+function EtiquetaStatus({ status, discreta }) {
+  const info = STATUS_INFO[status] || STATUS_INFO['Em Produção'];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '6px 12px', borderRadius: 999, background: '#fff', color: info.cor, border: '1px solid #EDEAE4', boxShadow: discreta ? 'none' : '0 4px 12px -6px rgba(28,27,25,0.18)', whiteSpace: 'nowrap' }}>
+      <span style={{ width: 7, height: 7, borderRadius: 4, background: info.cor, boxShadow: `0 0 0 3px ${info.fundo}` }} />
+      {info.rotulo}
+    </span>
+  );
+}
 
 function App({ dentista, email, prazoPagamento }) {
   const [casos, setCasos] = useState([]);
@@ -202,6 +227,8 @@ function App({ dentista, email, prazoPagamento }) {
   const [aba, setAba] = useState('trabalhos');
   const [detalhe, setDetalhe] = useState(null);
   const [toast, setToast] = useState(null);
+  const [meusDados, setMeusDados] = useState(false);
+  const iniciais = (dentista || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const statusAnterior = useRef({});
   const producaoAnterior = useRef({});
   // Modo computador: coluna larga e cartões em duas colunas
@@ -311,7 +338,7 @@ function App({ dentista, email, prazoPagamento }) {
             <div style={{ fontWeight: 800, fontSize: 15, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.paciente}</div>
             <div style={{ fontSize: 12, color: '#78716C', marginTop: 2 }}>{c.tipoTrabalho}{c.prazo ? ` • entrega ${formatDateBR(c.prazo)}` : ''}</div>
           </div>
-          <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: info.fundo, color: info.cor, whiteSpace: 'nowrap' }}>{info.rotulo}</span>
+          <EtiquetaStatus status={c.status} />
         </div>
         {total > 0 && c.status !== 'Entregue' && (
           <div style={{ marginTop: 10 }}>
@@ -351,31 +378,78 @@ function App({ dentista, email, prazoPagamento }) {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ color: '#A8A29E', fontSize: 12, fontWeight: 700 }}>{dentista}</span>
-            <button onClick={() => signOut(auth)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#A8A29E', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '6px 12px', cursor: 'pointer' }}>sair</button>
-          </div>
+          <button onClick={() => setMeusDados(true)} title="Meus dados"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 14px 5px 5px', cursor: 'pointer', fontFamily: FONTE }}>
+            <span style={{ width: 30, height: 30, borderRadius: 15, background: GOLD, color: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{iniciais}</span>
+            <span style={{ color: '#fff', fontSize: 12.5, fontWeight: 700 }}>{dentista}</span>
+          </button>
         </div>
       ) : (
-      <div style={{ background: INK, padding: '22px 20px 16px' }}>
+      <div style={{ background: INK, padding: '24px 20px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Estrela size={12} color={GOLD} />
           <span style={{ color: '#fff', fontWeight: 300, fontSize: 12, letterSpacing: '0.32em' }}>SPECIAL</span>
           <span style={{ color: GOLD, fontWeight: 700, fontSize: 10, letterSpacing: '0.3em' }}>CLINIC</span>
           <div style={{ flex: 1 }} />
-          {!((typeof matchMedia !== 'undefined' && matchMedia('(display-mode: standalone)').matches) || (typeof navigator !== 'undefined' && navigator.standalone)) && (
-            <a href="/instalar.html" title="Instalar o app" style={{ background: 'rgba(255,255,255,0.1)', color: GOLD, fontSize: 13, borderRadius: 999, padding: '6px 10px', textDecoration: 'none', marginRight: 8, lineHeight: 1 }}>⬇</a>
-          )}
-          <button onClick={() => signOut(auth)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#A8A29E', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '6px 12px', cursor: 'pointer' }}>sair</button>
+          <button onClick={() => setMeusDados(true)} title="Meus dados"
+            style={{ width: 38, height: 38, borderRadius: 19, background: GOLD, color: INK, border: '2px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: FONTE }}>
+            {iniciais}
+          </button>
         </div>
-        <div style={{ color: '#fff', fontWeight: 800, fontSize: 20, marginTop: 10 }}>
+        <div style={{ color: '#fff', fontWeight: 800, fontSize: 30, letterSpacing: '-0.02em', marginTop: 16, lineHeight: 1.1 }}>
           {aba === 'trabalhos' && 'Meus Trabalhos'}
           {aba === 'novo' && 'Novo Trabalho'}
           {aba === 'previsao' && 'Previsão de Entregas'}
           {aba === 'financeiro' && 'Financeiro'}
         </div>
-        <div style={{ color: '#A8A29E', fontSize: 12, marginTop: 2 }}>{dentista}</div>
+        <div style={{ color: GOLD, fontSize: 13, fontWeight: 700, marginTop: 4 }}>{dentista}</div>
       </div>
+      )}
+
+      {meusDados && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 8800, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: desktop ? 'center' : 'flex-end', justifyContent: 'center', padding: desktop ? 24 : 0 }} onClick={() => setMeusDados(false)}>
+          <div style={{ background: '#F5F4F0', borderRadius: desktop ? 22 : '22px 22px 0 0', width: '100%', maxWidth: 420, padding: '22px 20px 28px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 44, height: 4, borderRadius: 2, background: '#D6D3D1', margin: '0 auto 18px' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 18 }}>
+              <div style={{ width: 74, height: 74, borderRadius: 37, background: INK, border: `3px solid ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 800, color: GOLD }}>{iniciais}</div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: INK, marginTop: 12 }}>{dentista}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Cliente Special</div>
+            </div>
+            <div style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 16, overflow: 'hidden', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px' }}>
+                <Mail size={17} color={GOLD} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conta de acesso</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
+                </div>
+              </div>
+              {prazoPagamento && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderTop: '1px solid #F0EFEC' }}>
+                  <CalendarClock size={17} color={GOLD} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Combinado de pagamento</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{prazoPagamento}</div>
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderTop: '1px solid #F0EFEC' }}>
+                <Estrela size={16} color={GOLD} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Seu laboratório</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>Laboratório Special — Petrolina/PE</div>
+                </div>
+              </div>
+            </div>
+            <button onClick={() => signOut(auth)}
+              style={{ width: '100%', padding: 13, borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', color: '#B42318', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <LogOut size={16} /> Sair da conta
+            </button>
+            <button onClick={() => setMeusDados(false)}
+              style={{ width: '100%', marginTop: 8, padding: 13, borderRadius: 14, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+              Fechar
+            </button>
+          </div>
+        </div>
       )}
 
       <div style={{ padding: desktop ? '24px 40px' : 16, maxWidth: desktop ? 1100 : 'none', margin: '0 auto' }}>
@@ -392,12 +466,12 @@ function App({ dentista, email, prazoPagamento }) {
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button onClick={() => compartilharEnviados(false)}
-                  style={{ flex: 1, padding: 14, borderRadius: 14, border: 'none', background: INK, color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 10px 24px -16px rgba(28,27,25,0.6)' }}>
-                  📤 Compartilhar trabalhos de hoje ({enviadosHoje.length})
+                  style={{ flex: 1, padding: 15, borderRadius: 14, border: 'none', background: INK, color: '#fff', fontWeight: 800, fontSize: 14, letterSpacing: '0.01em', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 12px 26px -16px rgba(28,27,25,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+                  <Share2 size={16} color={GOLD} /> Compartilhar trabalhos de hoje
                 </button>
                 <button onClick={() => compartilharEnviados(true)} title="Baixar PDF"
-                  style={{ width: 52, borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 20, cursor: 'pointer', fontFamily: FONTE }}>
-                  ⬇
+                  style={{ width: 52, borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', color: INK, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Download size={18} />
                 </button>
               </div>
             )}
@@ -412,38 +486,47 @@ function App({ dentista, email, prazoPagamento }) {
         {aba === 'previsao' && (
           <>
             {naoEntregues.length === 0 && (
-              <div style={{ ...cartao, textAlign: 'center', padding: 28 }}>
-                <div style={{ fontSize: 30 }}>✨</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: INK, marginTop: 6 }}>Nenhum trabalho na fila</div>
-                <div style={{ fontSize: 12, color: '#A8A29E', marginTop: 2 }}>Tudo entregue! Envie um novo trabalho quando precisar.</div>
+              <div style={{ ...cartao, textAlign: 'center', padding: 32 }}>
+                <div style={{ width: 52, height: 52, borderRadius: 26, background: '#DCF3E4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                  <CalendarClock size={24} color={VERDE} />
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 12 }}>Nenhum trabalho na fila</div>
+                <div style={{ fontSize: 12.5, color: '#A8A29E', marginTop: 4 }}>Tudo entregue. Envie um novo trabalho quando precisar.</div>
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>
             {[...naoEntregues].sort((a, b) => String(a.prazo).localeCompare(String(b.prazo))).map(c => {
               const dias = c.prazo ? diasRestantes(c.prazo) : null;
               const comecou = (c.etapas || []).some(e => e.concluida || e.inicioExec);
-              let etiqueta, corE, fundoE;
-              if (dias === null) { etiqueta = 'sem prazo'; corE = '#78716C'; fundoE = '#F0EFEC'; }
-              else if (dias < 0) { etiqueta = `atrasado ${-dias}d`; corE = '#B42318'; fundoE = '#FCE4E4'; }
-              else if (dias === 0) { etiqueta = 'sai HOJE'; corE = '#B54708'; fundoE = '#FDECD8'; }
-              else if (dias === 1) { etiqueta = 'sai amanhã'; corE = '#B54708'; fundoE = '#FDECD8'; }
-              else { etiqueta = `faltam ${dias} dias`; corE = '#166B3A'; fundoE = '#DCF3E4'; }
+              let etiqueta, corE;
+              if (dias === null) { etiqueta = 'Sem prazo'; corE = '#78716C'; }
+              else if (dias < 0) { etiqueta = `Atrasado ${-dias}d`; corE = '#B42318'; }
+              else if (dias === 0) { etiqueta = 'Sai hoje'; corE = '#E07C1F'; }
+              else if (dias === 1) { etiqueta = 'Sai amanhã'; corE = '#E07C1F'; }
+              else { etiqueta = `Faltam ${dias} dias`; corE = '#16A34A'; }
               const feitas = (c.etapas || []).filter(e => e.concluida).length;
               const total = (c.etapas || []).length;
+              const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
+              const situacao = c.status === 'Pronto' ? 'Pronto — aguardando entrega' : comecou ? `Em produção • ${feitas} de ${total} etapas` : 'Na fila para começar';
               return (
                 <div key={c.id} style={{ ...cartao, cursor: 'pointer' }} onClick={() => setDetalhe(c)}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: 14, color: INK }}>{c.paciente}</div>
-                      <div style={{ fontSize: 12, color: '#78716C', marginTop: 2 }}>
-                        {c.tipoTrabalho} • entrega prevista: <b style={{ color: INK }}>{formatDateBR(c.prazo)}</b>
-                      </div>
-                      <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 2 }}>
-                        {c.status === 'Pronto' ? '✅ Pronto — aguardando entrega' : comecou ? `🔨 Em produção (${feitas}/${total} etapas)` : '⏳ Na fila para começar'}
-                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: INK }}>{c.paciente}</div>
+                      <div style={{ fontSize: 12, color: '#78716C', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.tipoTrabalho}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: '5px 11px', borderRadius: 999, background: fundoE, color: corE, whiteSpace: 'nowrap' }}>{etiqueta}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '6px 12px', borderRadius: 999, background: '#fff', color: corE, border: '1px solid #EDEAE4', boxShadow: '0 4px 12px -6px rgba(28,27,25,0.18)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 4, background: corE }} />
+                      {etiqueta}
+                    </span>
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+                    <div style={{ flex: 1, height: 5, borderRadius: 3, background: '#F0EFEC', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${c.status === 'Pronto' ? 100 : pct}%`, background: c.status === 'Pronto' ? VERDE : GOLD, transition: 'width 0.4s' }} />
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#A8A29E', flexShrink: 0 }}>{formatDateBR(c.prazo)}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#78716C', fontWeight: 600, marginTop: 6 }}>{situacao}</div>
                 </div>
               );
             })}
@@ -455,17 +538,17 @@ function App({ dentista, email, prazoPagamento }) {
             <div style={{ ...cartao, background: INK, border: 'none', padding: 18 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#A8A29E', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Saldo a pagar</div>
               <div style={{ fontSize: 32, fontWeight: 800, color: saldo > 0 ? GOLD : '#86EFAC', marginTop: 4 }}>{formatReais(Math.max(0, saldo))}</div>
-              {saldo < 0 && <div style={{ fontSize: 12, color: '#86EFAC', marginTop: 2 }}>Você tem {formatReais(-saldo)} de crédito 🎉</div>}
+              {saldo < 0 && <div style={{ fontSize: 12, color: '#86EFAC', marginTop: 2 }}>Você tem {formatReais(-saldo)} de crédito</div>}
               {prazoPagamento && (
                 <div style={{ marginTop: 12, background: 'rgba(184,147,90,0.15)', borderRadius: 10, padding: '9px 12px', fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
-                  📅 Combinado de pagamento: {prazoPagamento}
+                  Combinado de pagamento: {prazoPagamento}
                 </div>
               )}
             </div>
 
             {info.chavePix && saldo > 0 && (
               <div style={{ ...cartao, border: `2px solid ${VERDE}` }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: INK, marginBottom: 8 }}>💚 Pagar com Pix</div>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 8, letterSpacing: '0.02em' }}>Pagar com Pix</div>
                 <div style={{ fontSize: 12, color: '#57534E', marginBottom: 4 }}>Chave Pix do laboratório:</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                   <div style={{ flex: 1, background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.chavePix}</div>
@@ -745,7 +828,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
                 {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
               </div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, padding: '5px 11px', borderRadius: 999, background: info.fundo, color: info.cor }}>{info.rotulo}</span>
+            <EtiquetaStatus status={caso.status} discreta />
             <button onClick={iniciarEdicao} style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 10, padding: '7px 12px', fontSize: 12, fontWeight: 800, color: INK, cursor: 'pointer', fontFamily: FONTE }}>✏️ Editar</button>
           </div>
         ) : (
@@ -898,15 +981,17 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => camRef2.current && camRef2.current.click()} disabled={enviandoFoto} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE, opacity: enviandoFoto ? 0.5 : 1 }}>
-            {enviandoFoto ? 'Enviando...' : '📷 Foto'}
-          </button>
-          <button onClick={() => fotoRef.current && fotoRef.current.click()} disabled={enviandoFoto} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE, opacity: enviandoFoto ? 0.5 : 1 }}>
-            🖼 Galeria
-          </button>
-          <button onClick={() => arqRef2.current && arqRef2.current.click()} disabled={enviandoFoto} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE, opacity: enviandoFoto ? 0.5 : 1 }}>
-            📁 STL / Arquivo
-          </button>
+          {[
+            [Camera, enviandoFoto ? 'Enviando...' : 'Foto', camRef2],
+            [Image, 'Galeria', fotoRef],
+            [FileText, 'Arquivo', arqRef2],
+          ].map(([Icone, rotulo, ref]) => (
+            <button key={rotulo} onClick={() => ref.current && ref.current.click()} disabled={enviandoFoto}
+              style={{ flex: 1, padding: '12px 4px', borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, boxShadow: '0 8px 18px -14px rgba(28,27,25,0.3)', opacity: enviandoFoto ? 0.5 : 1 }}>
+              <Icone size={18} color={GOLD} strokeWidth={2.2} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>{rotulo}</span>
+            </button>
+          ))}
         </div>
         <input ref={camRef2} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={adicionarFoto} />
         <input ref={fotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={adicionarFoto} />
@@ -1230,11 +1315,19 @@ function NovoPedido({ dentista, info, aoEnviar }) {
         <textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observações: cor, dente(s), instruções..." />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-        <button onClick={() => camRef.current && camRef.current.click()} style={{ padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE }}>📷 Foto</button>
-        <button onClick={() => vidRef.current && vidRef.current.click()} style={{ padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE }}>🎥 Gravar vídeo</button>
-        <button onClick={() => fileRef.current && fileRef.current.click()} style={{ padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE }}>🖼 Galeria</button>
-        <button onClick={() => arqRef.current && arqRef.current.click()} style={{ padding: 12, borderRadius: 12, border: '1.5px dashed #D6D3D1', background: '#fff', fontSize: 13, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE }}>📁 STL / Arquivo</button>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
+        {[
+          [Camera, 'Foto', camRef],
+          [Video, 'Vídeo', vidRef],
+          [Image, 'Galeria', fileRef],
+          [FileText, 'Arquivo', arqRef],
+        ].map(([Icone, rotulo, ref]) => (
+          <button key={rotulo} onClick={() => ref.current && ref.current.click()}
+            style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, boxShadow: '0 8px 18px -14px rgba(28,27,25,0.3)' }}>
+            <Icone size={19} color={GOLD} strokeWidth={2.2} />
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>{rotulo}</span>
+          </button>
+        ))}
       </div>
       <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={vidRef} type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={addArquivo} />
