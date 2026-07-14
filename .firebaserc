@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "laboratorio-special"
+  },
+  "targets": {
+    "laboratorio-special": {
+      "hosting": {
+        "lab": [
+          "laboratorio-special"
+        ],
+        "clinic": [
+          "special-clinic"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

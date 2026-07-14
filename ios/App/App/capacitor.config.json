@@ -1,0 +1,21 @@
+{
+	"appId": "com.laboratorio.special",
+	"appName": "Lab Special",
+	"webDir": "www",
+	"android": {
+		"allowMixedContent": false
+	},
+	"plugins": {
+		"FirebaseAuthentication": {
+			"skipNativeAuth": false,
+			"providers": [
+				"google.com"
+			]
+		}
+	},
+	"packageClassList": [
+		"FirebaseAuthenticationPlugin",
+		"FilesystemPlugin",
+		"SharePlugin"
+	]
+}

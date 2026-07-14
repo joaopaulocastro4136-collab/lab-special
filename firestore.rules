@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function ehDono() {
+      return request.auth != null && request.auth.token.email == 'joaopaulocastro41@gmail.com';
+    }
+    function ehMembro() {
+      return request.auth != null && (
+        ehDono() ||
+        (exists(/databases/$(database)/documents/labs/principal/kv/acesso) &&
+         request.auth.token.email in get(/databases/$(database)/documents/labs/principal/kv/acesso).data.emails)
+      );
+    }
+    // Dentista autorizado: e-mail cadastrado pelo laboratório em Dentistas
+    function ehDentista() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/labs/principal/dentistasAcesso/$(request.auth.token.email));
+    }
+    function nomeDentista() {
+      return get(/databases/$(database)/documents/labs/principal/dentistasAcesso/$(request.auth.token.email)).data.nome;
+    }
+
+    // Equipe do laboratório: acesso total
+    match /labs/principal/{document=**} {
+      allow read, write: if ehMembro();
+    }
+
+    // Dentista: lê os próprios casos e pode CRIAR trabalho novo (entra direto em produção)
+    match /labs/principal/casos/{id} {
+      allow read: if ehDentista() && resource.data.dentista == nomeDentista();
+      allow create: if ehDentista()
+        && request.resource.data.dentista == nomeDentista()
+        && request.resource.data.status == 'Em Produção'
+        && request.resource.data.origem == 'clinica';
+      // Dentista pode ajustar o próprio trabalho:
+      // - dados básicos e anexos: sempre
+      // - mudar os ITENS (regenera etapas/prazo/valor): só em trabalho criado pela
+      //   clínica e ainda em produção (antes de o laboratório avançar)
+      allow update: if ehDentista()
+        && resource.data.dentista == nomeDentista()
+        && (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['paciente', 'observacoes', 'quantidade', 'valor', 'anexos', 'dataHora'])
+          ||
+          (resource.data.origem == 'clinica'
+            && resource.data.status == 'Em Produção'
+            && request.resource.data.status == 'Em Produção'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['tipoTrabalho', 'itens', 'etapas', 'prazo', 'paciente', 'observacoes', 'quantidade', 'valor', 'anexos', 'dataHora']))
+        );
+      // Dentista pode EXCLUIR o próprio trabalho enviado pela clínica,
+      // enquanto ainda estiver em produção
+      allow delete: if ehDentista()
+        && resource.data.dentista == nomeDentista()
+        && resource.data.origem == 'clinica'
+        && resource.data.status == 'Em Produção';
+    }
+
+    // Dentista: lê o próprio resumo financeiro (total pago)
+    match /labs/principal/financeiroClinica/{nome} {
+      allow read: if ehDentista() && nome == nomeDentista().replace('/', '-');
+    }
+
+    // Dentista: lê anexos (busca por id vindo dos casos dele) e grava anexos dos pedidos
+    match /labs/principal/kv/{k} {
+      allow read, write: if ehDentista() && k.matches('anexo-.*');
+    }
+
+    // Dentista: lê o próprio registro de acesso
+    match /labs/principal/dentistasAcesso/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+    }
+
+    // Informações que a clínica pode ver (tipos de trabalho etc.)
+    match /labs/principal/publicoClinica/{doc} {
+      allow read: if ehDentista();
+    }
+
+    // Pedidos feitos pela clínica
+    match /labs/principal/solicitacoes/{id} {
+      allow read: if ehDentista() && resource.data.dentista == nomeDentista();
+      allow create: if ehDentista()
+        && request.resource.data.dentista == nomeDentista()
+        && request.resource.data.status == 'pendente';
+    }
+  }
+}

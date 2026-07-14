@@ -1,0 +1,7 @@
+﻿{
+  "status": "success",
+  "result": {
+    "fileName": "google-services.json",
+    "fileContents": "{\n  \"project_info\": {\n    \"project_number\": \"138572658603\",\n    \"project_id\": \"laboratorio-special\",\n    \"storage_bucket\": \"laboratorio-special.firebasestorage.app\"\n  },\n  \"client\": [\n    {\n      \"client_info\": {\n        \"mobilesdk_app_id\": \"1:138572658603:android:2e67e96ddd574704a804ee\",\n        \"android_client_info\": {\n          \"package_name\": \"com.laboratorio.special\"\n        }\n      },\n      \"oauth_client\": [\n        {\n          \"client_id\": \"138572658603-bqfe89vc4f53li0mkf8l2iij6m0rp603.apps.googleusercontent.com\",\n          \"client_type\": 1,\n          \"android_info\": {\n            \"package_name\": \"com.laboratorio.special\",\n            \"certificate_hash\": \"b9956b3631be6a739fd321a03de1a582c4507183\"\n          }\n        },\n        {\n          \"client_id\": \"138572658603-8gedrgaqsv4bmbuiv1d400g68cl6p5q7.apps.googleusercontent.com\",\n          \"client_type\": 3\n        }\n      ],\n      \"api_key\": [\n        {\n          \"current_key\": \"AIzaSyDpNCJKkOMfF7tr1RPHC9AqcUfFEMRz1yw\"\n        }\n      ],\n      \"services\": {\n        \"appinvite_service\": {\n          \"other_platform_oauth_client\": [\n            {\n              \"client_id\": \"138572658603-8gedrgaqsv4bmbuiv1d400g68cl6p5q7.apps.googleusercontent.com\",\n              \"client_type\": 3\n            }\n          ]\n        }\n      }\n    }\n  ],\n  \"configuration_version\": \"1\"\n}"
+  }
+}
