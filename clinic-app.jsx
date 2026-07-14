@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getAuth, initializeAuth, indexedDBLocalPersistence,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
 } from 'firebase/auth';
 import {
@@ -27,7 +28,11 @@ const VERDE = '#16A34A';
 const FONTE = "'Manrope', -apple-system, sans-serif";
 
 const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
+// No app do iPhone (esquema capacitor://) o getAuth padrão trava — usa a inicialização nativa
+const ehIosNativo = typeof location !== 'undefined' && location.protocol === 'capacitor:';
+const auth = ehIosNativo
+  ? initializeAuth(fbApp, { persistence: indexedDBLocalPersistence })
+  : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
 
 const docKV = (k) => doc(db, 'labs', LAB, 'kv', k);
@@ -1308,6 +1313,12 @@ function Raiz() {
 
   const entrar = async () => {
     setEntrando(true);
+    // No app nativo (iPhone), o login usa a tela de contas do próprio aparelho
+    if (window.__entrarNativo) {
+      try { await window.__entrarNativo(auth); } catch (e) { console.error(e); }
+      setEntrando(false);
+      return;
+    }
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     try {

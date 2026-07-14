@@ -1,0 +1,11 @@
+{
+  "appId": "com.laboratorio.specialclinic",
+  "appName": "Special Clinic",
+  "webDir": "www",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com"]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "special-clinic-native",
+  "version": "1.0.0",
+  "description": "Casca nativa (iOS) do Special Clinic",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor-firebase/authentication": "^8.3.0",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.4.1",
+    "@capacitor/share": "^8.0.1"
+  }
+}

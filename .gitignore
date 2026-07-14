@@ -1,6 +1,8 @@
 node_modules/
 www/
 www-bundle.js
+clinic-native/www/
+clinic-native/www-bundle.js
 bundle.js
 bundle-test.js
 .firebase/
