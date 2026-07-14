@@ -61,16 +61,31 @@ jobs:
       - name: Sincroniza com o projeto iOS
         run: npx cap sync ios
 
-      - name: Compila (archive, sem assinar)
+      - name: Instala o certificado e o perfil de distribuição
+        env:
+          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+        run: |
+          echo "$IOS_P12_BASE64" | base64 -d > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security set-keychain-settings -lut 3600 ci.keychain
+          security import "$RUNNER_TEMP/dist.p12" -k ci.keychain -P labspecial2026 -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain > /dev/null
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          UUID=$(security cms -D -i ios/LabSpecial_AppStore.mobileprovision | plutil -extract UUID raw -o - -)
+          cp ios/LabSpecial_AppStore.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          echo "Perfil instalado: $UUID"
+
+      - name: Compila e assina (archive)
         run: |
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             MARKETING_VERSION=${{ github.event.inputs.versao || '3.1' }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
-      - name: Exporta o IPA (assina para a App Store)
+      - name: Exporta o IPA
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -80,18 +95,18 @@ jobs:
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
             <key>destination</key><string>export</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
             <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.laboratorio.special</key><string>LabSpecial AppStore</string>
+            </dict>
           </dict></plist>
           EOF
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       - name: Envia para o TestFlight
         run: |
