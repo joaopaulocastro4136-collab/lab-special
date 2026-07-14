@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  getAuth, initializeAuth, indexedDBLocalPersistence,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
 } from 'firebase/auth';
 import {
@@ -25,7 +26,12 @@ const LAB = 'principal';
 const TAM_CHUNK = 900000; // Firestore limita documentos a ~1MB
 
 const fbApp = initializeApp(firebaseConfig);
-const auth = getAuth(fbApp);
+// No app do iPhone (esquema capacitor://) o getAuth padrão trava e a tela fica em "Carregando..."
+// — a inicialização nativa com indexedDB resolve
+const ehIosNativo = typeof location !== 'undefined' && location.protocol === 'capacitor:';
+const auth = ehIosNativo
+  ? initializeAuth(fbApp, { persistence: indexedDBLocalPersistence })
+  : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
 
 const colCasos = () => collection(db, 'labs', LAB, 'casos');
