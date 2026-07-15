@@ -11,6 +11,7 @@ import {
   getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc,
 } from 'firebase/firestore';
 import App from './App.jsx';
+import logoMarca from './logo-special.png';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyD8w3_SK27YHDFlsYpxAto3sNxCnh3tFcg',
@@ -279,23 +280,19 @@ function Abertura({ visivel }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', animation: 'abFundo 2.7s ease forwards', fontFamily: "'Manrope', -apple-system, sans-serif" }}>
       <style>{`
         @keyframes abFundo { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
-        @keyframes abEstrela { 0% { transform: scale(0) rotate(-135deg); opacity: 0; } 50% { transform: scale(1.18) rotate(10deg); opacity: 1; } 68% { transform: scale(0.96) rotate(-2deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
-        @keyframes abBrilho { 0%, 30% { opacity: 0; transform: scale(0.5); } 55% { opacity: 0.85; } 100% { opacity: 0; transform: scale(2.4); } }
-        @keyframes abLetra { 0% { opacity: 0; transform: translateY(16px); filter: blur(3px); } 100% { opacity: 1; transform: translateY(0); filter: blur(0); } }
-        @keyframes abLinha { 0%, 55% { transform: scaleX(0); opacity: 0; } 75% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.9; } }
+        @keyframes abLogo { 0% { opacity: 0; transform: scale(1.22); filter: blur(16px); } 55% { opacity: 1; filter: blur(0); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
+        @keyframes abVarredura { 0%, 40% { transform: translateX(-140%) skewX(-18deg); opacity: 0; } 50% { opacity: 1; } 80% { transform: translateX(240%) skewX(-18deg); opacity: 1; } 100% { transform: translateX(240%) skewX(-18deg); opacity: 0; } }
+        @keyframes abHalo { 0%, 42% { opacity: 0; } 62% { opacity: 0.55; } 100% { opacity: 0; } }
+        @keyframes abSub { 0% { opacity: 0; transform: translateY(14px); letter-spacing: 1em; filter: blur(4px); } 100% { opacity: 1; transform: translateY(0); letter-spacing: 0.5em; filter: blur(0); } }
+        @keyframes abLinha { 0%, 55% { transform: scaleX(0); opacity: 0; } 78% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.9; } }
       `}</style>
-      <div style={{ position: 'relative', marginBottom: '28px' }}>
-        <div style={{ position: 'absolute', inset: '-36px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.4), transparent 68%)', animation: 'abBrilho 2.1s ease-out 0.25s both' }} />
-        <div style={{ animation: 'abEstrela 1.5s cubic-bezier(0.2, 0.85, 0.3, 1) both' }}>
-          <EstrelaMarca size={64} color="#fff" />
-        </div>
+      <div style={{ position: 'relative', width: 'min(80vw, 430px)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: '-40px', background: 'radial-gradient(circle, rgba(184,147,90,0.4), transparent 70%)', animation: 'abHalo 2.6s ease both' }} />
+        <img src={logoMarca} alt="Special" style={{ width: '100%', display: 'block', animation: 'abLogo 1.5s cubic-bezier(0.2, 0.8, 0.25, 1) both' }} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', background: 'linear-gradient(105deg, transparent, rgba(255,236,200,0.55), transparent)', animation: 'abVarredura 2.2s ease-in-out both', mixBlendMode: 'screen' }} />
       </div>
-      <div style={{ display: 'flex' }}>
-        {'SPECIAL'.split('').map((letra, i) => (
-          <span key={i} style={{ color: '#fff', fontSize: '30px', fontWeight: 300, letterSpacing: '0.32em', animation: `abLetra 0.55s ease ${0.85 + i * 0.07}s both` }}>{letra}</span>
-        ))}
-      </div>
-      <div style={{ width: '150px', height: '1px', marginTop: '22px', background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, transformOrigin: 'center', animation: 'abLinha 2.2s ease both' }} />
+      <div style={{ color: GOLD, fontSize: '16px', fontWeight: 700, letterSpacing: '0.5em', paddingLeft: '0.5em', marginTop: '4px', animation: 'abSub 0.9s ease 1.35s both' }}>LAB</div>
+      <div style={{ width: '170px', height: '1px', marginTop: '22px', background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, transformOrigin: 'center', animation: 'abLinha 2.3s ease both' }} />
     </div>
   );
 }

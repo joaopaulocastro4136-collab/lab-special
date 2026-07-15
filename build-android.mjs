@@ -7,6 +7,7 @@ await esbuild.build({
   minify: true,
   format: 'iife',
   jsx: 'automatic',
+  loader: { '.png': 'dataurl' },
   define: { 'process.env.NODE_ENV': '"production"' },
   outfile: 'www-bundle.js',
   logLevel: 'info',

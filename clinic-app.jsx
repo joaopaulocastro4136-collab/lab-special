@@ -11,6 +11,7 @@ import {
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
 import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock } from 'lucide-react';
+import logoMarca from './logo-special.png';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyD8w3_SK27YHDFlsYpxAto3sNxCnh3tFcg',
@@ -171,18 +172,19 @@ function Abertura({ visivel }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', animation: 'abFundo 2.4s ease forwards', fontFamily: FONTE }}>
       <style>{`
         @keyframes abFundo { 0%, 78% { opacity: 1; } 100% { opacity: 0; } }
-        @keyframes abEstrela { 0% { transform: scale(0) rotate(-135deg); opacity: 0; } 55% { transform: scale(1.15) rotate(8deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
-        @keyframes abLetra { 0% { opacity: 0; transform: translateY(14px); filter: blur(3px); } 100% { opacity: 1; transform: translateY(0); filter: blur(0); } }
+        @keyframes abLogo { 0% { opacity: 0; transform: scale(1.22); filter: blur(16px); } 55% { opacity: 1; filter: blur(0); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
+        @keyframes abVarredura { 0%, 40% { transform: translateX(-140%) skewX(-18deg); opacity: 0; } 50% { opacity: 1; } 80% { transform: translateX(240%) skewX(-18deg); opacity: 1; } 100% { transform: translateX(240%) skewX(-18deg); opacity: 0; } }
+        @keyframes abHalo { 0%, 42% { opacity: 0; } 62% { opacity: 0.55; } 100% { opacity: 0; } }
+        @keyframes abSub { 0% { opacity: 0; transform: translateY(14px); letter-spacing: 1em; filter: blur(4px); } 100% { opacity: 1; transform: translateY(0); letter-spacing: 0.5em; filter: blur(0); } }
+        @keyframes abLinha { 0%, 55% { transform: scaleX(0); opacity: 0; } 78% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.9; } }
       `}</style>
-      <div style={{ animation: 'abEstrela 1.3s cubic-bezier(0.2,0.85,0.3,1) both', marginBottom: 22 }}>
-        <Estrela size={56} />
+      <div style={{ position: 'relative', width: 'min(80vw, 430px)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: '-40px', background: 'radial-gradient(circle, rgba(184,147,90,0.4), transparent 70%)', animation: 'abHalo 2.3s ease both' }} />
+        <img src={logoMarca} alt="Special" style={{ width: '100%', display: 'block', animation: 'abLogo 1.4s cubic-bezier(0.2, 0.8, 0.25, 1) both' }} />
+        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', background: 'linear-gradient(105deg, transparent, rgba(255,236,200,0.55), transparent)', animation: 'abVarredura 2s ease-in-out both', mixBlendMode: 'screen' }} />
       </div>
-      <div style={{ display: 'flex' }}>
-        {'SPECIAL'.split('').map((l, i) => (
-          <span key={i} style={{ color: '#fff', fontSize: 26, fontWeight: 300, letterSpacing: '0.3em', animation: `abLetra 0.5s ease ${0.7 + i * 0.06}s both` }}>{l}</span>
-        ))}
-      </div>
-      <div style={{ color: GOLD, fontSize: 12, fontWeight: 700, letterSpacing: '0.5em', marginTop: 10, animation: 'abLetra 0.5s ease 1.3s both' }}>CLINIC</div>
+      <div style={{ color: GOLD, fontSize: 15, fontWeight: 700, letterSpacing: '0.5em', paddingLeft: '0.5em', marginTop: 4, animation: 'abSub 0.9s ease 1.25s both' }}>CLINIC</div>
+      <div style={{ width: 170, height: 1, marginTop: 20, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, transformOrigin: 'center', animation: 'abLinha 2.1s ease both' }} />
     </div>
   );
 }

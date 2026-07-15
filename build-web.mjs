@@ -7,6 +7,7 @@ await esbuild.build({
   minify: true,
   format: 'iife',
   jsx: 'automatic',
+  loader: { '.png': 'dataurl' },
   define: { 'process.env.NODE_ENV': '"production"' },
   outfile: 'dist-web/app.js',
   logLevel: 'info',
@@ -51,7 +52,7 @@ const html = `<!DOCTYPE html>
 const manifest = {
   name: 'Lab Special',
   short_name: 'Lab Special',
-  description: 'Gestão de casos do Laboratório Special',
+  description: 'GestÃ£o de casos do LaboratÃ³rio Special',
   start_url: '.',
   display: 'standalone',
   background_color: '#1C1B19',
