@@ -61,6 +61,6 @@ const manifest = {
 mkdirSync('dist-clinic', { recursive: true });
 writeFileSync('dist-clinic/index.html', html);
 writeFileSync('dist-clinic/manifest.webmanifest', JSON.stringify(manifest, null, 2));
-copyFileSync('icones/ic_launcher-xxxhdpi.png', 'dist-clinic/icone-192.png');
-copyFileSync('icones/icone-512.png', 'dist-clinic/icone-512.png');
+copyFileSync('icones/icone-clinic-192.png', 'dist-clinic/icone-192.png');
+copyFileSync('icones/icone-clinic-512.png', 'dist-clinic/icone-512.png');
 console.log('dist-clinic pronto');
