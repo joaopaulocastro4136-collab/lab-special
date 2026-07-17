@@ -1,7 +1,7 @@
 {
   "name": "lab-special-functions",
   "description": "Carteiro de notificações push do Lab Special / Special Clinic",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "main": "index.js",
   "dependencies": {
     "firebase-admin": "^13.0.0",

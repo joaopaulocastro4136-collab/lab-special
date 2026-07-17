@@ -512,6 +512,10 @@ function App({ dentista, email, prazoPagamento }) {
     });
   });
   const avisosNaoVistos = avisos.filter(a => !avisosVistos.includes(a.chave));
+  // Aprovações aguardando o dentista — viram caixas de destaque na tela inicial
+  const aprovacoesPendentes = casos.flatMap(c =>
+    (c.anexos || []).filter(a => a.aprovacao && a.aprovacao.status === 'pendente').map(a => ({ caso: c, anexo: a }))
+  );
   const fecharSino = () => {
     setSinoAberto(false);
     if (avisos.length > 0) marcarAvisosVistos(avisos.map(a => a.chave));
@@ -795,6 +799,24 @@ function App({ dentista, email, prazoPagamento }) {
         )}
         {aba === 'trabalhos' && (
           <>
+            {/* Caixas de aprovação em destaque: toca e já cai no arquivo p/ ver e aprovar */}
+            {aprovacoesPendentes.map(({ caso: cx, anexo: ax }) => (
+              <div key={ax.id} onClick={() => setDetalhe(cx)}
+                style={{ background: '#FDF6EC', border: '1.5px solid #E8C48A', borderRadius: 16, padding: 14, marginBottom: 10, cursor: 'pointer', boxShadow: '0 10px 26px -18px rgba(184,120,40,0.5)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 20, background: '#F3E3C3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>👍</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#B54708', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Aprovação aguardando você</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: INK, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ax.nome}</div>
+                    <div style={{ fontSize: 11.5, color: '#78716C' }}>{cx.paciente} • {cx.tipoTrabalho}</div>
+                  </div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); setDetalhe(cx); }}
+                  style={{ width: '100%', marginTop: 11, padding: 12, borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+                  Ver e aprovar →
+                </button>
+              </div>
+            ))}
             {panorama}
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -1189,6 +1211,22 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     }
     setEnviandoFoto(false);
   };
+
+  // Pré-baixa os STLs em segundo plano: tocar em "ver em 3D" abre na hora
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      for (const a of (caso.anexos || []).filter(x => String(x.nome || '').toLowerCase().endsWith('.stl'))) {
+        if (imagens[a.id]) continue;
+        try {
+          const dados = await lerAnexo(a.id);
+          if (!ativo) return;
+          if (dados && dados.dataURL) setImagens(m => m[a.id] ? m : { ...m, [a.id]: dados.dataURL });
+        } catch (e) { /* baixa quando clicar */ }
+      }
+    })();
+    return () => { ativo = false; };
+  }, [caso.id, (caso.anexos || []).length]);
 
   const abrirAnexo = async (a) => {
     const ehVideo = String(a.mime || '').startsWith('video');

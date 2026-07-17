@@ -3914,6 +3914,9 @@ function VisorFoto({ foto, onFechar }) {
   );
 }
 
+// Cache dos STLs já baixados (fica em memória): abrir de novo é instantâneo
+const cacheSTL = new Map();
+
 function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo }) {
   const fotoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -3938,15 +3941,34 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     return false;
   });
 
-  // Abre a tela do 3D NA HORA e baixa o arquivo com o "carregando" já visível
+  // Abre a tela do 3D NA HORA; se o arquivo já foi pré-baixado, nem carrega
   const abrirSTL = async (a) => {
-    setStlAberto({ nome: a.nome, dataURL: null });
+    const emCache = cacheSTL.get(a.id);
+    setStlAberto({ nome: a.nome, dataURL: emCache || null });
+    if (emCache) return;
     try {
       const data = await getAnexoData(a.id);
-      if (data) setStlAberto(s => s ? { nome: data.nome || a.nome, dataURL: data.dataURL } : s);
-      else setStlAberto(null);
+      if (data) {
+        cacheSTL.set(a.id, data.dataURL);
+        setStlAberto(s => s ? { nome: data.nome || a.nome, dataURL: data.dataURL } : s);
+      } else setStlAberto(null);
     } catch (e) { setStlAberto(null); }
   };
+
+  // Pré-baixa os STLs deste caso em segundo plano: ao tocar em "Ver em 3D", abre na hora
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      for (const a of arquivos.filter(x => x.categoria === 'stl' && !cacheSTL.has(x.id))) {
+        try {
+          const data = await getAnexoData(a.id);
+          if (!ativo) return;
+          if (data) cacheSTL.set(a.id, data.dataURL);
+        } catch (e) { /* baixa quando clicar */ }
+      }
+    })();
+    return () => { ativo = false; };
+  }, [caso.id, arquivos.length]);
 
   useEffect(() => {
     let ativo = true;
