@@ -166,18 +166,25 @@ async function sincronizarAcesso(configJson) {
   } catch (e) { console.error('Erro ao sincronizar acessos', e); }
 }
 
-// Total pago por dentista → documento que o Special Clinic pode ler (só o próprio)
+// Total pago por dentista → documento que o Special Clinic pode ler (só o próprio).
+// Inclui a lista de pagamentos (data + valor) p/ o relatório mensal do dentista.
 async function sincronizarFinanceiroClinica(pagamentosJson) {
   try {
     const pagamentos = JSON.parse(pagamentosJson);
     const totais = {};
+    const listas = {};
     for (const p of pagamentos) {
       totais[p.dentista] = (totais[p.dentista] || 0) + (p.valor || 0);
+      (listas[p.dentista] = listas[p.dentista] || []).push({ data: p.data || null, valor: p.valor || 0 });
     }
     const batch = writeBatch(db);
     for (const nome in totais) {
       const idSeguro = nome.replace(/\//g, '-');
-      batch.set(doc(db, 'labs', LAB, 'financeiroClinica', idSeguro), { nome, totalPago: Math.round(totais[nome] * 100) / 100 });
+      batch.set(doc(db, 'labs', LAB, 'financeiroClinica', idSeguro), {
+        nome,
+        totalPago: Math.round(totais[nome] * 100) / 100,
+        pagamentos: (listas[nome] || []).slice(0, 400),
+      });
     }
     await batch.commit();
   } catch (e) { console.error('Erro ao sincronizar financeiro da clínica', e); }

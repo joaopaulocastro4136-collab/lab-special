@@ -289,6 +289,8 @@ function useGestoVoltar(aoVoltar) {
 function App({ dentista, email, prazoPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
+  const [pagamentosLab, setPagamentosLab] = useState([]); // pagamentos registrados pelo laboratório (data + valor)
+  const [mesAberto, setMesAberto] = useState(null); // mês expandido no relatório mensal
   const [info, setInfo] = useState({ tipos: [], diasTrabalho: [1, 2, 3, 4, 5, 6] });
   const [aba, setAba] = useState('trabalhos');
   const [detalhe, setDetalhe] = useState(null);
@@ -338,6 +340,7 @@ function App({ dentista, email, prazoPagamento }) {
     });
     const un2 = onSnapshot(doc(db, 'labs', LAB, 'financeiroClinica', dentista.replace(/\//g, '-')), s => {
       setTotalPago(s.exists() ? (s.data().totalPago || 0) : 0);
+      setPagamentosLab(s.exists() ? (s.data().pagamentos || []) : []);
     }, () => {});
     getDoc(doc(db, 'labs', LAB, 'publicoClinica', 'info')).then(s => {
       if (s.exists()) {
@@ -369,6 +372,25 @@ function App({ dentista, email, prazoPagamento }) {
     try { await navigator.clipboard.writeText(texto); mostrarToast(aviso); }
     catch (e) { mostrarToast('Não consegui copiar — copie manualmente.'); }
   };
+
+  // Relatório mensal: entregas agrupadas pelo mês da entrega + pagamentos do mês
+  const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const nomeMes = (m) => { const [a, mm] = m.split('-'); return `${NOMES_MESES[parseInt(mm, 10) - 1]} de ${a}`; };
+  const mesesRelatorio = {};
+  todasEntregas.forEach(c => {
+    const m = (c.dataSaida || '').slice(0, 7);
+    if (!m) return;
+    const reg = (mesesRelatorio[m] = mesesRelatorio[m] || { entregues: [], valor: 0, pago: 0 });
+    reg.entregues.push(c);
+    reg.valor += (c.valor || 0);
+  });
+  (pagamentosLab || []).forEach(p => {
+    const m = (p.data || '').slice(0, 7);
+    if (!m) return;
+    const reg = (mesesRelatorio[m] = mesesRelatorio[m] || { entregues: [], valor: 0, pago: 0 });
+    reg.pago += (p.valor || 0);
+  });
+  const mesesOrdenados = Object.entries(mesesRelatorio).sort((a, b) => b[0].localeCompare(a[0]));
 
   // Trabalhos que o dentista enviou HOJE — para avisar o laboratório pelo WhatsApp
   const enviadosHoje = casos.filter(c => c.origem === 'clinica' && c.dataEntrada === todayISO());
@@ -649,6 +671,61 @@ function App({ dentista, email, prazoPagamento }) {
                 <div style={{ fontSize: 16, fontWeight: 800, color: VERDE, marginTop: 2 }}>{formatReais(totalPago)}</div>
               </div>
             </div>
+            {/* Relatório mensal: cada mês fechado com o que foi feito e o que foi pago */}
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Relatório mensal</div>
+            {mesesOrdenados.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E', marginBottom: 10 }}>Assim que houver entregas, cada mês aparece aqui com o total feito e o total pago.</div>}
+            {mesesOrdenados.length > 0 && (
+              <div style={{ ...cartao, padding: 0, overflow: 'hidden' }}>
+                {mesesOrdenados.map(([m, reg], i) => {
+                  const aberto = mesAberto === m;
+                  const porTipoMes = {};
+                  reg.entregues.forEach(c => {
+                    const t = c.tipoTrabalho || 'Outro';
+                    (porTipoMes[t] = porTipoMes[t] || { qtd: 0, valor: 0 });
+                    porTipoMes[t].qtd += 1;
+                    porTipoMes[t].valor += (c.valor || 0);
+                  });
+                  return (
+                    <div key={m} style={{ borderTop: i > 0 ? '1px solid #F0EFEC' : 'none' }}>
+                      <button onClick={() => setMesAberto(aberto ? null : m)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: FONTE, textAlign: 'left' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>{nomeMes(m)}</div>
+                          <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{reg.entregues.length} {reg.entregues.length === 1 ? 'trabalho entregue' : 'trabalhos entregues'}</div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: INK }}>{formatReais(reg.valor)}</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: reg.pago > 0 ? '#166B3A' : '#A8A29E' }}>pago {formatReais(reg.pago)}</div>
+                        </div>
+                        <span style={{ color: '#A8A29E', fontSize: 12, transform: aberto ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>▸</span>
+                      </button>
+                      {aberto && (
+                        <div style={{ padding: '0 14px 13px' }}>
+                          {Object.entries(porTipoMes).sort((a, b) => b[1].valor - a[1].valor).map(([tipo, d]) => (
+                            <div key={tipo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid #F7F6F4' }}>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tipo}</span>
+                              <span style={{ fontSize: 11, color: '#A8A29E' }}>{d.qtd}×</span>
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>{formatReais(d.valor)}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            <div style={{ flex: 1, background: '#FAF9F7', borderRadius: 10, padding: '8px 10px' }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase' }}>Feito no mês</div>
+                              <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>{formatReais(reg.valor)}</div>
+                            </div>
+                            <div style={{ flex: 1, background: '#F0F9F2', borderRadius: 10, padding: '8px 10px' }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: '#166B3A', textTransform: 'uppercase' }}>Pago no mês</div>
+                              <div style={{ fontSize: 13.5, fontWeight: 800, color: '#166B3A' }}>{formatReais(reg.pago)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Entregas e valores</div>
             {todasEntregas.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E' }}>Nenhum trabalho entregue ainda.</div>}
             {todasEntregas.slice(0, 30).map(c => (

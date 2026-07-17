@@ -21,11 +21,11 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <title>Special Clinic</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1C1B19">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; padding: 0; background: #F5F4F0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { margin: 0; padding: 0; background: #F5F4F0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; }
   #root { min-height: 100vh; }
   /* touch-action manipulation: mata o zoom de toque duplo (a página "crescia" ao apertar), mantendo rolagem e pinça */
   * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; touch-action: manipulation; }

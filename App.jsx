@@ -811,6 +811,7 @@ export default function App() {
   const [horasPorDia, setHorasPorDia] = useState(DIAS_TRABALHO_PADRAO.reduce((a, d) => { a[d] = HORAS_DIA_PADRAO; return a; }, [0, 0, 0, 0, 0, 0, 0]));
   const [autoAjuste, setAutoAjuste] = useState(false);
   const [chavePix, setChavePix] = useState('');
+  const [pessoas, setPessoas] = useState(1); // quantas pessoas produzem ao mesmo tempo (capacidade = horas × pessoas)
   const [notificacoes, setNotificacoes] = useState([]);
   const [historicoTempos, setHistoricoTempos] = useState([]);
   const [comissoes, setComissoes] = useState([]);
@@ -868,6 +869,7 @@ export default function App() {
           if (parsed.horasDia) setHorasDia(parsed.horasDia);
           if (parsed.funcionarios) setFuncionarios(parsed.funcionarios);
           if (typeof parsed.autoAjuste === 'boolean') setAutoAjuste(parsed.autoAjuste);
+          if (parsed.pessoas >= 1) setPessoas(parsed.pessoas);
           if (parsed.chavePix) setChavePix(parsed.chavePix);
           if (parsed.diasTrabalho?.length > 0) { diasTrabalhoCarregados = parsed.diasTrabalho; setDiasTrabalho(parsed.diasTrabalho); }
           if (parsed.horasPorDia?.length === 7) {
@@ -981,6 +983,7 @@ export default function App() {
       chavePix: patch.chavePix ?? chavePix,
       diasTrabalho: patch.diasTrabalho ?? diasTrabalho,
       horasPorDia: patch.horasPorDia ?? horasPorDia,
+      pessoas: patch.pessoas ?? pessoas,
     };
     setDentistas(novo.dentistas);
     setTiposTrabalho(novo.tiposTrabalho);
@@ -990,6 +993,7 @@ export default function App() {
     setChavePix(novo.chavePix);
     setDiasTrabalho(novo.diasTrabalho);
     setHorasPorDia(novo.horasPorDia);
+    setPessoas(novo.pessoas);
     flashSave(() => window.storage.set('config-laboratorio', JSON.stringify(novo)));
   };
   const persistNotificacoes = (novas) => {
@@ -1305,6 +1309,14 @@ export default function App() {
     updateCaso(id, { prazo: novoPrazo });
     criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi reagendado para ${formatDateBR(novoPrazo)}.`, id);
   };
+  // Mover um trabalho para uma data escolhida no calendário (aba Datas)
+  const mudarPrazoParaDia = (id, data) => {
+    const caso = casos.find(c => c.id === id);
+    if (!caso || !data) return;
+    const novoPrazo = proximoDiaUtil(data, diasTrabalho);
+    updateCaso(id, { prazo: novoPrazo });
+    criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi movido para ${formatDateBR(novoPrazo)}.`, id);
+  };
   const deleteCaso = async (id) => {
     const caso = casos.find(c => c.id === id);
     if (caso?.anexos?.length) {
@@ -1574,7 +1586,8 @@ export default function App() {
             dia={diaSelecionado} setDia={setDiaSelecionado}
             casosHoje={trabalhoHoje} casosAmanha={trabalhoAmanha}
             casosAgenda={emAndamento}
-            tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho}
+            tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
+            onMudarPrazo={mudarPrazoParaDia}
             onSelect={goToDetalhe}
             onFinalizar={(id) => updateStatus(id, 'Pronto')}
             onIniciarProducao={(id) => updateStatus(id, 'Em Produção')}
@@ -1642,6 +1655,8 @@ export default function App() {
             onAbrirEquipe={() => setView('equipe')}
             autoAjuste={autoAjuste}
             onSetAutoAjuste={(v) => persistConfig({ autoAjuste: v })}
+            pessoas={pessoas}
+            onSetPessoas={(n) => persistConfig({ pessoas: n })}
             chavePix={chavePix}
             onSetChavePix={(v) => persistConfig({ chavePix: v })}
           />
@@ -1981,15 +1996,17 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, onSelect, onFinalizar, onIniciarProducao, onAdiar }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
+  const [adicionandoDia, setAdicionandoDia] = useState(false);
 
-  // Capacidade de horas de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado
+  // Capacidade de horas de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado.
+  // Multiplica pelo nº de pessoas na produção (2 pessoas × 8h = 16h disponíveis).
   const capDia = (idxSemana) => {
     const v = horasPorDia?.[idxSemana];
-    return (typeof v === 'number' && v > 0) ? v : horasDia;
+    return ((typeof v === 'number' && v > 0) ? v : horasDia) * (pessoas >= 1 ? pessoas : 1);
   };
   const dataHoje = new Date();
   const dataAmanha = new Date();
@@ -2101,7 +2118,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
     const MiniCardCaso = ({ c }) => {
       const et = etapaAtual(c);
       return (
-        <button key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left rounded-xl px-3 py-2.5 bg-white border border-stone-200">
+        <div key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left rounded-xl px-3 py-2.5 bg-white border border-stone-200 cursor-pointer">
           <div className="flex items-center justify-between gap-2">
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
@@ -2113,9 +2130,16 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               {c.naClinica && <BadgeClinica />}
               {c.provaPendente && !c.naClinica && <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FDECD8', color: '#B54708' }}>levar</span>}
               <span className="text-xs text-stone-400">{formatHoras(tempoRestante(c, tiposTrabalho))}</span>
+              {c.status !== 'Entregue' && (
+                <button onClick={(e) => { e.stopPropagation(); onAdiar(c.id); }}
+                  className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#F0EFEC', color: '#78716C' }}
+                  title="Tirar deste dia (vai para o próximo dia de trabalho)">
+                  Tirar do dia ▸
+                </button>
+              )}
             </div>
           </div>
-        </button>
+        </div>
       );
     };
 
@@ -2160,7 +2184,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                   );
                 }
                 return (
-                  <button key={ci} onClick={() => temTrabalho && setDataSelecionada(selecionado ? null : cel.data)}
+                  <button key={ci} onClick={() => { if (temTrabalho || ehDiaTrabalho) { setDataSelecionada(selecionado ? null : cel.data); setAdicionandoDia(false); } }}
                     className="rounded-lg flex flex-col items-center justify-center py-1.5"
                     style={{
                       background: cor.bg,
@@ -2207,7 +2231,41 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
             </div>
             <div className="flex flex-col gap-1.5">
               {listaDoDia.map(c => <MiniCardCaso key={c.id + (c._bloco || '')} c={c} />)}
+              {listaDoDia.length === 0 && (
+                <div className="text-xs text-stone-400 text-center py-2">Nenhum trabalho neste dia — adicione um abaixo.</div>
+              )}
             </div>
+
+            {/* Trazer um trabalho de outra data para este dia */}
+            {!adicionandoDia ? (
+              <button onClick={() => setAdicionandoDia(true)}
+                className="w-full mt-2 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-dashed" style={{ borderColor: GOLD, color: '#7A6234', background: GOLD_SOFT }}>
+                <Plus size={14} /> Adicionar trabalho a este dia
+              </button>
+            ) : (
+              <div className="mt-2 rounded-xl border border-stone-200 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2" style={{ background: '#F5F4F0' }}>
+                  <span className="text-xs font-bold" style={{ color: INK }}>Escolha o trabalho que vem para este dia:</span>
+                  <button onClick={() => setAdicionandoDia(false)} className="p-1"><X size={13} className="text-stone-400" /></button>
+                </div>
+                <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
+                  {casosAgenda.filter(c => c.prazo !== dataSelecionada).sort((a, b) => a.prazo.localeCompare(b.prazo)).map((c, i) => (
+                    <button key={c.id} onClick={() => { onMudarPrazo(c.id, dataSelecionada); setAdicionandoDia(false); }}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2.5" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
+                        <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
+                      </div>
+                      <span className="text-xs text-stone-400 flex-shrink-0">{formatDateBR(c.prazo)} →</span>
+                    </button>
+                  ))}
+                  {casosAgenda.filter(c => c.prazo !== dataSelecionada).length === 0 && (
+                    <div className="text-xs text-stone-400 text-center py-4">Nenhum outro trabalho em andamento para trazer.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <button onClick={() => gerarImagem(`Trabalhos — ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, `${DIAS_SEMANA[dSel.getDay()]}, ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, listaDoDia, capDia(dSel.getDay()))}
               className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: INK }}>
               <Share2 size={14} /> Gerar imagem deste dia (WhatsApp / TV)
@@ -2811,7 +2869,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
   );
 }
 
-function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix }) {
+function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');
@@ -3057,6 +3115,24 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
               <span className="text-xs text-stone-400" style={{ width: '38px' }}>horas</span>
             </div>
           ))}
+        </div>
+
+        {/* Quantas pessoas produzem ao mesmo tempo — multiplica a capacidade do dia */}
+        <div className="mt-3 pt-3 border-t border-stone-100">
+          <div className="flex items-center gap-3">
+            <Users size={16} color={GOLD} className="flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-bold" style={{ color: INK }}>Pessoas na produção</div>
+              <div className="text-xs text-stone-400">Multiplica as horas de cada dia (ex.: 8h × {pessoas >= 1 ? pessoas : 1} {pessoas === 1 ? 'pessoa' : 'pessoas'} = {(pessoas >= 1 ? pessoas : 1) * 8}h disponíveis)</div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => onSetPessoas(Math.max(1, (pessoas || 1) - 1))} disabled={(pessoas || 1) <= 1}
+                className="w-9 h-9 rounded-xl font-extrabold text-lg disabled:opacity-30" style={{ background: '#F0EFEC', color: INK }}>−</button>
+              <span className="text-lg font-extrabold text-center" style={{ color: INK, width: '28px' }}>{pessoas >= 1 ? pessoas : 1}</span>
+              <button onClick={() => onSetPessoas(Math.min(20, (pessoas || 1) + 1))}
+                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: INK, color: GOLD }}>+</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4466,6 +4542,15 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
   });
   const tiposOrdenados = Object.entries(porTipo).sort((a, b) => b[1].valor - a[1].valor);
 
+  // Fechamento do mês por tipo: só os trabalhos FINALIZADOS no mês contam no fechamento
+  const porTipoFechamento = {};
+  finalizados.forEach(c => {
+    if (!porTipoFechamento[c.tipoTrabalho]) porTipoFechamento[c.tipoTrabalho] = { qtd: 0, valor: 0 };
+    porTipoFechamento[c.tipoTrabalho].qtd += 1;
+    porTipoFechamento[c.tipoTrabalho].valor += (c.valor || 0);
+  });
+  const tiposFechamento = Object.entries(porTipoFechamento).sort((a, b) => b[1].valor - a[1].valor);
+
   // Extrato por dentista: só o que foi ENTREGUE no mês (é o que se cobra)
   const porDentista = {};
   entregues.forEach(c => {
@@ -4800,6 +4885,30 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <h2 className="text-sm font-bold mb-1" style={{ color: INK }}>Fechamento do mês por tipo ({mesNome})</h2>
+      <p className="text-xs text-stone-400 mb-3">A memória do mês: só os trabalhos <b>finalizados</b> em {mesNome} contam aqui. Use as setas no topo para rever o fechamento de qualquer mês anterior.</p>
+      <div className="rounded-2xl bg-white border border-stone-200 mb-6 overflow-hidden">
+        {tiposFechamento.length === 0 ? (
+          <div className="px-4 py-6 text-xs text-stone-400 text-center">Nenhum trabalho finalizado em {mesNome} ainda — o fechamento vai se montando conforme você finaliza.</div>
+        ) : (
+          <>
+            <div className="p-4 pb-2 flex flex-col">
+              {tiposFechamento.map(([tipo, dados]) => (
+                <div key={tipo} className="flex items-center gap-2 py-2 border-b border-stone-100 last:border-0">
+                  <span className="text-sm font-medium flex-1 min-w-0 truncate" style={{ color: INK }}>{tipo}</span>
+                  <span className="text-xs text-stone-400">{dados.qtd}×</span>
+                  <span className="text-sm font-extrabold" style={{ color: INK }}>{formatReais(dados.valor)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-4 py-3" style={{ background: GOLD_SOFT }}>
+              <span className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#7A6234' }}>Fechamento de {mesNome} ({finalizados.length} {finalizados.length === 1 ? 'trabalho' : 'trabalhos'})</span>
+              <span className="text-base font-extrabold" style={{ color: INK }}>{formatReais(valorFinalizado)}</span>
+            </div>
+          </>
         )}
       </div>
 
