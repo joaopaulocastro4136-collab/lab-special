@@ -251,6 +251,31 @@ function EtiquetaStatus({ status, discreta }) {
   );
 }
 
+// ─── Notificações push (avisos com o celular bloqueado, estilo WhatsApp) ───
+// Registra este aparelho: o token vai p/ o Firestore e o "carteiro" na nuvem
+// envia os avisos (aprovações, trabalho pronto, trabalho novo) pela Apple.
+async function registrarPush(dados) {
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (!Capacitor.isNativePlatform()) return;
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    let perm = await PushNotifications.checkPermissions();
+    if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
+    if (perm.receive !== 'granted') return;
+    await PushNotifications.addListener('registration', async (t) => {
+      try {
+        await setDoc(doc(db, 'labs', LAB, 'pushTokens', t.value), {
+          token: t.value,
+          plataforma: Capacitor.getPlatform(),
+          ...dados,
+          atualizadoEm: new Date().toISOString(),
+        });
+      } catch (e) { console.error('Erro ao salvar token push', e); }
+    });
+    await PushNotifications.register();
+  } catch (e) { console.error('Push indisponível', e); }
+}
+
 // ─── Gesto de voltar: deslizar da borda esquerda p/ a direita (padrão do iPhone) ───
 // Cada tela/janela registra o próprio "voltar"; o gesto aciona o registro mais recente
 // (o que estiver aberto por cima). Devolver false passa a vez pro registro de baixo.
@@ -398,6 +423,11 @@ function App({ dentista, email, prazoPagamento }) {
     m.addEventListener('change', f);
     return () => m.removeEventListener('change', f);
   }, []);
+
+  // Registra este iPhone/celular p/ receber os avisos push (só no app; na web não faz nada)
+  useEffect(() => {
+    registrarPush({ tipo: 'clinica', dentista, email: email || '' });
+  }, [dentista]);
 
   useEffect(() => {
     const q1 = query(collection(db, 'labs', LAB, 'casos'), where('dentista', '==', dentista));

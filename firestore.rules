@@ -61,6 +61,14 @@ service cloud.firestore {
       allow read: if ehDentista() && nome == nomeDentista().replace('/', '-');
     }
 
+    // Dentista: registra o próprio aparelho p/ receber avisos push
+    match /labs/principal/pushTokens/{tok} {
+      allow create, update: if ehDentista()
+        && request.resource.data.tipo == 'clinica'
+        && request.resource.data.dentista == nomeDentista();
+      allow delete: if ehDentista() && resource.data.dentista == nomeDentista();
+    }
+
     // Dentista: lê anexos (busca por id vindo dos casos dele) e grava anexos dos pedidos
     match /labs/principal/kv/{k} {
       allow read, write: if ehDentista() && k.matches('anexo-.*');

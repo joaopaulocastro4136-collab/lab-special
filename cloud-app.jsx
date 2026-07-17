@@ -166,6 +166,31 @@ async function sincronizarAcesso(configJson) {
   } catch (e) { console.error('Erro ao sincronizar acessos', e); }
 }
 
+// ─── Notificações push (avisos com o celular bloqueado, estilo WhatsApp) ───
+// Registra este aparelho: o token vai p/ o Firestore e o "carteiro" na nuvem
+// (Cloud Function) envia os avisos pela Apple/Google quando algo acontece.
+async function registrarPush(dados) {
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (!Capacitor.isNativePlatform()) return;
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    let perm = await PushNotifications.checkPermissions();
+    if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
+    if (perm.receive !== 'granted') return;
+    await PushNotifications.addListener('registration', async (t) => {
+      try {
+        await setDoc(doc(db, 'labs', LAB, 'pushTokens', t.value), {
+          token: t.value,
+          plataforma: Capacitor.getPlatform(),
+          ...dados,
+          atualizadoEm: new Date().toISOString(),
+        });
+      } catch (e) { console.error('Erro ao salvar token push', e); }
+    });
+    await PushNotifications.register();
+  } catch (e) { console.error('Push indisponível', e); }
+}
+
 // Total pago por dentista → documento que o Special Clinic pode ler (só o próprio).
 // Inclui a lista de pagamentos (data + valor) p/ o relatório mensal do dentista.
 async function sincronizarFinanceiroClinica(pagamentosJson) {
@@ -437,6 +462,11 @@ function CloudRoot({ entrarNativo }) {
     const t = setTimeout(() => { prontoRef.current = true; }, 4000);
     return () => { un1(); un2(); un3(); clearTimeout(t); clearTimeout(timerRef.current); };
   }, [acesso]);
+
+  // Registra este aparelho p/ receber avisos push (só no app nativo; na web não faz nada)
+  useEffect(() => {
+    if (acesso === 'ok' && usuario) registrarPush({ tipo: 'lab', email: usuario.email || '' });
+  }, [acesso, usuario]);
 
   const entrar = async () => {
     setEntrando(true);
