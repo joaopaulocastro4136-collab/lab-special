@@ -273,26 +273,53 @@ function EstrelaMarca({ size = 26, color = 'white', style = {} }) {
   );
 }
 
-// Abertura animada: estrela surge girando com brilho, letras de SPECIAL entram uma a uma, e tudo se desfaz revelando o app
+// Abertura estilo Disney: a estrela da marca voa num arco suave por cima do nome e pousa
+// exatamente no lugar da estrela da logo, que se revela no momento do pouso (logo intacta)
 function Abertura({ visivel }) {
   if (!visivel) return null;
+  const brilho = 'drop-shadow(0 0 6px rgba(255,240,210,0.9)) drop-shadow(0 0 18px rgba(212,175,120,0.7))';
+  const faiscas = [
+    { x: '44vw', y: '-24vh', delay: '0.28s', tam: 13 },
+    { x: '27vw', y: '-21vh', delay: '0.62s', tam: 11 },
+    { x: '11vw', y: '-11vh', delay: '0.96s', tam: 12 },
+  ];
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', animation: 'abFundo 2.7s ease forwards', fontFamily: "'Manrope', -apple-system, sans-serif" }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', animation: 'abFundo 3.4s ease forwards', fontFamily: "'Manrope', -apple-system, sans-serif" }}>
       <style>{`
-        @keyframes abFundo { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
-        @keyframes abLogo { 0% { opacity: 0; transform: scale(1.22); filter: blur(16px); } 55% { opacity: 1; filter: blur(0); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
-        @keyframes abVarredura { 0%, 40% { transform: translateX(-140%) skewX(-18deg); opacity: 0; } 50% { opacity: 1; } 80% { transform: translateX(240%) skewX(-18deg); opacity: 1; } 100% { transform: translateX(240%) skewX(-18deg); opacity: 0; } }
-        @keyframes abHalo { 0%, 42% { opacity: 0; } 62% { opacity: 0.55; } 100% { opacity: 0; } }
+        @keyframes abFundo { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes abVoo {
+          0% { transform: translate(calc(-50% + 66vw), calc(-50% - 18vh)) rotate(-150deg) scale(0.3); opacity: 0; }
+          8% { opacity: 1; }
+          30% { transform: translate(calc(-50% + 40vw), calc(-50% - 26vh)) rotate(-100deg) scale(0.5); }
+          60% { transform: translate(calc(-50% + 15vw), calc(-50% - 15vh)) rotate(-45deg) scale(0.72); }
+          85% { transform: translate(calc(-50% + 3vw), calc(-50% - 3vh)) rotate(-8deg) scale(0.95); }
+          100% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+        }
+        @keyframes abSome { 0% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes abPouso { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); } 45% { opacity: 0.5; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); } }
+        @keyframes abLogo { 0% { opacity: 0; filter: blur(9px); transform: scale(1.02); } 100% { opacity: 1; filter: blur(0); transform: scale(1); } }
+        @keyframes abFaisca { 0%, 100% { opacity: 0; transform: scale(0.2) rotate(25deg); } 50% { opacity: 0.85; transform: scale(1) rotate(0deg); } }
         @keyframes abSub { 0% { opacity: 0; transform: translateY(14px); letter-spacing: 1em; filter: blur(4px); } 100% { opacity: 1; transform: translateY(0); letter-spacing: 0.5em; filter: blur(0); } }
-        @keyframes abLinha { 0%, 55% { transform: scaleX(0); opacity: 0; } 78% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.9; } }
+        @keyframes abLinha { 0%, 62% { transform: scaleX(0); opacity: 0; } 82% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0.9; } }
       `}</style>
-      <div style={{ position: 'relative', width: 'min(80vw, 430px)', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: '-40px', background: 'radial-gradient(circle, rgba(184,147,90,0.4), transparent 70%)', animation: 'abHalo 2.6s ease both' }} />
-        <img src={logoMarca} alt="Special" style={{ width: '100%', display: 'block', animation: 'abLogo 1.5s cubic-bezier(0.2, 0.8, 0.25, 1) both' }} />
-        <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%', background: 'linear-gradient(105deg, transparent, rgba(255,236,200,0.55), transparent)', animation: 'abVarredura 2.2s ease-in-out both', mixBlendMode: 'screen' }} />
+      <div style={{ position: 'relative', width: 'min(80vw, 430px)' }}>
+        <img src={logoMarca} alt="Special" style={{ width: '100%', display: 'block', animation: 'abLogo 0.9s ease 1.3s both' }} />
+        <div style={{ position: 'absolute', left: '20.5%', top: '46.5%', width: '52%', aspectRatio: '1', borderRadius: '50%', background: 'radial-gradient(circle, rgba(212,175,120,0.55), transparent 65%)', animation: 'abPouso 0.9s ease 1.35s both' }} />
+        {faiscas.map((f, i) => (
+          <div key={i} style={{ position: 'absolute', left: '20.5%', top: '46.5%', transform: `translate(calc(-50% + ${f.x}), calc(-50% + ${f.y}))` }}>
+            <div style={{ animation: `abFaisca 0.6s ease ${f.delay} both` }}>
+              <EstrelaMarca size={f.tam} color="rgba(255,232,190,0.95)" />
+            </div>
+          </div>
+        ))}
+        <div style={{ position: 'absolute', left: '20.5%', top: '46.5%', width: '16.5%', animation: 'abSome 0.45s ease 1.75s both' }}>
+          <div style={{ animation: 'abVoo 1.6s cubic-bezier(0.3, 0, 0.25, 1) both', filter: brilho }}>
+            <EstrelaMarca size={26} color="#fff" style={{ width: '100%', height: 'auto' }} />
+          </div>
+        </div>
       </div>
-      <div style={{ color: GOLD, fontSize: '16px', fontWeight: 700, letterSpacing: '0.5em', paddingLeft: '0.5em', marginTop: '4px', animation: 'abSub 0.9s ease 1.35s both' }}>LAB</div>
-      <div style={{ width: '170px', height: '1px', marginTop: '22px', background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, transformOrigin: 'center', animation: 'abLinha 2.3s ease both' }} />
+      <div style={{ color: GOLD, fontSize: '16px', fontWeight: 700, letterSpacing: '0.5em', paddingLeft: '0.5em', marginTop: '4px', animation: 'abSub 0.9s ease 2.05s both' }}>LAB</div>
+      <div style={{ width: '170px', height: '1px', marginTop: '22px', background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, transformOrigin: 'center', animation: 'abLinha 3s ease both' }} />
     </div>
   );
 }
@@ -335,7 +362,7 @@ function CloudRoot({ entrarNativo }) {
   const [diagnostico, setDiagnostico] = useState('');
 
   useEffect(() => {
-    const t = setTimeout(() => setAbrindo(false), 2750);
+    const t = setTimeout(() => setAbrindo(false), 3450);
     return () => clearTimeout(t);
   }, []);
 

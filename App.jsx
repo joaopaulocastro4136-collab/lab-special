@@ -3794,7 +3794,7 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
             <video src={videoAberto.dataURL} controls autoPlay playsInline style={{ maxWidth: '100vw', maxHeight: '88vh' }} />
           </div>
-          <div className="absolute top-0 left-0 right-0 flex items-center gap-2" style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.55)' }}>
+          <div className="absolute top-0 left-0 right-0 flex items-center gap-2" style={{ padding: '10px 12px', paddingTop: 'calc(10px + env(safe-area-inset-top))', background: 'rgba(0,0,0,0.55)' }}>
             <span className="flex-1 truncate" style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700 }}>🎥 {videoAberto.nome}</span>
             <button onClick={(e) => { e.stopPropagation(); baixarDataURL(videoAberto.dataURL, videoAberto.nome); }}
               style={{ width: 38, height: 38, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.16)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
