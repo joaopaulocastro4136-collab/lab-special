@@ -286,6 +286,79 @@ function useGestoVoltar(aoVoltar) {
   }, []);
 }
 
+// ─── Puxar para atualizar: no topo da página, arrasta p/ baixo e a estrela da marca
+// desce girando; soltou → recarrega os dados no lugar, sem sair da tela ───
+function PuxarAtualizar({ aoAtualizar }) {
+  const caixaRef = useRef(null);
+  const estrelaRef = useRef(null);
+  const [atualizando, setAtualizando] = useState(false);
+  const acaoRef = useRef(aoAtualizar);
+  acaoRef.current = aoAtualizar;
+  const estado = useRef({ y0: 0, x0: 0, puxando: false, dist: 0, ocupado: false });
+
+  useEffect(() => {
+    const GATILHO = 55;
+    const aplicar = (dist) => {
+      estado.current.dist = dist;
+      const el = caixaRef.current;
+      if (!el) return;
+      el.style.transform = `translateX(-50%) translateY(${dist > 0 ? dist - 54 : -54}px)`;
+      el.style.opacity = dist > 8 ? '1' : '0';
+      const es = estrelaRef.current;
+      if (es && !estado.current.ocupado) es.style.transform = `rotate(${dist * 3.2}deg) scale(${Math.min(1, 0.45 + (dist / GATILHO) * 0.55)})`;
+    };
+    const podePuxar = (alvo) => {
+      if (window.scrollY > 2) return false;
+      let el = alvo;
+      while (el && el !== document.body) { if (el.scrollTop > 0) return false; el = el.parentElement; }
+      return true;
+    };
+    const inicio = (e) => {
+      if (e.touches.length !== 1 || estado.current.ocupado) return;
+      estado.current.puxando = podePuxar(e.target);
+      estado.current.y0 = e.touches[0].clientY;
+      estado.current.x0 = e.touches[0].clientX;
+    };
+    const mover = (e) => {
+      if (!estado.current.puxando || estado.current.ocupado) return;
+      const dy = e.touches[0].clientY - estado.current.y0;
+      const dx = Math.abs(e.touches[0].clientX - estado.current.x0);
+      if (dy <= 0) { aplicar(0); return; }
+      if (dx > dy) { estado.current.puxando = false; aplicar(0); return; }
+      aplicar(Math.min(110, dy * 0.45));
+    };
+    const fim = async () => {
+      if (!estado.current.puxando || estado.current.ocupado) return;
+      estado.current.puxando = false;
+      if (estado.current.dist < GATILHO) { aplicar(0); return; }
+      estado.current.ocupado = true;
+      setAtualizando(true);
+      aplicar(62);
+      try { await acaoRef.current(); } catch (e) { /* tenta de novo no próximo puxão */ }
+      setTimeout(() => { setAtualizando(false); estado.current.ocupado = false; aplicar(0); }, 450);
+    };
+    window.addEventListener('touchstart', inicio, { passive: true });
+    window.addEventListener('touchmove', mover, { passive: true });
+    window.addEventListener('touchend', fim, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', inicio);
+      window.removeEventListener('touchmove', mover);
+      window.removeEventListener('touchend', fim);
+    };
+  }, []);
+
+  return (
+    <div ref={caixaRef} style={{ position: 'fixed', top: 'env(safe-area-inset-top)', left: '50%', transform: 'translateX(-50%) translateY(-54px)', opacity: 0, zIndex: 9998, pointerEvents: 'none', transition: 'transform 0.22s ease, opacity 0.18s ease' }}>
+      <style>{`@keyframes puxarGira { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ width: 46, height: 46, borderRadius: 23, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 26px -10px rgba(0,0,0,0.45)' }}>
+        <div ref={estrelaRef} style={{ animation: atualizando ? 'puxarGira 0.75s linear infinite' : 'none' }}>
+          <Estrela size={20} color={GOLD} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App({ dentista, email, prazoPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
@@ -342,16 +415,24 @@ function App({ dentista, email, prazoPagamento }) {
       setTotalPago(s.exists() ? (s.data().totalPago || 0) : 0);
       setPagamentosLab(s.exists() ? (s.data().pagamentos || []) : []);
     }, () => {});
-    getDoc(doc(db, 'labs', LAB, 'publicoClinica', 'info')).then(s => {
+    recarregarInfo();
+    return () => { un1(); un2(); };
+  }, [dentista]);
+
+  // Rebusca as informações do laboratório (tipos, chave Pix...) — usada na abertura e no puxar p/ atualizar.
+  // Os casos e o financeiro já chegam ao vivo pelo Firestore; o gesto garante o resto.
+  async function recarregarInfo() {
+    try {
+      const s = await getDoc(doc(db, 'labs', LAB, 'publicoClinica', 'info'));
       if (s.exists()) {
         const d = s.data();
         // Compatibilidade: tipos podem estar como texto (formato antigo) ou objeto completo
         const tipos = (d.tipos || []).map(t => typeof t === 'string' ? { nome: t, prazoDias: 5, valor: 0, etapas: [] } : t);
         setInfo({ tipos, diasTrabalho: d.diasTrabalho || [1, 2, 3, 4, 5, 6], chavePix: d.chavePix || null });
       }
-    }).catch(() => {});
-    return () => { un1(); un2(); };
-  }, [dentista]);
+    } catch (e) { /* segue com o que já tem */ }
+    await new Promise(r => setTimeout(r, 350));
+  }
 
   const mostrarToast = (texto) => {
     setToast(texto);
@@ -744,6 +825,7 @@ function App({ dentista, email, prazoPagamento }) {
         )}
       </div>
 
+      <PuxarAtualizar aoAtualizar={recarregarInfo} />
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
 
       {toast && (

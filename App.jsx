@@ -799,6 +799,82 @@ function useGestoVoltar(aoVoltar) {
   }, []);
 }
 
+// ─── Puxar para atualizar: no topo da página, arrasta p/ baixo e a estrela da marca
+// desce girando; soltou → recarrega os dados no lugar, sem sair da tela ───
+function PuxarAtualizar({ aoAtualizar }) {
+  const caixaRef = useRef(null);
+  const estrelaRef = useRef(null);
+  const [atualizando, setAtualizando] = useState(false);
+  const acaoRef = useRef(aoAtualizar);
+  acaoRef.current = aoAtualizar;
+  const estado = useRef({ y0: 0, x0: 0, puxando: false, dist: 0, ocupado: false });
+
+  useEffect(() => {
+    const GATILHO = 55; // distância (já amortecida) p/ disparar a atualização
+    const aplicar = (dist) => {
+      estado.current.dist = dist;
+      const el = caixaRef.current;
+      if (!el) return;
+      el.style.transform = `translateX(-50%) translateY(${dist > 0 ? dist - 54 : -54}px)`;
+      el.style.opacity = dist > 8 ? '1' : '0';
+      const es = estrelaRef.current;
+      if (es && !estado.current.ocupado) es.style.transform = `rotate(${dist * 3.2}deg) scale(${Math.min(1, 0.45 + (dist / GATILHO) * 0.55)})`;
+    };
+    // Só puxa quando a página (e nenhuma caixa rolável tocada) está no topo
+    const podePuxar = (alvo) => {
+      if (window.scrollY > 2) return false;
+      let el = alvo;
+      while (el && el !== document.body) { if (el.scrollTop > 0) return false; el = el.parentElement; }
+      return true;
+    };
+    const inicio = (e) => {
+      if (e.touches.length !== 1 || estado.current.ocupado) return;
+      estado.current.puxando = podePuxar(e.target);
+      estado.current.y0 = e.touches[0].clientY;
+      estado.current.x0 = e.touches[0].clientX;
+    };
+    const mover = (e) => {
+      if (!estado.current.puxando || estado.current.ocupado) return;
+      const dy = e.touches[0].clientY - estado.current.y0;
+      const dx = Math.abs(e.touches[0].clientX - estado.current.x0);
+      if (dy <= 0) { aplicar(0); return; }
+      if (dx > dy) { estado.current.puxando = false; aplicar(0); return; }
+      aplicar(Math.min(110, dy * 0.45));
+    };
+    const fim = async () => {
+      if (!estado.current.puxando || estado.current.ocupado) return;
+      estado.current.puxando = false;
+      if (estado.current.dist < GATILHO) { aplicar(0); return; }
+      estado.current.ocupado = true;
+      setAtualizando(true);
+      aplicar(62);
+      try { await acaoRef.current(); } catch (e) { /* tenta de novo no próximo puxão */ }
+      setTimeout(() => { setAtualizando(false); estado.current.ocupado = false; aplicar(0); }, 450);
+    };
+    window.addEventListener('touchstart', inicio, { passive: true });
+    window.addEventListener('touchmove', mover, { passive: true });
+    window.addEventListener('touchend', fim, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', inicio);
+      window.removeEventListener('touchmove', mover);
+      window.removeEventListener('touchend', fim);
+    };
+  }, []);
+
+  return (
+    <div ref={caixaRef} style={{ position: 'fixed', top: 'env(safe-area-inset-top)', left: '50%', transform: 'translateX(-50%) translateY(-54px)', opacity: 0, zIndex: 9998, pointerEvents: 'none', transition: 'transform 0.22s ease, opacity 0.18s ease' }}>
+      <style>{`@keyframes puxarGira { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ width: 46, height: 46, borderRadius: 23, background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 26px -10px rgba(0,0,0,0.45)' }}>
+        <div ref={estrelaRef} style={{ animation: atualizando ? 'puxarGira 0.75s linear infinite' : 'none' }}>
+          <svg width={20} height={24} viewBox="-50 -60 100 120" style={{ display: 'block' }}>
+            <path d="M0,-55 C4,-17 17,-4 46,0 C17,4 4,17 0,55 C-4,17 -17,4 -46,0 C-17,-4 -4,-17 0,-55 Z" fill={GOLD} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [casos, setCasos] = useState([]);
   const [solicitacoes, setSolicitacoes] = useState([]);
@@ -812,6 +888,7 @@ export default function App() {
   const [autoAjuste, setAutoAjuste] = useState(false);
   const [chavePix, setChavePix] = useState('');
   const [pessoas, setPessoas] = useState(1); // quantas pessoas produzem ao mesmo tempo (capacidade = horas × pessoas)
+  const [ajustesDia, setAjustesDiaState] = useState({}); // capacidade sob medida de datas específicas: {'2026-07-17': {horas, pessoas}}
   const [notificacoes, setNotificacoes] = useState([]);
   const [historicoTempos, setHistoricoTempos] = useState([]);
   const [comissoes, setComissoes] = useState([]);
@@ -843,8 +920,8 @@ export default function App() {
     document.head.appendChild(link);
   }, []);
 
-  useEffect(() => {
-    (async () => {
+  // Carrega (ou recarrega) todos os dados salvos — usado na abertura e no gesto de puxar p/ atualizar
+  const carregarDados = async () => {
       let tiposCarregados = TIPOS_PADRAO;
       let diasTrabalhoCarregados = DIAS_TRABALHO_PADRAO;
       try {
@@ -870,6 +947,7 @@ export default function App() {
           if (parsed.funcionarios) setFuncionarios(parsed.funcionarios);
           if (typeof parsed.autoAjuste === 'boolean') setAutoAjuste(parsed.autoAjuste);
           if (parsed.pessoas >= 1) setPessoas(parsed.pessoas);
+          if (parsed.ajustesDia) setAjustesDiaState(parsed.ajustesDia);
           if (parsed.chavePix) setChavePix(parsed.chavePix);
           if (parsed.diasTrabalho?.length > 0) { diasTrabalhoCarregados = parsed.diasTrabalho; setDiasTrabalho(parsed.diasTrabalho); }
           if (parsed.horasPorDia?.length === 7) {
@@ -952,8 +1030,8 @@ export default function App() {
         if (ua && ua.value) setUsuarioAtivoId(JSON.parse(ua.value));
       } catch (e) { /* sem usuário ativo */ }
       setLoading(false);
-    })();
-  }, []);
+  };
+  useEffect(() => { carregarDados(); }, []);
 
   const flashSave = async (fn) => {
     setSaveStatus('saving');
@@ -984,6 +1062,7 @@ export default function App() {
       diasTrabalho: patch.diasTrabalho ?? diasTrabalho,
       horasPorDia: patch.horasPorDia ?? horasPorDia,
       pessoas: patch.pessoas ?? pessoas,
+      ajustesDia: patch.ajustesDia ?? ajustesDia,
     };
     setDentistas(novo.dentistas);
     setTiposTrabalho(novo.tiposTrabalho);
@@ -994,6 +1073,7 @@ export default function App() {
     setDiasTrabalho(novo.diasTrabalho);
     setHorasPorDia(novo.horasPorDia);
     setPessoas(novo.pessoas);
+    setAjustesDiaState(novo.ajustesDia);
     flashSave(() => window.storage.set('config-laboratorio', JSON.stringify(novo)));
   };
   const persistNotificacoes = (novas) => {
@@ -1309,6 +1389,17 @@ export default function App() {
     updateCaso(id, { prazo: novoPrazo });
     criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi reagendado para ${formatDateBR(novoPrazo)}.`, id);
   };
+  // Capacidade sob medida de um dia específico (horas/pessoas só daquela data);
+  // patch null volta ao padrão. Datas com mais de 60 dias são limpas automaticamente.
+  const setAjusteDoDia = (data, patch) => {
+    const limite = addDias(todayISO(), -60);
+    const novo = {};
+    for (const [k, v] of Object.entries(ajustesDia || {})) if (k >= limite) novo[k] = v;
+    if (patch === null) delete novo[data];
+    else novo[data] = { ...(novo[data] || {}), ...patch };
+    persistConfig({ ajustesDia: novo });
+  };
+
   // Mover um trabalho para uma data escolhida no calendário (aba Datas)
   const mudarPrazoParaDia = (id, data) => {
     const caso = casos.find(c => c.id === id);
@@ -1587,6 +1678,7 @@ export default function App() {
             casosHoje={trabalhoHoje} casosAmanha={trabalhoAmanha}
             casosAgenda={emAndamento}
             tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
+            ajustesDia={ajustesDia} onSetAjusteDia={setAjusteDoDia}
             onMudarPrazo={mudarPrazoParaDia}
             onSelect={goToDetalhe}
             onFinalizar={(id) => updateStatus(id, 'Pronto')}
@@ -1696,6 +1788,8 @@ export default function App() {
         const dObj = dentistas.find(d => d.nome === casoImpressao.dentista);
         return <FichaImpressao caso={casoImpressao} dentistaInfo={dObj} ehGestor={ehGestor} onFechar={() => setImprimindoCasoId(null)} />;
       })()}
+
+      <PuxarAtualizar aoAtualizar={carregarDados} />
 
       <div className="fixed bottom-0 left-0 right-0 mx-auto flex bg-white border-t border-stone-200 no-print w-full max-w-[440px] lg:hidden">
         <NavButton icon={Home} label="Início" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
@@ -1996,22 +2090,31 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
   const [adicionandoDia, setAdicionandoDia] = useState(false);
+  const [editandoCarga, setEditandoCarga] = useState(false);
 
-  // Capacidade de horas de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado.
-  // Multiplica pelo nº de pessoas na produção (2 pessoas × 8h = 16h disponíveis).
-  const capDia = (idxSemana) => {
+  // Horas-base (por pessoa) de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado
+  const horasBase = (idxSemana) => {
     const v = horasPorDia?.[idxSemana];
-    return ((typeof v === 'number' && v > 0) ? v : horasDia) * (pessoas >= 1 ? pessoas : 1);
+    return (typeof v === 'number' && v > 0) ? v : horasDia;
   };
-  const dataHoje = new Date();
-  const dataAmanha = new Date();
-  dataAmanha.setDate(dataAmanha.getDate() + 1);
-  const capacidadeAtual = dia === 'hoje' ? capDia(dataHoje.getDay()) : (dia === 'amanha' ? capDia(dataAmanha.getDay()) : horasDia);
+  // Capacidade total de uma DATA: ajuste sob medida do dia (se houver) ou padrão, × pessoas
+  const capData = (dataStr) => {
+    const aj = ajustesDia?.[dataStr] || {};
+    const dow = new Date(dataStr + 'T00:00:00').getDay();
+    const horas = (aj.horas > 0) ? aj.horas : horasBase(dow);
+    const pess = (aj.pessoas >= 1) ? aj.pessoas : (pessoas >= 1 ? pessoas : 1);
+    return horas * pess;
+  };
+  const dataAtualISO = dia === 'amanha' ? addDias(todayISO(), 1) : todayISO();
+  const capacidadeAtual = capData(dataAtualISO);
+  const ajusteAtual = ajustesDia?.[dataAtualISO] || {};
+  const horasDoDia = (ajusteAtual.horas > 0) ? ajusteAtual.horas : horasBase(new Date(dataAtualISO + 'T00:00:00').getDay());
+  const pessoasDoDia = (ajusteAtual.pessoas >= 1) ? ajusteAtual.pessoas : (pessoas >= 1 ? pessoas : 1);
 
   const gerarImagem = (titulo, dataExtenso, lista, capacidade) => {
     try {
@@ -2106,7 +2209,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
       const lista = porData[data];
       if (!lista) return { bg: 'white', border: '#E7E5E4', texto: '#A8A29E', horas: 0 };
       const horas = lista.reduce((s, c) => s + tempoRestante(c, tiposTrabalho), 0);
-      const razao = horas / capDia(new Date(data + 'T00:00:00').getDay());
+      const razao = horas / capData(data);
       if (razao > 1) return { bg: '#FCE4E4', border: '#DC2626', texto: '#B42318', horas };
       if (razao >= 0.6) return { bg: '#FDECD8', border: '#EA580C', texto: '#B54708', horas };
       return { bg: '#DCF3E4', border: VERDE, texto: '#166B3A', horas };
@@ -2219,10 +2322,10 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="text-sm font-extrabold capitalize" style={{ color: INK }}>{DIAS_SEMANA[dSel.getDay()]}, {dSel.getDate()} de {MESES[dSel.getMonth()]}</div>
-                <div className="text-xs text-stone-400">{listaDoDia.length} {listaDoDia.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(listaDoDia.reduce((s, c) => s + tempoRestante(c, tiposTrabalho), 0))} de {formatHoras(capDia(dSel.getDay()))}</div>
+                <div className="text-xs text-stone-400">{listaDoDia.length} {listaDoDia.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(listaDoDia.reduce((s, c) => s + tempoRestante(c, tiposTrabalho), 0))} de {formatHoras(capData(dataSelecionada))}</div>
               </div>
               <div className="flex gap-1.5">
-                <button onClick={() => gerarImagem(`Trabalhos — ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, `${DIAS_SEMANA[dSel.getDay()]}, ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, listaDoDia, capDia(dSel.getDay()))}
+                <button onClick={() => gerarImagem(`Trabalhos — ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, `${DIAS_SEMANA[dSel.getDay()]}, ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, listaDoDia, capData(dataSelecionada))}
                   className="p-1.5 rounded-lg text-white" style={{ background: INK }} title="Gerar imagem para compartilhar">
                   <Share2 size={14} />
                 </button>
@@ -2266,7 +2369,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               </div>
             )}
 
-            <button onClick={() => gerarImagem(`Trabalhos — ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, `${DIAS_SEMANA[dSel.getDay()]}, ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, listaDoDia, capDia(dSel.getDay()))}
+            <button onClick={() => gerarImagem(`Trabalhos — ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, `${DIAS_SEMANA[dSel.getDay()]}, ${dSel.getDate()} de ${MESES[dSel.getMonth()]}`, listaDoDia, capData(dataSelecionada))}
               className="w-full mt-3 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: INK }}>
               <Share2 size={14} /> Gerar imagem deste dia (WhatsApp / TV)
             </button>
@@ -2298,6 +2401,10 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
           <Hourglass size={16} color={GOLD} />
           <h2 className="text-sm font-bold flex-1" style={{ color: INK }}>{dia === 'hoje' ? 'Carga do dia' : 'Previsão de amanhã'}</h2>
           <span className="text-xs text-stone-400">{casos.length} {casos.length === 1 ? 'trabalho' : 'trabalhos'}</span>
+          <button onClick={() => setEditandoCarga(!editandoCarga)} className="p-1.5 rounded-lg" title="Ajustar horas e pessoas deste dia"
+            style={editandoCarga ? { background: GOLD_SOFT } : { background: '#F0EFEC' }}>
+            <Pencil size={13} style={{ color: editandoCarga ? '#7A6234' : '#78716C' }} />
+          </button>
         </div>
         <div className="flex items-end justify-between mb-2">
           <div>
@@ -2310,6 +2417,38 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
           <div className="h-full rounded-full" style={{ width: `${pctCarga}%`, background: corCarga, transition: 'width 0.4s' }} />
         </div>
         <p className="text-xs text-stone-400 mt-2">As horas consideram só as etapas que ainda faltam em cada trabalho.</p>
+
+        {/* Ajuste rápido: horas e pessoas SÓ deste dia (toque no lápis) */}
+        {editandoCarga && (
+          <div className="mt-3 rounded-xl p-3" style={{ background: '#F5F4F0' }}>
+            <div className="text-xs font-bold mb-1" style={{ color: INK }}>Capacidade só {dia === 'hoje' ? 'de hoje' : 'de amanhã'} ({formatDateBR(dataAtualISO)})</div>
+            <div className="flex items-center gap-3 py-1.5">
+              <span className="text-xs font-medium flex-1" style={{ color: INK }}>Horas de trabalho (por pessoa)</span>
+              <InputNumero min={0.5} max={24}
+                className="px-2 py-1.5 rounded-lg border border-stone-200 text-sm outline-none bg-white text-center" style={{ width: '64px' }}
+                valor={horasDoDia}
+                onValor={v => onSetAjusteDia(dataAtualISO, { horas: v })} />
+              <span className="text-xs text-stone-400">horas</span>
+            </div>
+            <div className="flex items-center gap-2 py-1.5">
+              <span className="text-xs font-medium flex-1" style={{ color: INK }}>Pessoas neste dia</span>
+              <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.max(1, pessoasDoDia - 1) })} disabled={pessoasDoDia <= 1}
+                className="w-8 h-8 rounded-lg font-extrabold disabled:opacity-30" style={{ background: 'white', border: '1px solid #E7E5E4', color: INK }}>−</button>
+              <span className="text-sm font-extrabold text-center" style={{ color: INK, width: '22px' }}>{pessoasDoDia}</span>
+              <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.min(20, pessoasDoDia + 1) })}
+                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: INK, color: GOLD }}>+</button>
+            </div>
+            <div className="text-xs mt-1" style={{ color: '#7A6234' }}>
+              Capacidade {dia === 'hoje' ? 'de hoje' : 'de amanhã'}: {formatHoras(horasDoDia)} × {pessoasDoDia} {pessoasDoDia === 1 ? 'pessoa' : 'pessoas'} = <b>{formatHoras(horasDoDia * pessoasDoDia)}</b>
+            </div>
+            {ajustesDia?.[dataAtualISO] && (
+              <button onClick={() => onSetAjusteDia(dataAtualISO, null)} className="text-xs font-bold mt-2" style={{ color: '#B42318' }}>
+                Voltar ao padrão dos Ajustes
+              </button>
+            )}
+            <div className="text-xs text-stone-400 mt-1.5">Vale só para este dia — o padrão de todos os dias fica em Ajustes → Dias e horários.</div>
+          </div>
+        )}
         {excedente > 0 && (
           <div className="flex items-start gap-2 mt-3 text-xs px-3 py-2.5 rounded-xl" style={{ background: '#FCE4E4', color: '#B42318' }}>
             <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
