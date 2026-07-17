@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import VisorSTL from './visor-stl.jsx';
 import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 
 const INK = '#1C1B19';
@@ -820,9 +821,11 @@ function PuxarAtualizar({ aoAtualizar }) {
       const es = estrelaRef.current;
       if (es && !estado.current.ocupado) es.style.transform = `rotate(${dist * 3.2}deg) scale(${Math.min(1, 0.45 + (dist / GATILHO) * 0.55)})`;
     };
-    // Só puxa quando a página (e nenhuma caixa rolável tocada) está no topo
+    // Só puxa quando a página (e nenhuma caixa rolável tocada) está no topo.
+    // Ignora toques em vídeo, modelo 3D e áreas marcadas com data-sem-puxar.
     const podePuxar = (alvo) => {
       if (window.scrollY > 2) return false;
+      if (alvo && alvo.closest && alvo.closest('canvas, video, [data-sem-puxar]')) return false;
       let el = alvo;
       while (el && el !== document.body) { if (el.scrollTop > 0) return false; el = el.parentElement; }
       return true;
@@ -3887,16 +3890,25 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
   const [fotoAberta, setFotoAberta] = useState(null);
   const [videoAberto, setVideoAberto] = useState(null);
 
+  const [stlAberto, setStlAberto] = useState(null);
   const anexos = caso.anexos || [];
   const fotos = anexos.filter(a => a.categoria === 'foto');
   const arquivos = anexos.filter(a => a.categoria !== 'foto');
 
-  // Deslizar da borda esquerda fecha primeiro a foto/vídeo aberto
+  // Deslizar da borda esquerda fecha primeiro o STL/foto/vídeo aberto
   useGestoVoltar(() => {
+    if (stlAberto) { setStlAberto(null); return; }
     if (videoAberto) { setVideoAberto(null); return; }
     if (fotoAberta) { setFotoAberta(null); return; }
     return false;
   });
+
+  const abrirSTL = async (a) => {
+    try {
+      const data = await getAnexoData(a.id);
+      if (data) setStlAberto({ nome: data.nome || a.nome, dataURL: data.dataURL });
+    } catch (e) { /* anexo indisponível */ }
+  };
 
   useEffect(() => {
     let ativo = true;
@@ -4048,10 +4060,10 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
           {arquivos.map(a => (
             <div key={a.id} className="flex items-center gap-3 py-2.5 border-t border-stone-100">
               <IconeArquivo categoria={a.categoria} />
-              <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : baixar(a)} className="flex-1 min-w-0 text-left">
+              <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : (a.categoria === 'stl' ? abrirSTL(a) : baixar(a))} className="flex-1 min-w-0 text-left">
                 <div className="text-sm font-medium truncate" style={{ color: INK }}>{a.nome}</div>
-                <div className="text-xs" style={{ color: a.categoria === 'video' ? GOLD : '#A8A29E', fontWeight: a.categoria === 'video' ? 700 : 400 }}>
-                  {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? 'Arquivo STL' : 'Documento')} • {formatBytes(a.tamanho)}
+                <div className="text-xs" style={{ color: (a.categoria === 'video' || a.categoria === 'stl') ? GOLD : '#A8A29E', fontWeight: (a.categoria === 'video' || a.categoria === 'stl') ? 700 : 400 }}>
+                  {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? '🦷 Ver em 3D' : 'Documento')} • {formatBytes(a.tamanho)}
                 </div>
               </button>
               <button onClick={() => baixar(a)} className="p-1.5"><Download size={16} className="text-stone-400" /></button>
@@ -4066,6 +4078,7 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
       )}
 
       {fotoAberta && <VisorFoto foto={fotoAberta} onFechar={() => setFotoAberta(null)} />}
+      {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} onFechar={() => setStlAberto(null)} />}
       {videoAberto && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'black' }} onClick={() => setVideoAberto(null)}>
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>

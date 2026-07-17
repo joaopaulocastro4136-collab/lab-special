@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock } from 'lucide-react';
 import logoMarca from './logo-special.png';
+import VisorSTL from './visor-stl.jsx';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyD8w3_SK27YHDFlsYpxAto3sNxCnh3tFcg',
@@ -307,8 +308,10 @@ function PuxarAtualizar({ aoAtualizar }) {
       const es = estrelaRef.current;
       if (es && !estado.current.ocupado) es.style.transform = `rotate(${dist * 3.2}deg) scale(${Math.min(1, 0.45 + (dist / GATILHO) * 0.55)})`;
     };
+    // Ignora toques em vídeo, modelo 3D e áreas marcadas com data-sem-puxar
     const podePuxar = (alvo) => {
       if (window.scrollY > 2) return false;
+      if (alvo && alvo.closest && alvo.closest('canvas, video, [data-sem-puxar]')) return false;
       let el = alvo;
       while (el && el !== document.body) { if (el.scrollTop > 0) return false; el = el.parentElement; }
       return true;
@@ -501,6 +504,64 @@ function App({ dentista, email, prazoPagamento }) {
 
   const cartao = { background: '#fff', border: '1px solid #E7E5E4', borderRadius: 16, padding: 14, marginBottom: 10, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
 
+  // Panorama da tela inicial: gráfico de pizza (rosca) com a situação dos trabalhos + prazos
+  const panorama = (() => {
+    const dados = [
+      { rotulo: 'Em produção', n: emAndamento.length, cor: '#E07C1F' },
+      { rotulo: 'Prontos p/ entrega', n: prontos.length, cor: VERDE },
+      { rotulo: 'Entregues', n: todasEntregas.length, cor: '#B8935A' },
+    ];
+    const total = casos.length;
+    const R = 40, CIRC = 2 * Math.PI * R;
+    let acumulado = 0;
+    const proxima = [...naoEntregues].filter(c => c.prazo).sort((a, b) => a.prazo.localeCompare(b.prazo))[0];
+    const atrasadosN = naoEntregues.filter(c => c.prazo && diasRestantes(c.prazo) < 0).length;
+    return (
+      <div style={{ ...cartao, marginBottom: 18, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>Olá, {dentista}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <svg width="118" height="118" viewBox="0 0 100 100" style={{ flexShrink: 0 }}>
+            <circle cx="50" cy="50" r={R} fill="none" stroke="#F0EFEC" strokeWidth="13" />
+            {total > 0 && dados.map((d, i) => {
+              if (d.n === 0) return null;
+              const fracao = d.n / total;
+              const arco = (
+                <circle key={i} cx="50" cy="50" r={R} fill="none" stroke={d.cor} strokeWidth="13"
+                  strokeDasharray={`${fracao * CIRC} ${CIRC}`} strokeDashoffset={-acumulado * CIRC}
+                  transform="rotate(-90 50 50)" />
+              );
+              acumulado += fracao;
+              return arco;
+            })}
+            <text x="50" y="48" textAnchor="middle" fontSize="21" fontWeight="800" fill={INK} fontFamily={FONTE}>{total}</text>
+            <text x="50" y="62" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#A8A29E" fontFamily={FONTE}>{total === 1 ? 'trabalho' : 'trabalhos'}</text>
+          </svg>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {dados.map(d => (
+              <div key={d.rotulo} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 0' }}>
+                <span style={{ width: 11, height: 11, borderRadius: 6, background: d.cor, flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#57534E', fontWeight: 600 }}>{d.rotulo}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: INK }}>{d.n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <div style={{ flex: 1, background: '#FAF9F7', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Próxima entrega</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 2 }}>{proxima ? formatDateBR(proxima.prazo) : '—'}</div>
+          </div>
+          <div style={{ flex: 1, background: atrasadosN > 0 ? '#FCE4E4' : '#F0F9F2', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: atrasadosN > 0 ? '#B42318' : '#166B3A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{atrasadosN > 0 ? 'Em atraso' : 'Prazos'}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: atrasadosN > 0 ? '#B42318' : '#166B3A', marginTop: 2 }}>{atrasadosN > 0 ? `${atrasadosN} ${atrasadosN === 1 ? 'trabalho' : 'trabalhos'}` : 'Em dia ✓'}</div>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
   const CasoCartao = ({ c }) => {
     const info = STATUS_INFO[c.status] || STATUS_INFO['Em Produção'];
     const feitas = (c.etapas || []).filter(e => e.concluida).length;
@@ -570,13 +631,17 @@ function App({ dentista, email, prazoPagamento }) {
             {iniciais}
           </button>
         </div>
-        <div style={{ color: '#fff', fontWeight: 800, fontSize: 30, letterSpacing: '-0.02em', marginTop: 16, lineHeight: 1.1 }}>
-          {aba === 'trabalhos' && 'Meus Trabalhos'}
-          {aba === 'novo' && 'Novo Trabalho'}
-          {aba === 'previsao' && 'Previsão de Entregas'}
-          {aba === 'financeiro' && 'Financeiro'}
-        </div>
-        <div style={{ color: GOLD, fontSize: 13, fontWeight: 700, marginTop: 4 }}>{dentista}</div>
+        {/* Na tela inicial o topo fica enxuto: só a marca; o panorama assume o protagonismo */}
+        {aba !== 'trabalhos' && (
+          <>
+            <div style={{ color: '#fff', fontWeight: 800, fontSize: 30, letterSpacing: '-0.02em', marginTop: 16, lineHeight: 1.1 }}>
+              {aba === 'novo' && 'Novo Trabalho'}
+              {aba === 'previsao' && 'Previsão de Entregas'}
+              {aba === 'financeiro' && 'Financeiro'}
+            </div>
+            <div style={{ color: GOLD, fontSize: 13, fontWeight: 700, marginTop: 4 }}>{dentista}</div>
+          </>
+        )}
       </div>
       )}
 
@@ -637,6 +702,7 @@ function App({ dentista, email, prazoPagamento }) {
         )}
         {aba === 'trabalhos' && (
           <>
+            {panorama}
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button onClick={() => compartilharEnviados(false)}
@@ -848,6 +914,7 @@ function App({ dentista, email, prazoPagamento }) {
 function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const [imagens, setImagens] = useState({});
   const [videoAberto, setVideoAberto] = useState(null);
+  const [stlAberto, setStlAberto] = useState(null);
   const [editando, setEditando] = useState(false);
   const semPrefixoQtd = (t) => String(t || '').replace(/^Quantidade: \d+ unidades?\. ?/, '');
   const [pacE, setPacE] = useState(caso.paciente);
@@ -886,8 +953,9 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     else setEditando(false);
   };
 
-  // Deslizar da borda esquerda: fecha o vídeo aberto ou o detalhe (respeitando a trava de salvar)
+  // Deslizar da borda esquerda: fecha o 3D/vídeo aberto ou o detalhe (respeitando a trava de salvar)
   useGestoVoltar(() => {
+    if (stlAberto) { setStlAberto(null); return; }
     if (videoAberto) { setVideoAberto(null); return; }
     tentarFechar();
   });
@@ -1031,6 +1099,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
 
   const abrirAnexo = async (a) => {
     const ehVideo = String(a.mime || '').startsWith('video');
+    const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
     if (ehVideo) {
       // Vídeo abre no reprodutor em tela cheia
       const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
@@ -1038,6 +1107,12 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         setImagens(m => ({ ...m, [a.id]: dataURL }));
         setVideoAberto({ nome: a.nome, dataURL });
       }
+      return;
+    }
+    if (ehSTL) {
+      // STL abre no visualizador 3D
+      const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
+      if (dataURL) setStlAberto({ nome: a.nome, dataURL });
       return;
     }
     if (imagens[a.id]) { setImagens(m => ({ ...m, [a.id]: null })); return; }
@@ -1193,10 +1268,11 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Arquivos e fotos</div>
             {caso.anexos.map(a => {
               const ehVideo = String(a.mime || '').startsWith('video');
+              const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
               return (
                 <div key={a.id} style={{ marginBottom: 8 }}>
                   <button onClick={() => abrirAnexo(a)} style={{ width: '100%', textAlign: 'left', background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: FONTE }}>
-                    {ehVideo ? '🎥' : '📎'} {a.nome} {ehVideo ? <span style={{ color: GOLD }}>▶ tocar</span> : (imagens[a.id] ? '▲' : '▼')}
+                    {ehVideo ? '🎥' : (ehSTL ? '🦷' : '📎')} {a.nome} {ehVideo ? <span style={{ color: GOLD }}>▶ tocar</span> : (ehSTL ? <span style={{ color: GOLD }}>ver em 3D</span> : (imagens[a.id] ? '▲' : '▼'))}
                   </button>
                   {imagens[a.id] && String(a.mime || '').startsWith('image') && (
                     <img src={imagens[a.id]} alt={a.nome} style={{ width: '100%', borderRadius: 12, marginTop: 8 }} />
@@ -1258,6 +1334,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
           </div>
         )}
 
+        {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} onFechar={() => setStlAberto(null)} />}
         {videoAberto && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'black', display: 'flex', flexDirection: 'column' }} onClick={() => setVideoAberto(null)}>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
