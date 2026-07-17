@@ -1,6 +1,6 @@
 {
-  "versionCode": 16,
+  "versionCode": 17,
   "versionName": "4.0",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Notificacoes no celular (trabalho novo, pronto p/ entrega, aprovacoes), visualizador 3D de STL, puxar p/ baixo para atualizar, gesto de voltar e abertura nova."
+  "novidades": "Icone novo do Lab, faixa de aguardando aprovacao do dentista e notificacoes no celular."
 }
