@@ -14,7 +14,7 @@ const MATERIAIS = ['Zircônia', 'E-max (Dissilicato)', 'PMMA', 'Metalocerâmica'
 const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-const LIMITE_ARQUIVO_MB = 25;
+const LIMITE_ARQUIVO_MB = 100;
 const HORAS_DIA_PADRAO = 8;
 
 const TIPOS_PADRAO = [

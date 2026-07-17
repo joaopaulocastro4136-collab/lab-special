@@ -4,7 +4,7 @@ service firebase.storage {
     // Anexos dos casos: equipe do laboratório e dentistas autorizados
     match /anexos/{arquivo} {
       allow read: if acessoLiberado();
-      allow write: if acessoLiberado() && request.resource.size < 60 * 1024 * 1024;
+      allow write: if acessoLiberado() && request.resource.size < 150 * 1024 * 1024;
       allow delete: if acessoLiberado();
     }
 

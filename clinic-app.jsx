@@ -85,7 +85,7 @@ async function gravarAnexo(anexoId, payload) {
   await setDoc(docKV('anexo-' + anexoId), { chunks: n });
 }
 
-const LIMITE_ARQUIVO_MB = 25;
+const LIMITE_ARQUIVO_MB = 100;
 
 // ─── Armazém de arquivos (Firebase Storage): upload binário direto, muito mais
 // rápido que gravar no banco (sem limite de 1MB nem inflar 33% em texto) ───
