@@ -10,6 +10,7 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
+import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
@@ -85,6 +86,29 @@ async function gravarAnexo(anexoId, payload) {
 }
 
 const LIMITE_ARQUIVO_MB = 25;
+
+// ─── Armazém de arquivos (Firebase Storage): upload binário direto, muito mais
+// rápido que gravar no banco (sem limite de 1MB nem inflar 33% em texto) ───
+function dataURLparaBlob(dataURL, mime) {
+  const b64 = dataURL.split(',')[1];
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+async function subirArquivo(blob, nome, aoProgresso) {
+  const st = getStorage();
+  const caminho = `anexos/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}-${String(nome || 'arquivo').replace(/[^\w.\-]+/g, '_')}`;
+  const tarefa = uploadBytesResumable(refArquivo(st, caminho), blob);
+  await new Promise((res, rej) => {
+    tarefa.on('state_changed',
+      (s) => { if (aoProgresso && s.totalBytes > 0) aoProgresso(Math.round((s.bytesTransferred / s.totalBytes) * 100)); },
+      rej, res);
+  });
+  const url = await getDownloadURL(refArquivo(st, caminho));
+  return { url, caminho };
+}
+
 function lerArquivoDataURL(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -1036,6 +1060,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [pctEnvio, setPctEnvio] = useState(0);
   const fotoRef = useRef(null);
   const camRef2 = useRef(null);
   const arqRef2 = useRef(null);
@@ -1168,12 +1193,14 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     ev.target.value = '';
     if (!file) return;
     setEnviandoFoto(true);
+    setPctEnvio(0);
     try {
       const dataURL = await comprimirImagem(file);
       const anexoId = novoId();
       const nome = file.name || `foto-${(caso.anexos || []).length + 1}.jpg`;
-      await gravarAnexo(anexoId, { nome, mime: 'image/jpeg', dataURL });
-      const novos = [...(caso.anexos || []), { id: anexoId, nome, mime: 'image/jpeg', categoria: 'foto', tamanho: Math.round(dataURL.length * 0.75) }];
+      // Sobe pro armazém de arquivos (rápido); o caso guarda só o link
+      const { url, caminho } = await subirArquivo(dataURLparaBlob(dataURL, 'image/jpeg'), nome, setPctEnvio);
+      const novos = [...(caso.anexos || []), { id: anexoId, nome, mime: 'image/jpeg', categoria: 'foto', tamanho: Math.round(dataURL.length * 0.75), url, caminho }];
       await updateDoc(refCaso, { anexos: novos, dataHora: new Date().toISOString() });
       aoAvisar && aoAvisar('Foto enviada ao laboratório ✓');
     } catch (e) {
@@ -1192,16 +1219,17 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       return;
     }
     setEnviandoFoto(true);
+    setPctEnvio(0);
     try {
-      const dataURL = await lerArquivoDataURL(file);
       const anexoId = novoId();
-      await gravarAnexo(anexoId, { nome: file.name, mime: file.type || 'application/octet-stream', dataURL });
-      const novos = [...(caso.anexos || []), { id: anexoId, nome: file.name, mime: file.type || 'application/octet-stream', categoria: categoriaDoArquivo(file), tamanho: file.size }];
+      // O arquivo sobe direto como binário (sem converter p/ texto) — muito mais rápido
+      const { url, caminho } = await subirArquivo(file, file.name, setPctEnvio);
+      const novos = [...(caso.anexos || []), { id: anexoId, nome: file.name, mime: file.type || 'application/octet-stream', categoria: categoriaDoArquivo(file), tamanho: file.size, url, caminho }];
       await updateDoc(refCaso, { anexos: novos, dataHora: new Date().toISOString() });
       aoAvisar && aoAvisar('Arquivo enviado ao laboratório ✓');
     } catch (e) {
       console.error(e);
-      aoAvisar && aoAvisar('Não consegui enviar o arquivo. Tente de novo.');
+      aoAvisar && aoAvisar('Não consegui enviar o arquivo. Confira a internet e tente de novo.');
     }
     setEnviandoFoto(false);
   };
@@ -1210,7 +1238,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   useEffect(() => {
     let ativo = true;
     (async () => {
-      for (const a of (caso.anexos || []).filter(x => String(x.nome || '').toLowerCase().endsWith('.stl'))) {
+      for (const a of (caso.anexos || []).filter(x => String(x.nome || '').toLowerCase().endsWith('.stl') && !x.url)) {
         if (imagens[a.id]) continue;
         try {
           const dados = await lerAnexo(a.id);
@@ -1225,6 +1253,13 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const abrirAnexo = async (a) => {
     const ehVideo = String(a.mime || '').startsWith('video');
     const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
+    // Formato novo: o anexo já tem o link direto do armazém — abre na hora, sem baixar antes
+    if (a.url) {
+      if (ehVideo) { setVideoAberto({ nome: a.nome, dataURL: a.url }); return; }
+      if (ehSTL) { setStlAberto({ nome: a.nome, url: a.url }); return; }
+      setImagens(m => ({ ...m, [a.id]: m[a.id] ? null : a.url }));
+      return;
+    }
     if (ehVideo) {
       // Vídeo abre no reprodutor em tela cheia
       const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
@@ -1453,7 +1488,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {[
-            [Camera, enviandoFoto ? 'Enviando...' : 'Foto', camRef2],
+            [Camera, enviandoFoto ? `Enviando ${pctEnvio > 0 ? pctEnvio + '%' : '...'}` : 'Foto', camRef2],
             [Image, 'Galeria', fotoRef],
             [FileText, 'Arquivo', arqRef2],
           ].map(([Icone, rotulo, ref]) => (
@@ -1493,7 +1528,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
           </div>
         )}
 
-        {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} onFechar={() => setStlAberto(null)} />}
+        {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} url={stlAberto.url} onFechar={() => setStlAberto(null)} />}
         {videoAberto && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'black', display: 'flex', flexDirection: 'column' }} onClick={() => setVideoAberto(null)}>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
@@ -1668,8 +1703,10 @@ function NovoPedido({ dentista, info, aoEnviar }) {
       return;
     }
     try {
-      const dataURL = await lerArquivoDataURL(file);
-      setFotos(f => [...f, { nome: file.name, dataURL, mime: file.type || 'application/octet-stream', categoria: categoriaDoArquivo(file) }]);
+      // Imagem ganha uma prévia; vídeo/STL/documento guarda só o arquivo (sobe binário no enviar)
+      const ehImagem = String(file.type || '').startsWith('image');
+      const dataURL = ehImagem ? await lerArquivoDataURL(file) : null;
+      setFotos(f => [...f, { nome: file.name, dataURL, file, mime: file.type || 'application/octet-stream', categoria: categoriaDoArquivo(file) }]);
     } catch (e) { setErro('Não consegui ler esse arquivo. Tente outro.'); }
   };
 
@@ -1694,8 +1731,10 @@ function NovoPedido({ dentista, info, aoEnviar }) {
       const anexos = [];
       for (const f of fotos) {
         const anexoId = novoId();
-        await gravarAnexo(anexoId, { nome: f.nome, mime: f.mime || 'image/jpeg', dataURL: f.dataURL });
-        anexos.push({ id: anexoId, nome: f.nome, mime: f.mime || 'image/jpeg', categoria: f.categoria || 'foto', tamanho: Math.round(f.dataURL.length * 0.75) });
+        // Sobe pro armazém de arquivos (binário, rápido); o caso guarda só o link
+        const origem = f.file || dataURLparaBlob(f.dataURL, f.mime || 'image/jpeg');
+        const { url, caminho } = await subirArquivo(origem, f.nome);
+        anexos.push({ id: anexoId, nome: f.nome, mime: f.mime || 'image/jpeg', categoria: f.categoria || 'foto', tamanho: f.file ? f.file.size : Math.round((f.dataURL || '').length * 0.75), url, caminho });
       }
       // Cria o caso DIRETO em produção — o laboratório já vê na fila, sem precisar aceitar
       const itensFinal = itens.map(i => {

@@ -7,24 +7,46 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
 // Um dedo gira a peça LIVREMENTE em todas as direções (Trackball, sem travas);
 // dois dedos dão zoom (pinça) e movem; roda do mouse dá zoom no computador.
 // Abre na hora com "carregando" — o dataURL pode chegar depois (null enquanto baixa).
-export default function VisorSTL({ nome, dataURL, onFechar }) {
+export default function VisorSTL({ nome, dataURL, url, onFechar }) {
   const areaRef = useRef(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  const [bytesSTL, setBytesSTL] = useState(null);
+
+  // Formato novo: baixa o STL direto do armazém pelo link (binário puro)
+  useEffect(() => {
+    if (!url) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const buf = await (await fetch(url)).arrayBuffer();
+        if (vivo) setBytesSTL(buf);
+      } catch (e) {
+        if (vivo) { setCarregando(false); setErro('Não consegui baixar este arquivo STL.'); }
+      }
+    })();
+    return () => { vivo = false; };
+  }, [url]);
 
   useEffect(() => {
     const area = areaRef.current;
-    if (!area || !dataURL) return;
+    if (!area || (!dataURL && !bytesSTL)) return;
     let vivo = true;
     let renderer, controls, frame, geometria, material;
     try {
-      // dataURL (base64) → bytes do arquivo STL
-      const base64 = dataURL.split(',')[1];
-      const bin = atob(base64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      // dataURL (base64) → bytes do arquivo STL; ou bytes já baixados do armazém
+      let buffer;
+      if (bytesSTL) {
+        buffer = bytesSTL;
+      } else {
+        const base64 = dataURL.split(',')[1];
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        buffer = bytes.buffer;
+      }
 
-      geometria = new STLLoader().parse(bytes.buffer);
+      geometria = new STLLoader().parse(buffer);
       geometria.computeVertexNormals();
       geometria.center();
       geometria.computeBoundingSphere();
@@ -92,7 +114,7 @@ export default function VisorSTL({ nome, dataURL, onFechar }) {
       setCarregando(false);
       setErro('Não consegui abrir este arquivo STL.');
     }
-  }, [dataURL]);
+  }, [dataURL, bytesSTL]);
 
   return (
     <div data-sem-puxar style={{ position: 'fixed', inset: 0, zIndex: 9600, background: '#14130f', display: 'flex', flexDirection: 'column' }}>

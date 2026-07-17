@@ -302,6 +302,15 @@ const FILTROS_RAPIDOS = {
   retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) },
 };
 
+// Converte um dataURL (base64) em Blob binário — usado p/ subir fotos comprimidas ao armazém
+function dataURLparaBlob(dataURL, mime) {
+  const b64 = dataURL.split(',')[1];
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+
 function readFileAsDataURL(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -1455,21 +1464,34 @@ export default function App() {
     setConfirmandoExclusao(false);
   };
 
-  const addAnexo = async (casoId, { nome, mime, categoria, dataURL, tamanho }) => {
+  // Anexo novo vai pro armazém de arquivos (rápido, binário); o banco guarda só o link.
+  // Sem armazém disponível, cai no formato antigo (dataURL no banco).
+  const addAnexo = async (casoId, { nome, mime, categoria, blob, dataURL, tamanho, aoProgresso }) => {
     const anexoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    await window.storage.set(`anexo-${anexoId}`, JSON.stringify({ nome, mime, dataURL }));
+    let meta = { id: anexoId, nome, mime, categoria, tamanho };
+    if (window.arquivos && (blob || dataURL)) {
+      const dados = blob || dataURLparaBlob(dataURL, mime);
+      const { url, caminho } = await window.arquivos.subir(dados, nome, aoProgresso);
+      meta = { ...meta, url, caminho };
+    } else {
+      await window.storage.set(`anexo-${anexoId}`, JSON.stringify({ nome, mime, dataURL }));
+    }
     const caso = casos.find(c => c.id === casoId);
-    const novosAnexos = [...(caso.anexos || []), { id: anexoId, nome, mime, categoria, tamanho }];
-    const ok = await updateCaso(casoId, { anexos: novosAnexos });
+    const ok = await updateCaso(casoId, { anexos: [...(caso.anexos || []), meta] });
     if (!ok) throw new Error('Falha ao salvar');
   };
-  const getAnexoData = async (anexoId) => {
-    const r = await window.storage.get(`anexo-${anexoId}`);
+  // Aceita o OBJETO do anexo (novo formato, com url) ou o id (formato antigo no banco)
+  const getAnexoData = async (anexo) => {
+    if (anexo && anexo.url) return { nome: anexo.nome, mime: anexo.mime, url: anexo.url };
+    const id = typeof anexo === 'string' ? anexo : anexo.id;
+    const r = await window.storage.get(`anexo-${id}`);
     return r && r.value ? JSON.parse(r.value) : null;
   };
   const removeAnexo = async (casoId, anexoId) => {
-    try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ }
     const caso = casos.find(c => c.id === casoId);
+    const anexo = (caso?.anexos || []).find(a => a.id === anexoId);
+    if (anexo?.caminho && window.arquivos) window.arquivos.apagar(anexo.caminho);
+    else { try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ } }
     updateCaso(casoId, { anexos: (caso.anexos || []).filter(a => a.id !== anexoId) });
   };
   // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista)
@@ -3933,6 +3955,7 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   const arquivoInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const [processando, setProcessando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState('');
   const [thumbs, setThumbs] = useState({});
   const [fotoAberta, setFotoAberta] = useState(null);
@@ -3951,13 +3974,14 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     return false;
   });
 
-  // Abre a tela do 3D NA HORA; se o arquivo já foi pré-baixado, nem carrega
+  // Abre a tela do 3D NA HORA; formato novo já vem com o link direto do armazém
   const abrirSTL = async (a) => {
+    if (a.url) { setStlAberto({ nome: a.nome, url: a.url }); return; }
     const emCache = cacheSTL.get(a.id);
     setStlAberto({ nome: a.nome, dataURL: emCache || null });
     if (emCache) return;
     try {
-      const data = await getAnexoData(a.id);
+      const data = await getAnexoData(a);
       if (data) {
         cacheSTL.set(a.id, data.dataURL);
         setStlAberto(s => s ? { nome: data.nome || a.nome, dataURL: data.dataURL } : s);
@@ -3965,13 +3989,13 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     } catch (e) { setStlAberto(null); }
   };
 
-  // Pré-baixa os STLs deste caso em segundo plano: ao tocar em "Ver em 3D", abre na hora
+  // Pré-baixa os STLs antigos (guardados no banco) em segundo plano; os novos abrem por link
   useEffect(() => {
     let ativo = true;
     (async () => {
-      for (const a of arquivos.filter(x => x.categoria === 'stl' && !cacheSTL.has(x.id))) {
+      for (const a of arquivos.filter(x => x.categoria === 'stl' && !x.url && !cacheSTL.has(x.id))) {
         try {
-          const data = await getAnexoData(a.id);
+          const data = await getAnexoData(a);
           if (!ativo) return;
           if (data) cacheSTL.set(a.id, data.dataURL);
         } catch (e) { /* baixa quando clicar */ }
@@ -3986,8 +4010,8 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
       for (const f of fotos) {
         if (thumbs[f.id]) continue;
         try {
-          const data = await getAnexoData(f.id);
-          if (ativo && data) setThumbs(prev => ({ ...prev, [f.id]: data.dataURL }));
+          const data = await getAnexoData(f);
+          if (ativo && data) setThumbs(prev => ({ ...prev, [f.id]: data.url || data.dataURL }));
         } catch (e) { /* anexo removido */ }
       }
     })();
@@ -4000,11 +4024,12 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     if (!file) return;
     setErro('');
     setProcessando(true);
+    setProgresso(0);
     try {
       const { dataURL, mime } = await prepararImagem(file);
       const tamanho = Math.round(dataURL.length * 0.75);
       const nomeBase = (file.name || 'foto').replace(/\.[^.]+$/, '');
-      await onAddAnexo({ nome: mime === 'image/jpeg' ? `${nomeBase}.jpg` : (file.name || 'foto'), mime, categoria: 'foto', dataURL, tamanho });
+      await onAddAnexo({ nome: mime === 'image/jpeg' ? `${nomeBase}.jpg` : (file.name || 'foto'), mime, categoria: 'foto', dataURL, tamanho, aoProgresso: setProgresso });
     } catch (err) {
       if (err?.message === 'imagem-grande') {
         setErro(`Esta foto é muito grande (${formatBytes(file.size)}) e não pôde ser convertida. Tente pelo botão "Tirar foto" ou envie uma captura de tela dela.`);
@@ -4021,31 +4046,47 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     if (!file) return;
     setErro('');
     if (file.size > LIMITE_ARQUIVO_MB * 1024 * 1024) {
-      setErro(`Arquivo muito grande (${formatBytes(file.size)}). O limite é ${LIMITE_ARQUIVO_MB} MB por arquivo aqui na versão web.`);
+      setErro(`Arquivo muito grande (${formatBytes(file.size)}). O limite é ${LIMITE_ARQUIVO_MB} MB por arquivo.`);
       return;
     }
     setProcessando(true);
+    setProgresso(0);
     try {
-      const dataURL = await readFileAsDataURL(file);
       const ehSTL = file.name.toLowerCase().endsWith('.stl');
       const ehVideo = (file.type || '').startsWith('video');
+      // O arquivo sobe direto como binário (sem converter p/ texto) — muito mais rápido
       await onAddAnexo({
         nome: file.name,
         mime: file.type || 'application/octet-stream',
         categoria: ehSTL ? 'stl' : (ehVideo ? 'video' : 'documento'),
-        dataURL,
+        blob: file,
         tamanho: file.size,
+        aoProgresso: setProgresso,
       });
     } catch (err) {
-      setErro('Não foi possível anexar o arquivo. Se for muito grande, tente um menor.');
+      console.error(err);
+      setErro('Não foi possível anexar o arquivo. Confira a internet e tente de novo.');
     }
     setProcessando(false);
   };
 
   const baixar = async (anexo) => {
     try {
-      const data = await getAnexoData(anexo.id);
-      if (data) baixarDataURL(data.dataURL, data.nome);
+      const data = await getAnexoData(anexo);
+      if (!data) return;
+      if (data.url) {
+        const blob = await (await fetch(data.url)).blob();
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = u;
+        a.download = data.nome || anexo.nome;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(u), 5000);
+      } else {
+        baixarDataURL(data.dataURL, data.nome);
+      }
     } catch (e) {
       setErro('Não foi possível abrir este arquivo.');
     }
@@ -4054,15 +4095,15 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   const abrirFoto = async (anexo) => {
     if (thumbs[anexo.id]) { setFotoAberta({ nome: anexo.nome, dataURL: thumbs[anexo.id] }); return; }
     try {
-      const data = await getAnexoData(anexo.id);
-      if (data) setFotoAberta({ nome: data.nome, dataURL: data.dataURL });
+      const data = await getAnexoData(anexo);
+      if (data) setFotoAberta({ nome: data.nome, dataURL: data.url || data.dataURL });
     } catch (e) { /* ignora */ }
   };
 
   const abrirVideo = async (anexo) => {
     try {
-      const data = await getAnexoData(anexo.id);
-      if (data) setVideoAberto({ nome: data.nome, dataURL: data.dataURL });
+      const data = await getAnexoData(anexo);
+      if (data) setVideoAberto({ nome: data.nome, dataURL: data.url || data.dataURL });
     } catch (e) { setErro('Não foi possível abrir este vídeo.'); }
   };
 
@@ -4104,7 +4145,14 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
         </button>
       </div>
 
-      {processando && <div className="text-xs mb-2" style={{ color: GOLD }}>Anexando...</div>}
+      {processando && (
+        <div className="mb-2">
+          <div className="text-xs mb-1" style={{ color: GOLD }}>Enviando... {progresso > 0 ? `${progresso}%` : ''}</div>
+          <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${progresso}%`, background: GOLD, transition: 'width 0.25s' }} />
+          </div>
+        </div>
+      )}
       {erro && <div className="text-xs text-red-600 font-medium mb-2">{erro}</div>}
 
       {fotos.length > 0 && (
@@ -4178,7 +4226,7 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
       )}
 
       {fotoAberta && <VisorFoto foto={fotoAberta} onFechar={() => setFotoAberta(null)} />}
-      {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} onFechar={() => setStlAberto(null)} />}
+      {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} url={stlAberto.url} onFechar={() => setStlAberto(null)} />}
       {videoAberto && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'black' }} onClick={() => setVideoAberto(null)}>
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>

@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Anexos dos casos: equipe do laboratório e dentistas autorizados
+    match /anexos/{arquivo} {
+      allow read: if acessoLiberado();
+      allow write: if acessoLiberado() && request.resource.size < 60 * 1024 * 1024;
+      allow delete: if acessoLiberado();
+    }
+
+    function acessoLiberado() {
+      return request.auth != null && (
+        request.auth.token.email == 'joaopaulocastro41@gmail.com'
+        || (firestore.exists(/databases/(default)/documents/labs/principal/kv/acesso)
+            && request.auth.token.email in firestore.get(/databases/(default)/documents/labs/principal/kv/acesso).data.emails)
+        || firestore.exists(/databases/(default)/documents/labs/principal/dentistasAcesso/$(request.auth.token.email))
+      );
+    }
+  }
+}

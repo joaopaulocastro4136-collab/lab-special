@@ -10,8 +10,31 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc,
 } from 'firebase/firestore';
+import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import App from './App.jsx';
 import logoMarca from './logo-special.png';
+
+// ─── Armazém de arquivos (Firebase Storage): anexos vão como binário puro ───
+// Muito mais rápido que guardar no banco (sem limite de 1MB, sem inflar 33% em texto)
+function instalarArquivos() {
+  const st = getStorage();
+  window.arquivos = {
+    async subir(blob, nome, aoProgresso) {
+      const caminho = `anexos/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}-${String(nome || 'arquivo').replace(/[^\w.\-]+/g, '_')}`;
+      const tarefa = uploadBytesResumable(refArquivo(st, caminho), blob);
+      await new Promise((res, rej) => {
+        tarefa.on('state_changed',
+          (s) => { if (aoProgresso && s.totalBytes > 0) aoProgresso(Math.round((s.bytesTransferred / s.totalBytes) * 100)); },
+          rej, res);
+      });
+      const url = await getDownloadURL(refArquivo(st, caminho));
+      return { url, caminho };
+    },
+    async apagar(caminho) {
+      try { await deleteObject(refArquivo(st, caminho)); } catch (e) { /* já não existe */ }
+    },
+  };
+}
 
 const firebaseConfig = {
   apiKey: 'AIzaSyD8w3_SK27YHDFlsYpxAto3sNxCnh3tFcg',
@@ -416,12 +439,12 @@ function CloudRoot({ entrarNativo }) {
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
     getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); setAcesso('ok'); } })
+      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); setAcesso('ok'); } })
       .catch(e => {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
+        else { instalarStorage(); instalarArquivos(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
       });
     return () => { ativo = false; };
   }, [usuario, tentativa]);
