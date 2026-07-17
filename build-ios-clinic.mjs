@@ -25,9 +25,10 @@ const html = `<!DOCTYPE html>
 <meta name="theme-color" content="#1C1B19">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; padding: 0; background: #F5F4F0; }
+  html, body { margin: 0; padding: 0; background: #F5F4F0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   #root { min-height: 100vh; }
-  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  /* touch-action manipulation: mata o zoom de toque duplo (a página "crescia" ao apertar), mantendo rolagem e pinça */
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; touch-action: manipulation; }
   button { transition: transform 0.12s ease, opacity 0.12s ease; }
   button:active { transform: scale(0.96); }
   input:focus, select:focus, textarea:focus { border-color: #B8935A !important; box-shadow: 0 0 0 3px rgba(184,147,90,0.16); }

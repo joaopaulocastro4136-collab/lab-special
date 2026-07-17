@@ -146,6 +146,13 @@ function getUrgencia(caso) {
 function emProducao(caso) {
   return caso.status === 'Em Produção' || caso.status === 'Acabamento';
 }
+// Trabalho postado pelo dentista que o laboratório ainda não foi buscar:
+// sai da lista sozinho assim que alguma etapa é iniciada/concluída (produção começou)
+function aguardandoRetirada(caso) {
+  return caso.origem === 'clinica'
+    && caso.status === 'Em Produção'
+    && !(caso.etapas || []).some(e => e.concluida || e.inicioExec);
+}
 function progressoPrazo(caso) {
   const inicio = new Date((caso.dataProducao || caso.dataEntrada) + 'T00:00:00');
   const fim = new Date(caso.prazo + 'T00:00:00');
@@ -287,6 +294,7 @@ const FILTROS_RAPIDOS = {
   atrasado: { titulo: 'Atrasados', teste: (c) => getUrgencia(c) === 'atrasado' },
   pronto: { titulo: 'Prontos p/ entrega', teste: (c) => c.status === 'Pronto' },
   clinica: { titulo: 'Provas (levar + na clínica)', teste: (c) => (c.naClinica || c.provaPendente) && c.status !== 'Entregue' },
+  retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) },
 };
 
 function readFileAsDataURL(file) {
@@ -1372,6 +1380,7 @@ export default function App() {
   const trabalhoHoje = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) <= 0)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
+  const paraRetirada = emAndamento.filter(aguardandoRetirada);
   const trabalhoAmanha = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) === 1)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
@@ -1539,7 +1548,7 @@ export default function App() {
             naClinica={naClinicaLista.length} provasLevar={provasPendentes.length}
             atrasados={atrasados.length}
             paraHoje={trabalhoHoje.length} horasHoje={somaHorasRestantes(trabalhoHoje)}
-            paraAmanha={trabalhoAmanha.length} horasAmanha={somaHorasRestantes(trabalhoAmanha)}
+            paraRetirada={paraRetirada.length} dentistasRetirada={[...new Set(paraRetirada.map(c => c.dentista))].length}
             proximosPrazos={proximosPrazos} onSelect={goToDetalhe} onNovo={() => setView('novo')}
             adicionadosHoje={adicionadosHoje.length}
             onCompartilharHoje={compartilharAdicionadosHoje}
@@ -1834,14 +1843,14 @@ function BadgeClinica() {
   );
 }
 
-function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraAmanha, horasAmanha, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje }) {
+function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje }) {
   return (
     <div>
       <div className="text-sm text-stone-400 mb-4 capitalize">{hojeExtenso()}</div>
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 mb-4 lg:mb-6">
         <StatCard label="Em produção" value={producaoAtiva} color={GOLD} icon={Hammer} onClick={() => onFiltro('producao')} />
         <StatCard label="Para hoje" value={paraHoje} color="#EA580C" icon={CalendarClock} sub={paraHoje > 0 ? `≈ ${formatHoras(horasHoje)} de serviço` : null} onClick={() => onFiltro('hoje')} />
-        <StatCard label="Para amanhã" value={paraAmanha} color="#2563EB" icon={Clock} sub={paraAmanha > 0 ? `≈ ${formatHoras(horasAmanha)} de serviço` : null} onClick={() => onFiltro('amanha')} />
+        <StatCard label="Para retirada" value={paraRetirada} color="#2563EB" icon={Inbox} sub={paraRetirada > 0 ? `buscar em ${dentistasRetirada} clínica${dentistasRetirada > 1 ? 's' : ''}` : null} onClick={() => onFiltro('retirada')} />
         <StatCard label="Provas (levar + clínica)" value={naClinica + provasLevar} color={ROXO} icon={Stethoscope} sub={(naClinica + provasLevar) > 0 ? `${provasLevar} p/ levar • ${naClinica} na clínica` : null} onClick={() => onFiltro('clinica')} />
         <StatCard label="Atrasados" value={atrasados} color="#DC2626" icon={AlertTriangle} onClick={() => onFiltro('atrasado')} />
         <StatCard label="Entregas (finais + provas)" value={prontos + provasLevar} color={VERDE} icon={Flag} sub={provasLevar > 0 ? `${prontos} finais • ${provasLevar} provas p/ levar` : null} onClick={() => onFiltro('pronto')} />
