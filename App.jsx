@@ -755,6 +755,42 @@ function desenharExtratoDentista({ dentistaNome, mesLabel, trabalhos, total }) {
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
+// ─── Gesto de voltar: deslizar da borda esquerda p/ a direita (padrão do iPhone) ───
+// Cada tela/janela registra o próprio "voltar"; o gesto aciona o registro mais recente
+// (o que estiver aberto por cima). Devolver false passa a vez pro registro de baixo.
+const pilhaVoltar = [];
+let gestoVoltarLigado = false;
+function ligarGestoVoltar() {
+  if (gestoVoltarLigado || typeof window === 'undefined') return;
+  gestoVoltarLigado = true;
+  let inicio = null;
+  window.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    inicio = (e.touches.length === 1 && t.clientX <= 30) ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    if (!inicio) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - inicio.x;
+    const dy = Math.abs(t.clientY - inicio.y);
+    inicio = null;
+    if (dx < 70 || dy > 60 || dx < dy * 1.5) return;
+    for (let i = pilhaVoltar.length - 1; i >= 0; i--) {
+      if (pilhaVoltar[i]() !== false) return;
+    }
+  }, { passive: true });
+}
+function useGestoVoltar(aoVoltar) {
+  const ref = useRef(aoVoltar);
+  ref.current = aoVoltar;
+  useEffect(() => {
+    ligarGestoVoltar();
+    const entrada = () => ref.current();
+    pilhaVoltar.push(entrada);
+    return () => { const i = pilhaVoltar.indexOf(entrada); if (i >= 0) pilhaVoltar.splice(i, 1); };
+  }, []);
+}
+
 export default function App() {
   const [casos, setCasos] = useState([]);
   const [solicitacoes, setSolicitacoes] = useState([]);
@@ -1309,6 +1345,16 @@ export default function App() {
     setBusca('');
     setView('lista');
   };
+
+  // Deslizar da borda esquerda: fecha o que estiver por cima ou volta uma tela
+  useGestoVoltar(() => {
+    if (imprimindoCasoId) { setImprimindoCasoId(null); return; }
+    if (seletorUsuarioAberto) { setSeletorUsuarioAberto(false); return; }
+    if (view === 'detalhe') { setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista'); setConfirmandoExclusao(false); return; }
+    if (view === 'novo') { setView('lista'); return; }
+    if (view !== 'dashboard') { setView('dashboard'); return; }
+    return false;
+  });
 
   const selectedCaso = casos.find(c => c.id === selectedId);
   const casosFiltrados = casos
@@ -3620,6 +3666,13 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
   const anexos = caso.anexos || [];
   const fotos = anexos.filter(a => a.categoria === 'foto');
   const arquivos = anexos.filter(a => a.categoria !== 'foto');
+
+  // Deslizar da borda esquerda fecha primeiro a foto/vídeo aberto
+  useGestoVoltar(() => {
+    if (videoAberto) { setVideoAberto(null); return; }
+    if (fotoAberta) { setFotoAberta(null); return; }
+    return false;
+  });
 
   useEffect(() => {
     let ativo = true;

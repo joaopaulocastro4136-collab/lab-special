@@ -250,6 +250,42 @@ function EtiquetaStatus({ status, discreta }) {
   );
 }
 
+// ─── Gesto de voltar: deslizar da borda esquerda p/ a direita (padrão do iPhone) ───
+// Cada tela/janela registra o próprio "voltar"; o gesto aciona o registro mais recente
+// (o que estiver aberto por cima). Devolver false passa a vez pro registro de baixo.
+const pilhaVoltar = [];
+let gestoVoltarLigado = false;
+function ligarGestoVoltar() {
+  if (gestoVoltarLigado || typeof window === 'undefined') return;
+  gestoVoltarLigado = true;
+  let inicio = null;
+  window.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    inicio = (e.touches.length === 1 && t.clientX <= 30) ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    if (!inicio) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - inicio.x;
+    const dy = Math.abs(t.clientY - inicio.y);
+    inicio = null;
+    if (dx < 70 || dy > 60 || dx < dy * 1.5) return;
+    for (let i = pilhaVoltar.length - 1; i >= 0; i--) {
+      if (pilhaVoltar[i]() !== false) return;
+    }
+  }, { passive: true });
+}
+function useGestoVoltar(aoVoltar) {
+  const ref = useRef(aoVoltar);
+  ref.current = aoVoltar;
+  useEffect(() => {
+    ligarGestoVoltar();
+    const entrada = () => ref.current();
+    pilhaVoltar.push(entrada);
+    return () => { const i = pilhaVoltar.indexOf(entrada); if (i >= 0) pilhaVoltar.splice(i, 1); };
+  }, []);
+}
+
 function App({ dentista, email, prazoPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
@@ -261,6 +297,11 @@ function App({ dentista, email, prazoPagamento }) {
   const iniciais = (dentista || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const statusAnterior = useRef({});
   const producaoAnterior = useRef({});
+  // Deslizar da borda esquerda: volta pra aba Trabalhos (o detalhe aberto trata o gesto primeiro)
+  useGestoVoltar(() => {
+    if (aba !== 'trabalhos') { setAba('trabalhos'); return; }
+    return false;
+  });
   // Modo computador: coluna larga e cartões em duas colunas
   const [desktop, setDesktop] = useState(typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -685,6 +726,12 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     if (alterouAlgo) setAvisoSalvar(true);
     else setEditando(false);
   };
+
+  // Deslizar da borda esquerda: fecha o vídeo aberto ou o detalhe (respeitando a trava de salvar)
+  useGestoVoltar(() => {
+    if (videoAberto) { setVideoAberto(null); return; }
+    tentarFechar();
+  });
 
   const iniciarEdicao = () => {
     setPacE(caso.paciente);
