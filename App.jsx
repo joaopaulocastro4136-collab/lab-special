@@ -147,6 +147,10 @@ function getUrgencia(caso) {
 function emProducao(caso) {
   return caso.status === 'Em Produção' || caso.status === 'Acabamento';
 }
+// Trabalho travado esperando o dentista responder um pedido de aprovação de arquivo
+function aguardandoDentista(caso) {
+  return (caso.anexos || []).some(a => a.aprovacao && a.aprovacao.status === 'pendente');
+}
 // Trabalho postado pelo dentista que o laboratório ainda não foi buscar:
 // sai da lista sozinho assim que alguma etapa é iniciada/concluída (produção começou)
 function aguardandoRetirada(caso) {
@@ -2081,8 +2085,9 @@ function CasoCard({ caso, onClick, endereco }) {
   const producao = emProducao(caso);
   const concluidas = caso.etapas?.filter(e => e.concluida).length || 0;
   const totalEtapas = caso.etapas?.length || 0;
+  const esperandoDentista = aguardandoDentista(caso);
   return (
-    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0" style={{ border: caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4') }}>
+    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0" style={{ border: esperandoDentista ? '1.5px solid #DC2626' : (caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4')) }}>
       <div className="flex items-center justify-between gap-3 w-full">
         <div className="min-w-0 flex-1">
           <div className="font-bold truncate" style={{ color: INK }}>{caso.paciente}</div>
@@ -2091,6 +2096,11 @@ function CasoCard({ caso, onClick, endereco }) {
             <span>Prazo: {formatDateBR(caso.prazo)}</span>
             {totalEtapas > 0 && <span className="flex items-center gap-0.5"><ListChecks size={11} />{concluidas}/{totalEtapas}</span>}
             {numAnexos > 0 && <span className="flex items-center gap-0.5"><Paperclip size={11} />{numAnexos}</span>}
+            {esperandoDentista && (
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#FCE4E4', color: '#B42318' }}>
+                ⏳ aguardando dentista
+              </span>
+            )}
             {caso.naClinica && <BadgeClinica />}
             {caso.provaPendente && !caso.naClinica && (
               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FDECD8', color: '#B54708' }}>
@@ -4321,6 +4331,20 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
       <button onClick={onVoltar} className="flex items-center gap-1 text-sm text-stone-500 mb-4 font-medium">
         <ChevronLeft size={16} /> Voltar
       </button>
+
+      {/* Faixa vermelha: trabalho travado esperando o dentista aprovar arquivo(s) */}
+      {aguardandoDentista(caso) && (
+        <div className="rounded-2xl p-4 mb-4 border-2" style={{ background: '#FCE4E4', borderColor: '#DC2626' }}>
+          <div className="flex items-center gap-2">
+            <Hourglass size={18} style={{ color: '#B42318' }} className="flex-shrink-0" />
+            <div className="text-sm font-extrabold" style={{ color: '#B42318' }}>AGUARDANDO O DENTISTA</div>
+          </div>
+          <div className="text-xs mt-1.5" style={{ color: '#B42318' }}>
+            Você pediu aprovação de: <b>{(caso.anexos || []).filter(a => a.aprovacao?.status === 'pendente').map(a => a.nome).join(', ')}</b>.
+            Aguarde a resposta antes de continuar a produção — quando o dentista aprovar, você recebe a notificação e esta faixa some.
+          </div>
+        </div>
+      )}
 
       {caso.provaPendente && !caso.naClinica && (
         <div className="mb-4 px-4 py-3 rounded-2xl" style={{ background: '#FDECD8' }}>
