@@ -18,10 +18,13 @@ android {
     }
     signingConfigs {
         release {
+            // Senha fica FORA do repositório: variável de ambiente LAB_KS_SENHA
+            // (ou arquivo senha-atual.txt ao lado do keystore, só nesta máquina)
+            def senhaKs = System.getenv("LAB_KS_SENHA") ?: new File("C:/Users/cafeg/AppData/Local/lab-android/senha-atual.txt").text.trim()
             storeFile file("C:/Users/cafeg/AppData/Local/lab-android/lab-special.keystore")
-            storePassword "labspecial2026"
+            storePassword senhaKs
             keyAlias "labspecial"
-            keyPassword "labspecial2026"
+            keyPassword senhaKs
         }
     }
     buildTypes {

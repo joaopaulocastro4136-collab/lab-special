@@ -64,13 +64,14 @@ jobs:
       - name: Instala o certificado e o perfil de distribuição
         env:
           IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_SENHA: ${{ secrets.P12_SENHA }}
         run: |
           echo "$IOS_P12_BASE64" | base64 -d > "$RUNNER_TEMP/dist.p12"
           security create-keychain -p ci ci.keychain
           security default-keychain -s ci.keychain
           security unlock-keychain -p ci ci.keychain
           security set-keychain-settings -lut 3600 ci.keychain
-          security import "$RUNNER_TEMP/dist.p12" -k ci.keychain -P labspecial2026 -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/dist.p12" -k ci.keychain -P "$P12_SENHA" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain > /dev/null
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           UUID=$(security cms -D -i ios/LabSpecial_AppStore.mobileprovision | plutil -extract UUID raw -o - -)
