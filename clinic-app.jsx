@@ -10,7 +10,7 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -372,6 +372,16 @@ function App({ dentista, email, prazoPagamento }) {
   const [detalhe, setDetalhe] = useState(null);
   const [toast, setToast] = useState(null);
   const [meusDados, setMeusDados] = useState(false);
+  const [sinoAberto, setSinoAberto] = useState(false);
+  // Avisos já vistos (fica só neste aparelho)
+  const [avisosVistos, setAvisosVistos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
+  });
+  const marcarAvisosVistos = (chaves) => {
+    const novos = [...new Set([...avisosVistos, ...chaves])].slice(-300);
+    setAvisosVistos(novos);
+    try { localStorage.setItem('sc-avisos-vistos', JSON.stringify(novos)); } catch (e) { /* sem espaço */ }
+  };
   const iniciais = (dentista || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const statusAnterior = useRef({});
   const producaoAnterior = useRef({});
@@ -456,6 +466,35 @@ function App({ dentista, email, prazoPagamento }) {
     try { await navigator.clipboard.writeText(texto); mostrarToast(aviso); }
     catch (e) { mostrarToast('Não consegui copiar — copie manualmente.'); }
   };
+
+  // Avisos do sininho, derivados dos próprios casos:
+  // trabalho novo adicionado pelo laboratório + pedidos de aprovação de arquivo
+  const ontemISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const avisos = [];
+  casos.forEach(c => {
+    if (c.origem !== 'clinica' && (c.dataEntrada || '') >= ontemISO) {
+      avisos.push({ chave: `novo-${c.id}`, icone: '🆕', texto: `Trabalho novo adicionado pelo laboratório: ${c.paciente} (${c.tipoTrabalho})`, caso: c });
+    }
+    (c.anexos || []).forEach(a => {
+      if (a.aprovacao && a.aprovacao.status === 'pendente') {
+        avisos.push({ chave: `aprovar-${c.id}-${a.id}`, icone: '👍', texto: `O laboratório pediu sua aprovação: "${a.nome}" — ${c.paciente}`, caso: c, urgente: true });
+      }
+    });
+  });
+  const avisosNaoVistos = avisos.filter(a => !avisosVistos.includes(a.chave));
+  const fecharSino = () => {
+    setSinoAberto(false);
+    if (avisos.length > 0) marcarAvisosVistos(avisos.map(a => a.chave));
+  };
+  const botaoSino = (
+    <button onClick={() => setSinoAberto(true)} title="Avisos"
+      style={{ position: 'relative', width: 38, height: 38, borderRadius: 19, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(184,147,90,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+      <Bell size={17} color={GOLD} />
+      {avisosNaoVistos.length > 0 && (
+        <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, borderRadius: 9, background: '#DC2626', color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', border: `2px solid ${INK}` }}>{avisosNaoVistos.length}</span>
+      )}
+    </button>
+  );
 
   // Relatório mensal: entregas agrupadas pelo mês da entrega + pagamentos do mês
   const NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -613,8 +652,9 @@ function App({ dentista, email, prazoPagamento }) {
               </button>
             ))}
           </div>
+          {botaoSino}
           <button onClick={() => setMeusDados(true)} title="Meus dados"
-            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 14px 5px 5px', cursor: 'pointer', fontFamily: FONTE }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 14px 5px 5px', cursor: 'pointer', fontFamily: FONTE, marginLeft: 10 }}>
             <span style={{ width: 30, height: 30, borderRadius: 15, background: GOLD, color: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{iniciais}</span>
             <span style={{ color: '#fff', fontSize: 12.5, fontWeight: 700 }}>{dentista}</span>
           </button>
@@ -626,8 +666,9 @@ function App({ dentista, email, prazoPagamento }) {
           <span style={{ color: '#fff', fontWeight: 300, fontSize: 12, letterSpacing: '0.32em' }}>SPECIAL</span>
           <span style={{ color: GOLD, fontWeight: 700, fontSize: 10, letterSpacing: '0.3em' }}>CLINIC</span>
           <div style={{ flex: 1 }} />
+          {botaoSino}
           <button onClick={() => setMeusDados(true)} title="Meus dados"
-            style={{ width: 38, height: 38, borderRadius: 19, background: GOLD, color: INK, border: '2px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: FONTE }}>
+            style={{ width: 38, height: 38, borderRadius: 19, background: GOLD, color: INK, border: '2px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: FONTE, marginLeft: 8 }}>
             {iniciais}
           </button>
         </div>
@@ -643,6 +684,28 @@ function App({ dentista, email, prazoPagamento }) {
           </>
         )}
       </div>
+      )}
+
+      {/* Painel de avisos do sininho */}
+      {sinoAberto && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 8700, background: 'rgba(0,0,0,0.45)' }} onClick={fecharSino}>
+          <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 62px)', right: 10, left: 10, maxWidth: 420, marginLeft: 'auto', background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '13px 15px', borderBottom: '1px solid #F0EFEC' }}>
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 800, color: INK }}>Avisos</span>
+              <button onClick={fecharSino} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: '#F0EFEC', color: '#78716C', fontWeight: 800, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+              {avisos.length === 0 && <div style={{ padding: 22, fontSize: 12.5, color: '#A8A29E', textAlign: 'center' }}>Nenhum aviso por enquanto. Aqui chegam trabalhos novos e pedidos de aprovação do laboratório.</div>}
+              {avisos.map(av => (
+                <button key={av.chave} onClick={() => { fecharSino(); setDetalhe(av.caso); }}
+                  style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 10, padding: '12px 15px', background: av.urgente ? '#FDF6EC' : '#fff', border: 'none', borderBottom: '1px solid #F7F6F4', cursor: 'pointer', fontFamily: FONTE, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{av.icone}</span>
+                  <span style={{ flex: 1, fontSize: 12.5, color: INK, fontWeight: avisosVistos.includes(av.chave) ? 500 : 800, lineHeight: 1.45 }}>{av.texto}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {meusDados && (
@@ -1110,14 +1173,32 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       return;
     }
     if (ehSTL) {
-      // STL abre no visualizador 3D
-      const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
-      if (dataURL) setStlAberto({ nome: a.nome, dataURL });
+      // STL abre o visualizador 3D NA HORA; o arquivo baixa com o "carregando" já na tela
+      setStlAberto({ nome: a.nome, dataURL: imagens[a.id] || null });
+      if (!imagens[a.id]) {
+        const dataURL = ((await lerAnexo(a.id)) || {}).dataURL;
+        if (dataURL) setStlAberto(s => s ? { nome: a.nome, dataURL } : s);
+        else setStlAberto(null);
+      }
       return;
     }
     if (imagens[a.id]) { setImagens(m => ({ ...m, [a.id]: null })); return; }
     const dados = await lerAnexo(a.id);
     if (dados && dados.dataURL) setImagens(m => ({ ...m, [a.id]: dados.dataURL }));
+  };
+
+  // Dentista aprova um arquivo que o laboratório pediu p/ avaliar — o lab é avisado
+  const aprovarAnexo = async (anexo) => {
+    try {
+      const novos = (caso.anexos || []).map(x => x.id === anexo.id
+        ? { ...x, aprovacao: { ...(x.aprovacao || {}), status: 'aprovado', respondidaEm: todayISO() } }
+        : x);
+      await updateDoc(refCaso, { anexos: novos });
+      aoAvisar('Aprovado! O laboratório será avisado ✓');
+    } catch (e) {
+      console.error(e);
+      aoAvisar('Não consegui registrar a aprovação. Tente de novo.');
+    }
   };
 
   const marcos = [
@@ -1271,9 +1352,25 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
               const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
               return (
                 <div key={a.id} style={{ marginBottom: 8 }}>
-                  <button onClick={() => abrirAnexo(a)} style={{ width: '100%', textAlign: 'left', background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: FONTE }}>
+                  <button onClick={() => abrirAnexo(a)} style={{ width: '100%', textAlign: 'left', background: a.aprovacao?.status === 'pendente' ? '#FDF6EC' : '#FAF9F7', border: a.aprovacao?.status === 'pendente' ? '1.5px solid #E8C48A' : '1px solid #E7E5E4', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: FONTE }}>
                     {ehVideo ? '🎥' : (ehSTL ? '🦷' : '📎')} {a.nome} {ehVideo ? <span style={{ color: GOLD }}>▶ tocar</span> : (ehSTL ? <span style={{ color: GOLD }}>ver em 3D</span> : (imagens[a.id] ? '▲' : '▼'))}
                   </button>
+                  {a.aprovacao?.status === 'pendente' && (
+                    <div style={{ background: '#FDF6EC', border: '1px solid #E8C48A', borderRadius: 12, padding: '10px 12px', marginTop: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#7A6234', marginBottom: 8 }}>👍 O laboratório pediu sua aprovação deste arquivo. Abra, confira e aprove:</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => abrirAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                          {ehSTL ? 'Ver em 3D' : (ehVideo ? 'Ver o vídeo' : 'Abrir')}
+                        </button>
+                        <button onClick={() => aprovarAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                          ✓ Aprovar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {a.aprovacao?.status === 'aprovado' && (
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#166B3A', marginTop: 5 }}>✓ Você aprovou este arquivo{a.aprovacao.respondidaEm ? ` em ${formatDateBR(a.aprovacao.respondidaEm)}` : ''}</div>
+                  )}
                   {imagens[a.id] && String(a.mime || '').startsWith('image') && (
                     <img src={imagens[a.id]} alt={a.nome} style={{ width: '100%', borderRadius: 12, marginTop: 8 }} />
                   )}

@@ -1139,12 +1139,39 @@ export default function App() {
     criarNotificacao('etapa', `Pedido de ${s.dentista} (${s.paciente}) foi recusado.`, null);
   };
 
-  const criarNotificacao = (icone, texto, casoId) => {
-    const nova = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), icone, texto, casoId, data: agoraISO(), lida: false };
+  const criarNotificacao = (icone, texto, casoId, chave) => {
+    const nova = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), icone, texto, casoId, chave: chave || null, data: agoraISO(), lida: false };
     persistNotificacoes([nova, ...notificacoes].slice(0, 50));
     setToast({ icone, texto });
     setTimeout(() => setToast(null), 3500);
   };
+
+  // Avisos automáticos ao abrir/sincronizar: trabalho novo enviado pela clínica
+  // e arquivos aprovados pelo dentista (a chave evita repetir o mesmo aviso)
+  useEffect(() => {
+    if (loading) return;
+    const limite = addDias(todayISO(), -1);
+    const novas = [];
+    const jaExiste = (chave) => notificacoes.some(n => n.chave === chave) || novas.some(n => n.chave === chave);
+    casos.forEach(c => {
+      if (c.origem === 'clinica' && (c.dataEntrada || '') >= limite) {
+        const chave = `novo-${c.id}`;
+        if (!jaExiste(chave)) novas.push({ icone: 'clinica', texto: `🆕 ${c.dentista} enviou um trabalho novo: ${c.paciente} (${c.tipoTrabalho}).`, casoId: c.id, chave });
+      }
+      (c.anexos || []).forEach(a => {
+        if (a.aprovacao && a.aprovacao.status === 'aprovado') {
+          const chave = `aprovado-${c.id}-${a.id}`;
+          if (!jaExiste(chave)) novas.push({ icone: 'aprovado', texto: `${c.dentista} aprovou "${a.nome}" (${c.paciente}). ✓`, casoId: c.id, chave });
+        }
+      });
+    });
+    if (novas.length > 0) {
+      const criadas = novas.map(n => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), icone: n.icone, texto: n.texto, casoId: n.casoId, chave: n.chave, data: agoraISO(), lida: false }));
+      persistNotificacoes([...criadas, ...notificacoes].slice(0, 50));
+      setToast({ icone: criadas[0].icone, texto: criadas[0].texto });
+      setTimeout(() => setToast(null), 3500);
+    }
+  }, [loading, casos]);
 
   const marcarNotificacoesLidas = () => {
     if (notificacoes.some(n => !n.lida)) {
@@ -1441,6 +1468,12 @@ export default function App() {
     const caso = casos.find(c => c.id === casoId);
     updateCaso(casoId, { anexos: (caso.anexos || []).filter(a => a.id !== anexoId) });
   };
+  // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista)
+  const atualizarAnexoMeta = (casoId, anexoId, patch) => {
+    const caso = casos.find(c => c.id === casoId);
+    if (!caso) return;
+    updateCaso(casoId, { anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) });
+  };
 
   const goToDetalhe = (id) => {
     // Guarda de onde veio, para o "Voltar" retornar à mesma tela (Finanças, Equipe, Entregas, Dia...)
@@ -1717,6 +1750,7 @@ export default function App() {
             onAddAnexo={(dados) => addAnexo(selectedCaso.id, dados)}
             getAnexoData={getAnexoData}
             onRemoveAnexo={(anexoId) => removeAnexo(selectedCaso.id, anexoId)}
+            onAtualizarAnexo={(anexoId, patch) => atualizarAnexoMeta(selectedCaso.id, anexoId, patch)}
             onAbrirSeletorUsuario={() => setSeletorUsuarioAberto(true)}
             onEntregarProva={() => entregarProva(selectedCaso.id)}
             ehGestor={ehGestor}
@@ -1815,6 +1849,7 @@ function NotifIcone({ tipo, size = 18 }) {
   if (tipo === 'retorno') return <Undo2 size={size} style={{ color: ROXO }} />;
   if (tipo === 'etapa') return <ListChecks size={size} style={{ color: GOLD }} />;
   if (tipo === 'pagamento') return <DollarSign size={size} style={{ color: VERDE }} />;
+  if (tipo === 'aprovado') return <ThumbsUp size={size} style={{ color: VERDE }} />;
   return <Bell size={size} style={{ color: GOLD }} />;
 }
 
@@ -3879,7 +3914,7 @@ function VisorFoto({ foto, onFechar }) {
   );
 }
 
-function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
+function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo }) {
   const fotoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const arquivoInputRef = useRef(null);
@@ -3903,11 +3938,14 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
     return false;
   });
 
+  // Abre a tela do 3D NA HORA e baixa o arquivo com o "carregando" já visível
   const abrirSTL = async (a) => {
+    setStlAberto({ nome: a.nome, dataURL: null });
     try {
       const data = await getAnexoData(a.id);
-      if (data) setStlAberto({ nome: data.nome || a.nome, dataURL: data.dataURL });
-    } catch (e) { /* anexo indisponível */ }
+      if (data) setStlAberto(s => s ? { nome: data.nome || a.nome, dataURL: data.dataURL } : s);
+      else setStlAberto(null);
+    } catch (e) { setStlAberto(null); }
   };
 
   useEffect(() => {
@@ -4050,6 +4088,18 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-stone-700 text-white flex items-center justify-center">
                 <X size={11} />
               </button>
+              {/* Aprovação do dentista na foto: cinza = pedir, laranja = aguardando, verde = aprovada */}
+              <button
+                onClick={() => {
+                  if (f.aprovacao?.status === 'aprovado') return;
+                  if (f.aprovacao?.status === 'pendente') onAtualizarAnexo(f.id, { aprovacao: null });
+                  else onAtualizarAnexo(f.id, { aprovacao: { status: 'pendente', pedidaEm: todayISO() } });
+                }}
+                title={f.aprovacao?.status === 'aprovado' ? 'Aprovada pelo dentista ✓' : (f.aprovacao?.status === 'pendente' ? 'Aguardando o dentista (toque p/ cancelar)' : 'Pedir aprovação do dentista')}
+                className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center border-2 border-white"
+                style={{ background: f.aprovacao?.status === 'aprovado' ? VERDE : (f.aprovacao?.status === 'pendente' ? '#EA580C' : '#78716C') }}>
+                <ThumbsUp size={11} color="white" />
+              </button>
             </div>
           ))}
         </div>
@@ -4058,16 +4108,34 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo }) {
       {arquivos.length > 0 && (
         <div className="flex flex-col">
           {arquivos.map(a => (
-            <div key={a.id} className="flex items-center gap-3 py-2.5 border-t border-stone-100">
-              <IconeArquivo categoria={a.categoria} />
-              <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : (a.categoria === 'stl' ? abrirSTL(a) : baixar(a))} className="flex-1 min-w-0 text-left">
-                <div className="text-sm font-medium truncate" style={{ color: INK }}>{a.nome}</div>
-                <div className="text-xs" style={{ color: (a.categoria === 'video' || a.categoria === 'stl') ? GOLD : '#A8A29E', fontWeight: (a.categoria === 'video' || a.categoria === 'stl') ? 700 : 400 }}>
-                  {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? '🦷 Ver em 3D' : 'Documento')} • {formatBytes(a.tamanho)}
+            <div key={a.id} className="py-2.5 border-t border-stone-100">
+              <div className="flex items-center gap-3">
+                <IconeArquivo categoria={a.categoria} />
+                <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : (a.categoria === 'stl' ? abrirSTL(a) : baixar(a))} className="flex-1 min-w-0 text-left">
+                  <div className="text-sm font-medium truncate" style={{ color: INK }}>{a.nome}</div>
+                  <div className="text-xs" style={{ color: (a.categoria === 'video' || a.categoria === 'stl') ? GOLD : '#A8A29E', fontWeight: (a.categoria === 'video' || a.categoria === 'stl') ? 700 : 400 }}>
+                    {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? '🦷 Ver em 3D' : 'Documento')} • {formatBytes(a.tamanho)}
+                  </div>
+                </button>
+                <button onClick={() => baixar(a)} className="p-1.5"><Download size={16} className="text-stone-400" /></button>
+                <button onClick={() => onRemoveAnexo(a.id)} className="p-1.5"><Trash2 size={16} className="text-stone-300" /></button>
+              </div>
+              {/* Aprovação do dentista: pedir → o dentista é avisado no app dele e aprova por lá */}
+              {!a.aprovacao && (
+                <button onClick={() => onAtualizarAnexo(a.id, { aprovacao: { status: 'pendente', pedidaEm: todayISO() } })}
+                  className="mt-1.5 text-xs font-bold flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                  <ThumbsUp size={12} /> Pedir aprovação do dentista
+                </button>
+              )}
+              {a.aprovacao?.status === 'pendente' && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: '#FDECD8', color: '#B54708' }}>⏳ Aguardando aprovação do dentista</span>
+                  <button onClick={() => onAtualizarAnexo(a.id, { aprovacao: null })} className="text-xs font-bold" style={{ color: '#A8A29E' }}>cancelar</button>
                 </div>
-              </button>
-              <button onClick={() => baixar(a)} className="p-1.5"><Download size={16} className="text-stone-400" /></button>
-              <button onClick={() => onRemoveAnexo(a.id)} className="p-1.5"><Trash2 size={16} className="text-stone-300" /></button>
+              )}
+              {a.aprovacao?.status === 'aprovado' && (
+                <span className="mt-1.5 inline-block text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: '#DCF3E4', color: '#166B3A' }}>✓ Aprovado pelo dentista{a.aprovacao.respondidaEm ? ` em ${formatDateBR(a.aprovacao.respondidaEm)}` : ''}</span>
+              )}
             </div>
           ))}
         </div>
@@ -4217,7 +4285,7 @@ function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -4366,7 +4434,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
         onConcluirEtapa={onConcluirEtapa} onDesfazerEtapa={onDesfazerEtapa}
         onAbrirSeletorUsuario={onAbrirSeletorUsuario} />
 
-      <AnexosSection caso={caso} onAddAnexo={onAddAnexo} getAnexoData={getAnexoData} onRemoveAnexo={onRemoveAnexo} />
+      <AnexosSection caso={caso} onAddAnexo={onAddAnexo} getAnexoData={getAnexoData} onRemoveAnexo={onRemoveAnexo} onAtualizarAnexo={onAtualizarAnexo} />
 
       <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-5">
         <div className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-3">Fluxo geral</div>

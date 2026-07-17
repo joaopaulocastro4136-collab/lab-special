@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 
 // ─── Visualizador 3D de arquivos STL (Special Lab e Special Clinic) ───
-// Um dedo gira a peça; dois dedos dão zoom (pinça) e movem; roda do mouse dá zoom no computador.
-// Só visualização: abrir, olhar, fechar.
+// Um dedo gira a peça LIVREMENTE em todas as direções (Trackball, sem travas);
+// dois dedos dão zoom (pinça) e movem; roda do mouse dá zoom no computador.
+// Abre na hora com "carregando" — o dataURL pode chegar depois (null enquanto baixa).
 export default function VisorSTL({ nome, dataURL, onFechar }) {
   const areaRef = useRef(null);
   const [erro, setErro] = useState('');
@@ -49,11 +50,14 @@ export default function VisorSTL({ nome, dataURL, onFechar }) {
       renderer.setSize(area.clientWidth, area.clientHeight);
       area.appendChild(renderer.domElement);
 
-      controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.08;
-      controls.minDistance = raio * 0.4;
-      controls.maxDistance = raio * 8;
+      // Trackball: giro livre em todas as direções, sem trava nos polos
+      controls = new TrackballControls(camera, renderer.domElement);
+      controls.rotateSpeed = 3.2;
+      controls.zoomSpeed = 1.4;
+      controls.panSpeed = 0.7;
+      controls.dynamicDampingFactor = 0.14;
+      controls.minDistance = raio * 0.35;
+      controls.maxDistance = raio * 10;
 
       const desenhar = () => {
         if (!vivo) return;
@@ -69,6 +73,7 @@ export default function VisorSTL({ nome, dataURL, onFechar }) {
         camera.aspect = area.clientWidth / Math.max(1, area.clientHeight);
         camera.updateProjectionMatrix();
         renderer.setSize(area.clientWidth, area.clientHeight);
+        controls.handleResize();
       };
       window.addEventListener('resize', aoRedimensionar);
 
