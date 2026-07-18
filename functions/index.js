@@ -143,6 +143,20 @@ exports.transformarSorriso = onCall(
     if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
     if (foto.length > 6000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
 
+    // Limite diário por pessoa: protege o custo (IA_LIMITE_DIA no functions/.env; padrão 15/dia)
+    const LIMITE_DIA = parseInt(process.env.IA_LIMITE_DIA || '15', 10);
+    const quem = String(request.auth.token.email || request.auth.uid).toLowerCase().replace(/[^\w@.-]/g, '_');
+    const dia = new Date().toISOString().slice(0, 10);
+    const refUso = admin.firestore().doc(`labs/principal/iaUso/${dia}_${quem}`);
+    const usoOk = await admin.firestore().runTransaction(async (tx) => {
+      const s = await tx.get(refUso);
+      const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+      if (n > LIMITE_DIA) return false;
+      tx.set(refUso, { n, quem, dia }, { merge: true });
+      return true;
+    });
+    if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário da IA Special. Amanhã pode transformar mais sorrisos! ✨');
+
     const prompt = `Edit this photo: perform a photorealistic cosmetic dental smile makeover.
 Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
 Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
