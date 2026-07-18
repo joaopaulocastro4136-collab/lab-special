@@ -9,6 +9,7 @@
 // Android: pelo Firebase Cloud Messaging.
 
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const http2 = require('http2');
@@ -118,3 +119,57 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
     }
   }
 });
+
+// ─── IA Special: transformador de sorriso (Special Clinic) ───
+// Recebe a foto do sorriso, redesenha os dentes com IA generativa (Gemini) —
+// alinhamento, simetria, proporção e o tom de cor escolhido — e devolve a foto.
+// Chave nos secrets: GEMINI_API_KEY (criada em aistudio.google.com/apikey).
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+
+const TONS_DENTE = {
+  claro: 'a bright whitened "Hollywood white" (BL1 dental shade), while still looking like real natural enamel',
+  natural: 'a healthy natural white (A1 dental shade), with realistic enamel translucency',
+  escuro: 'a discreet, slightly warmer natural ivory (A2-A3 dental shade), realistic and understated',
+};
+
+exports.transformarSorriso = onCall(
+  { region: 'southamerica-east1', secrets: [GEMINI_API_KEY], timeoutSeconds: 120, memory: '512MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA Special.');
+    const foto = String((request.data && request.data.foto) || '');
+    const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'natural';
+    if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
+    if (foto.length > 6000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
+
+    const prompt = `Edit this photo: perform a photorealistic cosmetic dental smile makeover.
+Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
+Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
+
+    const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=' + GEMINI_API_KEY.value().trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { inline_data: { mime_type: 'image/jpeg', data: foto } },
+          { text: prompt },
+        ] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      }),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      console.error('Gemini falhou', resp.status, txt.slice(0, 500));
+      if (resp.status === 429) throw new HttpsError('resource-exhausted', 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.');
+      throw new HttpsError('internal', 'A IA não conseguiu processar esta foto. Tente outra.');
+    }
+    const dados = await resp.json();
+    const partes = (dados.candidates && dados.candidates[0] && dados.candidates[0].content && dados.candidates[0].content.parts) || [];
+    const parteImg = partes.map((p) => p.inlineData || p.inline_data).find((d) => d && d.data);
+    if (!parteImg) {
+      console.error('Gemini respondeu sem imagem:', JSON.stringify(dados).slice(0, 500));
+      throw new HttpsError('internal', 'A IA não devolveu a imagem. Tente uma foto mais nítida do sorriso.');
+    }
+    console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | ${Math.round(parteImg.data.length / 1024)}KB`);
+    return { foto: parteImg.data, mime: parteImg.mimeType || parteImg.mime_type || 'image/png' };
+  }
+);

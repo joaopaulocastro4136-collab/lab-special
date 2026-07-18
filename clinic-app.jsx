@@ -10,8 +10,9 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -38,6 +39,7 @@ const auth = ehIosNativo
   ? initializeAuth(fbApp, { persistence: indexedDBLocalPersistence })
   : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
+const funcoes = getFunctions(fbApp, 'southamerica-east1');
 
 const docKV = (k) => doc(db, 'labs', LAB, 'kv', k);
 
@@ -125,7 +127,8 @@ function categoriaDoArquivo(file) {
 
 function comprimirImagem(file) {
   return new Promise((res, rej) => {
-    const img = new Image();
+    // window.Image: o ícone "Image" do lucide importado acima esconde o construtor do navegador
+    const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       const MAX = 1280;
@@ -405,6 +408,287 @@ function PuxarAtualizar({ aoAtualizar }) {
   );
 }
 
+// ─── Panorama premium da tela inicial: rosca com gradientes, brilho e animação de abertura ───
+function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
+  const [anim, setAnim] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setAnim(true), 150); return () => clearTimeout(t); }, []);
+  const R = 40, CIRC = 2 * Math.PI * R;
+  const ativos = dados.filter(d => d.n > 0).length;
+  const gap = ativos > 1 ? 2.4 : 0; // respiro entre as fatias
+  let acumulado = 0;
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 10, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+      {/* brilho dourado de fundo + estrela da marca em marca d'água */}
+      <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
+      <div style={{ position: 'absolute', right: 16, bottom: 8, opacity: 0.09 }}><Estrela size={52} color={GOLD} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Estrela size={10} color={GOLD} />
+        <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Seus trabalhos</div>
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', marginTop: 3, marginBottom: 14 }}>Olá, {dentista}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <svg width="128" height="128" viewBox="0 0 100 100" style={{ display: 'block', filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.4))' }}>
+            <defs>
+              {dados.map((d, i) => (
+                <linearGradient key={i} id={`pan-g${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor={d.corClara} />
+                  <stop offset="100%" stopColor={d.cor} />
+                </linearGradient>
+              ))}
+            </defs>
+            <circle cx="50" cy="50" r={R} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="11.5" />
+            {total > 0 && dados.map((d, i) => {
+              if (d.n === 0) return null;
+              const fracao = d.n / total;
+              const cheio = Math.max(0.5, fracao * CIRC - gap);
+              const arco = (
+                <circle key={i} cx="50" cy="50" r={R} fill="none" stroke={`url(#pan-g${i})`} strokeWidth="11.5"
+                  strokeLinecap={ativos > 1 ? 'round' : 'butt'}
+                  strokeDasharray={`${anim ? cheio : 0.001} ${CIRC}`}
+                  strokeDashoffset={-(acumulado * CIRC + (ativos > 1 ? gap / 2 : 0))}
+                  transform="rotate(-90 50 50)"
+                  style={{ transition: `stroke-dasharray 1.1s cubic-bezier(0.25, 0.8, 0.3, 1) ${0.15 + i * 0.12}s` }} />
+              );
+              acumulado += fracao;
+              return arco;
+            })}
+          </svg>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', lineHeight: 1 }}>{total}</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 4 }}>{total === 1 ? 'trabalho' : 'trabalhos'}</div>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {dados.map(d => (
+            <div key={d.rotulo} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 0' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 5, background: `linear-gradient(135deg, ${d.corClara}, ${d.cor})`, boxShadow: `0 0 8px ${d.cor}66`, flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'rgba(255,255,255,0.75)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.rotulo}</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{d.n}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '10px 12px' }}>
+          <div style={{ fontSize: 9.5, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Próxima entrega</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 3 }}>{proxima ? formatDateBR(proxima.prazo) : '—'}</div>
+        </div>
+        <div style={{ flex: 1, background: atrasadosN > 0 ? 'rgba(220,38,38,0.16)' : 'rgba(22,163,74,0.14)', border: `1px solid ${atrasadosN > 0 ? 'rgba(248,113,113,0.35)' : 'rgba(74,222,128,0.25)'}`, borderRadius: 13, padding: '10px 12px' }}>
+          <div style={{ fontSize: 9.5, fontWeight: 800, color: atrasadosN > 0 ? '#FCA5A5' : '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{atrasadosN > 0 ? 'Em atraso' : 'Prazos'}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: atrasadosN > 0 ? '#FCA5A5' : '#86EFAC', marginTop: 3 }}>{atrasadosN > 0 ? `${atrasadosN} ${atrasadosN === 1 ? 'trabalho' : 'trabalhos'}` : 'Em dia ✓'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── IA Special: transformador de sorriso (forma + simetria + cor) ───
+// A foto vai com segurança para a Cloud Function do laboratório, que usa IA
+// generativa para redesenhar os dentes — alinhamento, simetria, proporção e o
+// tom escolhido — e devolve a foto transformada.
+const TONS_IA = [
+  { rotulo: 'Mais claro', valor: 'claro', cor: '#FDFDFB' },
+  { rotulo: 'Natural', valor: 'natural', cor: '#F2ECDC' },
+  { rotulo: 'Mais escuro', valor: 'escuro', cor: '#E3D5B8' },
+];
+
+async function transformarSorrisoNaNuvem(fotoDataURL, tom) {
+  const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
+  const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+  return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
+}
+
+function mensagemErroIA(e) {
+  const codigo = String((e && e.code) || '');
+  if (codigo.includes('resource-exhausted')) return 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.';
+  if (codigo.includes('unauthenticated')) return 'Entre na sua conta para usar a IA Special.';
+  if (codigo.includes('not-found') || codigo.includes('unimplemented')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
+  if (codigo.includes('invalid-argument')) return 'Essa foto não serviu. Tente uma foto mais nítida do sorriso.';
+  return 'Não consegui transformar agora. Verifique a internet e tente de novo.';
+}
+
+function IASpecial({ aoFechar, aoAvisar }) {
+  const [foto, setFoto] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  const [processando, setProcessando] = useState(false);
+  const [tom, setTom] = useState('natural');
+  const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
+  const inputRef = useRef(null);
+  useGestoVoltar(aoFechar);
+
+  const escolherFoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const dataURL = await comprimirImagem(file);
+      setFoto(dataURL);
+      setResultado(null);
+      setCorte(50);
+    } catch (err) { aoAvisar('Não consegui ler essa foto. Tente outra.'); }
+  };
+
+  const gerar = async (tomNovo) => {
+    if (!foto || processando) return;
+    const alvo = tomNovo ?? tom;
+    setTom(alvo);
+    setProcessando(true);
+    try {
+      const out = await transformarSorrisoNaNuvem(foto, alvo);
+      setResultado(out);
+      setCorte(50);
+    } catch (e) {
+      console.error('IA Special', e);
+      aoAvisar(mensagemErroIA(e));
+    }
+    setProcessando(false);
+  };
+
+  const baixar = () => {
+    const a = document.createElement('a');
+    a.href = resultado;
+    a.download = `sorriso-ia-special-${todayISO()}.jpg`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    aoAvisar('Simulação salva ✓');
+  };
+
+  const compartilhar = async () => {
+    try {
+      const blob = dataURLparaBlob(resultado, 'image/jpeg');
+      const file = new File([blob], 'sorriso-ia-special.jpg', { type: 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Simulação IA Special' });
+        return;
+      }
+      baixar();
+    } catch (e) { if (e && e.name !== 'AbortError') baixar(); }
+  };
+
+  const btnDourado = { border: 'none', borderRadius: 14, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontFamily: FONTE, cursor: 'pointer', boxShadow: '0 12px 26px -14px rgba(184,147,90,0.9)' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 8900, background: '#141311', overflowY: 'auto', fontFamily: FONTE }}>
+      <style>{`
+        @keyframes iaPulso { 0%, 100% { transform: scale(1); opacity: 0.9; } 50% { transform: scale(1.18); opacity: 1; } }
+        @keyframes iaVarredura { 0% { top: -8%; } 50% { top: 100%; } 100% { top: -8%; } }
+        @keyframes iaSurgir { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+      <div style={{ maxWidth: 520, margin: '0 auto', padding: '0 16px calc(28px + env(safe-area-inset-bottom))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(14px + env(safe-area-inset-top)) 0 14px' }}>
+          <button onClick={aoFechar} style={{ width: 38, height: 38, borderRadius: 19, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 17, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={16} color={GOLD} />
+              <span style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>IA Special</span>
+              <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>BETA</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>Transformação de sorriso com IA</div>
+          </div>
+        </div>
+
+        {!foto && (
+          <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <button onClick={() => inputRef.current && inputRef.current.click()}
+              style={{ width: '100%', borderRadius: 22, border: '1.5px dashed rgba(184,147,90,0.6)', background: 'rgba(184,147,90,0.07)', padding: '44px 20px', cursor: 'pointer', fontFamily: FONTE, textAlign: 'center' }}>
+              <div style={{ width: 66, height: 66, borderRadius: 33, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', boxShadow: '0 14px 30px -12px rgba(184,147,90,0.8)' }}>
+                <Camera size={28} color={INK} />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 16 }}>Adicionar foto do sorriso</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 6, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria.<br />Quanto mais nítido o sorriso, melhor o resultado.</div>
+            </button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              {[['📸', 'Foto do paciente sorrindo'], ['✨', 'A IA redesenha: forma, simetria e alinhamento'], ['🎨', 'Você escolhe o tom da cor']].map(([ic, tx]) => (
+                <div key={tx} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20 }}>{ic}</div>
+                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{tx}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {foto && (
+          <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
+              {/* depois (embaixo) + antes (por cima, cortada no divisor) */}
+              <img src={resultado || foto} alt="Sorriso" style={{ display: 'block', width: '100%' }} />
+              {resultado && (
+                <>
+                  <img src={foto} alt="Antes" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)` }} />
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.6)', transform: 'translateX(-50%)' }}>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.45)' }}>⇄</div>
+                  </div>
+                  <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px' }}>ANTES</span>
+                  <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px' }}>DEPOIS ✨</span>
+                  <input type="range" min="0" max="100" value={corte} onChange={e => setCorte(Number(e.target.value))}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'ew-resize', touchAction: 'none' }} />
+                </>
+              )}
+              {processando && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,12,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', left: 0, right: 0, height: 3, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, animation: 'iaVarredura 2.2s ease-in-out infinite', boxShadow: `0 0 18px ${GOLD}` }} />
+                  <div style={{ animation: 'iaPulso 1.3s ease-in-out infinite' }}><Estrela size={30} color={GOLD} /></div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', marginTop: 14 }}>IA Special redesenhando o sorriso...</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 4 }}>alinhando forma, simetria e cor — leva alguns segundos</div>
+                </div>
+              )}
+            </div>
+
+            {resultado && !processando && (
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+            )}
+
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Tom dos dentes</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {TONS_IA.map(n => (
+                <button key={n.valor} onClick={() => resultado ? gerar(n.valor) : setTom(n.valor)} disabled={processando}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontFamily: FONTE, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, border: tom === n.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: tom === n.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: tom === n.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+                  <span style={{ width: 13, height: 13, borderRadius: 7, background: n.cor, border: '1px solid rgba(0,0,0,0.25)', flexShrink: 0 }} />
+                  {n.rotulo}
+                </button>
+              ))}
+            </div>
+            {resultado && !processando && (
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 7 }}>Toque em outro tom para gerar de novo com ele</div>
+            )}
+
+            {!resultado && (
+              <button onClick={() => gerar()} disabled={processando}
+                style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 16, fontSize: 15, opacity: processando ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+                <Sparkles size={18} /> {processando ? 'Transformando...' : 'Transformar sorriso'}
+              </button>
+            )}
+
+            {resultado && !processando && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button onClick={compartilhar} style={{ ...btnDourado, flex: 1, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Share2 size={16} /> Compartilhar
+                </button>
+                <button onClick={baixar} title="Baixar"
+                  style={{ width: 54, borderRadius: 14, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Download size={18} />
+                </button>
+              </div>
+            )}
+
+            <button onClick={() => inputRef.current && inputRef.current.click()}
+              style={{ width: '100%', marginTop: 10, padding: 13, borderRadius: 13, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: 'rgba(255,255,255,0.75)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+              Trocar foto
+            </button>
+          </div>
+        )}
+
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', lineHeight: 1.55, textAlign: 'center', marginTop: 18 }}>
+          A foto é enviada com segurança para a IA do laboratório e usada apenas nesta simulação.
+          O resultado é ilustrativo — o tratamento real depende do planejamento clínico com o Laboratório Special.
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
 function App({ dentista, email, prazoPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
@@ -416,6 +700,8 @@ function App({ dentista, email, prazoPagamento }) {
   const [toast, setToast] = useState(null);
   const [meusDados, setMeusDados] = useState(false);
   const [sinoAberto, setSinoAberto] = useState(false);
+  const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
+  const [iaAberta, setIaAberta] = useState(false);
   // Avisos já vistos (fica só neste aparelho)
   const [avisosVistos, setAvisosVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
@@ -595,63 +881,53 @@ function App({ dentista, email, prazoPagamento }) {
 
   const cartao = { background: '#fff', border: '1px solid #E7E5E4', borderRadius: 16, padding: 14, marginBottom: 10, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
 
-  // Panorama da tela inicial: gráfico de pizza (rosca) com a situação dos trabalhos + prazos
-  const panorama = (() => {
-    const dados = [
-      { rotulo: 'Em produção', n: emAndamento.length, cor: '#E07C1F' },
-      { rotulo: 'Prontos p/ entrega', n: prontos.length, cor: VERDE },
-      { rotulo: 'Entregues', n: todasEntregas.length, cor: '#B8935A' },
-    ];
-    const total = casos.length;
-    const R = 40, CIRC = 2 * Math.PI * R;
-    let acumulado = 0;
-    const proxima = [...naoEntregues].filter(c => c.prazo).sort((a, b) => a.prazo.localeCompare(b.prazo))[0];
-    const atrasadosN = naoEntregues.filter(c => c.prazo && diasRestantes(c.prazo) < 0).length;
-    return (
-      <div style={{ ...cartao, marginBottom: 18, padding: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>Olá, {dentista}</div>
+  // Panorama da tela inicial: dados do gráfico + caixinhas de situação abaixo dele
+  const dadosPanorama = [
+    { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emAndamento.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
+    { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
+  ];
+  const proximaEntrega = [...naoEntregues].filter(c => c.prazo).sort((a, b) => a.prazo.localeCompare(b.prazo))[0];
+  const atrasadosN = naoEntregues.filter(c => c.prazo && diasRestantes(c.prazo) < 0).length;
+  const panorama = (
+    <Panorama dentista={dentista} dados={dadosPanorama} total={casos.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
+  );
+  // Caixinhas logo abaixo do gráfico: toca e vê só aquela lista (toca de novo p/ ver tudo)
+  const caixinhasSituacao = (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+      {dadosPanorama.map(d => {
+        const ativa = filtroSecao === d.chave;
+        return (
+          <button key={d.chave} onClick={() => setFiltroSecao(ativa ? null : d.chave)}
+            style={{ textAlign: 'left', background: ativa ? INK : '#fff', border: ativa ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', borderRadius: 16, padding: '12px 12px 11px', cursor: 'pointer', fontFamily: FONTE, boxShadow: ativa ? '0 14px 30px -16px rgba(28,27,25,0.7)' : '0 10px 26px -20px rgba(28,27,25,0.15)', transition: 'background 0.15s, border-color 0.15s' }}>
+            <span style={{ display: 'block', width: 9, height: 9, borderRadius: 5, background: `linear-gradient(135deg, ${d.corClara}, ${d.cor})`, boxShadow: `0 0 6px ${d.cor}55` }} />
+            <span style={{ display: 'block', fontSize: 21, fontWeight: 800, color: ativa ? '#fff' : INK, marginTop: 7, lineHeight: 1 }}>{d.n}</span>
+            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: ativa ? GOLD : '#78716C', marginTop: 4, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.curto}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  // Cartão de destaque da IA Special na tela inicial
+  const bannerIA = (
+    <button onClick={() => setIaAberta(true)}
+      style={{ width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden', borderRadius: 18, marginBottom: 18, padding: 15, background: 'linear-gradient(120deg, #2A2116, #1C1B19 60%, #33281A)', border: '1px solid rgba(184,147,90,0.5)', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 16px 36px -20px rgba(122,86,40,0.65)' }}>
+      <div style={{ position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 65%)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.9)' }}>
+          <Sparkles size={21} color={INK} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <svg width="118" height="118" viewBox="0 0 100 100" style={{ flexShrink: 0 }}>
-            <circle cx="50" cy="50" r={R} fill="none" stroke="#F0EFEC" strokeWidth="13" />
-            {total > 0 && dados.map((d, i) => {
-              if (d.n === 0) return null;
-              const fracao = d.n / total;
-              const arco = (
-                <circle key={i} cx="50" cy="50" r={R} fill="none" stroke={d.cor} strokeWidth="13"
-                  strokeDasharray={`${fracao * CIRC} ${CIRC}`} strokeDashoffset={-acumulado * CIRC}
-                  transform="rotate(-90 50 50)" />
-              );
-              acumulado += fracao;
-              return arco;
-            })}
-            <text x="50" y="48" textAnchor="middle" fontSize="21" fontWeight="800" fill={INK} fontFamily={FONTE}>{total}</text>
-            <text x="50" y="62" textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#A8A29E" fontFamily={FONTE}>{total === 1 ? 'trabalho' : 'trabalhos'}</text>
-          </svg>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {dados.map(d => (
-              <div key={d.rotulo} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 0' }}>
-                <span style={{ width: 11, height: 11, borderRadius: 6, background: d.cor, flexShrink: 0 }} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#57534E', fontWeight: 600 }}>{d.rotulo}</span>
-                <span style={{ fontSize: 16, fontWeight: 800, color: INK }}>{d.n}</span>
-              </div>
-            ))}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: '#fff' }}>IA Special</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>NOVO</span>
           </div>
+          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.65)', marginTop: 2.5, lineHeight: 1.4 }}>Transforme o sorriso do paciente: alinhamento, simetria e cor</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <div style={{ flex: 1, background: '#FAF9F7', borderRadius: 12, padding: '10px 12px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Próxima entrega</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 2 }}>{proxima ? formatDateBR(proxima.prazo) : '—'}</div>
-          </div>
-          <div style={{ flex: 1, background: atrasadosN > 0 ? '#FCE4E4' : '#F0F9F2', borderRadius: 12, padding: '10px 12px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: atrasadosN > 0 ? '#B42318' : '#166B3A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{atrasadosN > 0 ? 'Em atraso' : 'Prazos'}</div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: atrasadosN > 0 ? '#B42318' : '#166B3A', marginTop: 2 }}>{atrasadosN > 0 ? `${atrasadosN} ${atrasadosN === 1 ? 'trabalho' : 'trabalhos'}` : 'Em dia ✓'}</div>
-          </div>
-        </div>
+        <span style={{ color: GOLD, fontSize: 20, flexShrink: 0, fontWeight: 300 }}>›</span>
       </div>
-    );
-  })();
+    </button>
+  );
 
   const CasoCartao = ({ c }) => {
     const info = STATUS_INFO[c.status] || STATUS_INFO['Em Produção'];
@@ -836,6 +1112,8 @@ function App({ dentista, email, prazoPagamento }) {
               </div>
             ))}
             {panorama}
+            {caixinhasSituacao}
+            {bannerIA}
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button onClick={() => compartilharEnviados(false)}
@@ -848,9 +1126,21 @@ function App({ dentista, email, prazoPagamento }) {
                 </button>
               </div>
             )}
-            <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
-            <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
-            <Secao titulo="Entregues recentemente" itens={entregues} vazio="Nenhuma entrega registrada ainda." />
+            {(!filtroSecao || filtroSecao === 'producao') && (
+              <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
+            )}
+            {(!filtroSecao || filtroSecao === 'prontos') && (
+              <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
+            )}
+            {(!filtroSecao || filtroSecao === 'entregues') && (
+              <Secao titulo={filtroSecao === 'entregues' ? 'Entregues' : 'Entregues recentemente'} itens={filtroSecao === 'entregues' ? todasEntregas.slice(0, 40) : entregues} vazio="Nenhuma entrega registrada ainda." />
+            )}
+            {filtroSecao && (
+              <button onClick={() => setFiltroSecao(null)}
+                style={{ width: '100%', padding: 12, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, marginBottom: 18 }}>
+                Mostrar tudo
+              </button>
+            )}
           </>
         )}
         {aba === 'novo' && (
@@ -1025,6 +1315,7 @@ function App({ dentista, email, prazoPagamento }) {
       </div>
 
       <PuxarAtualizar aoAtualizar={recarregarInfo} />
+      {iaAberta && <IASpecial aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
 
       {toast && (
