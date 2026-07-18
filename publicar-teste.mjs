@@ -116,7 +116,7 @@ if (det.dados && det.dados.data) {
         contactFirstName: d.attributes.contactFirstName || 'Joao Paulo',
         contactLastName: d.attributes.contactLastName || 'de Castro',
         contactEmail: d.attributes.contactEmail || EMAIL_CONTATO,
-        contactPhone: d.attributes.contactPhone || '',
+        contactPhone: d.attributes.contactPhone || process.env.TELEFONE_CONTATO || '',
         demoAccountRequired: false,
         notes: 'App B2B do Laboratorio Special (protese dental). O login e via conta Google autorizada pelo laboratorio para seus dentistas parceiros. As telas principais (acompanhamento, previsao, financeiro, IA de simulacao de sorriso) ficam disponiveis apos o laboratorio cadastrar o e-mail do dentista.',
       },
