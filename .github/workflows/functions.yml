@@ -38,17 +38,16 @@ jobs:
       - name: Instala dependências das funções
         run: cd functions && npm ci
 
-      - name: Grava a chave da IA (Gemini) no cofre do projeto
+      - name: Entrega a chave da IA (Gemini) para as funções
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -n "$GEMINI_API_KEY" ]; then
-            printf '%s' "$GEMINI_API_KEY" | npx firebase-tools functions:secrets:set GEMINI_API_KEY \
-              --project laboratorio-special --data-file=- --non-interactive --force
-            echo "Chave da IA gravada ✓"
-          else
-            echo "Sem GEMINI_API_KEY no GitHub — mantendo a chave já gravada no projeto."
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::Falta o segredo GEMINI_API_KEY no GitHub (Settings → Secrets → Actions)."
+            exit 1
           fi
+          printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" > functions/.env
+          echo "Chave entregue via functions/.env (não vai para o git) ✓"
 
       - name: Publica as funções
         run: npx firebase-tools deploy --only functions --project laboratorio-special --non-interactive --force

@@ -123,8 +123,8 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
 // ─── IA Special: transformador de sorriso (Special Clinic) ───
 // Recebe a foto do sorriso, redesenha os dentes com IA generativa (Gemini) —
 // alinhamento, simetria, proporção e o tom de cor escolhido — e devolve a foto.
-// Chave nos secrets: GEMINI_API_KEY (criada em aistudio.google.com/apikey).
-const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+// A chave chega por variável de ambiente (functions/.env, escrita pelo robô de
+// publicação a partir do segredo GEMINI_API_KEY do GitHub — nunca vai pro git).
 
 const TONS_DENTE = {
   claro: 'a bright whitened "Hollywood white" (BL1 dental shade), while still looking like real natural enamel',
@@ -133,9 +133,11 @@ const TONS_DENTE = {
 };
 
 exports.transformarSorriso = onCall(
-  { region: 'southamerica-east1', secrets: [GEMINI_API_KEY], timeoutSeconds: 120, memory: '512MiB' },
+  { region: 'southamerica-east1', timeoutSeconds: 120, memory: '512MiB' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA Special.');
+    const chave = (process.env.GEMINI_API_KEY || '').trim();
+    if (!chave) throw new HttpsError('failed-precondition', 'A IA Special ainda está sendo ativada pelo laboratório.');
     const foto = String((request.data && request.data.foto) || '');
     const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'natural';
     if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
@@ -145,7 +147,7 @@ exports.transformarSorriso = onCall(
 Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
 Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
 
-    const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=' + GEMINI_API_KEY.value().trim(), {
+    const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=' + chave, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

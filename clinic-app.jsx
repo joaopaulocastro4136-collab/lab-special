@@ -503,7 +503,7 @@ function mensagemErroIA(e) {
   const codigo = String((e && e.code) || '');
   if (codigo.includes('resource-exhausted')) return 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.';
   if (codigo.includes('unauthenticated')) return 'Entre na sua conta para usar a IA Special.';
-  if (codigo.includes('not-found') || codigo.includes('unimplemented')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
+  if (codigo.includes('not-found') || codigo.includes('unimplemented') || codigo.includes('failed-precondition')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
   if (codigo.includes('invalid-argument')) return 'Essa foto não serviu. Tente uma foto mais nítida do sorriso.';
   return 'Não consegui transformar agora. Verifique a internet e tente de novo.';
 }
@@ -685,6 +685,51 @@ function IASpecial({ aoFechar, aoAvisar }) {
         </div>
       </div>
       <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
+// ─── Gráfico do Financeiro: barras animadas dos últimos meses (feito × pago) ───
+// Toque num mês para ver os valores exatos dele.
+function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
+  const [anim, setAnim] = useState(false);
+  const [sel, setSel] = useState(null);
+  useEffect(() => { const t = setTimeout(() => setAnim(true), 150); return () => clearTimeout(t); }, []);
+  const ult = meses.slice(0, 6).reverse(); // do mais antigo para o mais novo
+  if (ult.length === 0) return null;
+  const max = Math.max(...ult.map(([, r]) => Math.max(r.valor, r.pago)), 1);
+  const ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const abrev = (m) => ABREV[parseInt(m.split('-')[1], 10) - 1];
+  const selecionado = ult.find(([m]) => m === sel);
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: '16px 16px 12px', marginBottom: 12, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+      <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05 }}><Estrela size={52} color={INK} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 800, color: INK, letterSpacing: '0.04em' }}>Movimento dos últimos meses</div>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#78716C' }}>
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: 'linear-gradient(135deg, #E8C48A, #B8935A)' }} /> Feito
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#78716C' }}>
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: 'linear-gradient(135deg, #4ADE80, #15803D)' }} /> Pago
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: selecionado ? INK : '#A8A29E', fontWeight: selecionado ? 700 : 500, marginTop: 5, minHeight: 16 }}>
+        {selecionado
+          ? `${nomeMes(selecionado[0])}: feito ${formatReais(selecionado[1].valor)} • pago ${formatReais(selecionado[1].pago)}`
+          : 'Toque num mês para ver os valores'}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 110, marginTop: 10 }}>
+        {ult.map(([m, r]) => (
+          <button key={m} onClick={() => setSel(sel === m ? null : m)}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: FONTE, height: '100%', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 84, width: '100%', justifyContent: 'center', background: sel === m ? 'rgba(184,147,90,0.09)' : 'transparent', borderRadius: 10, transition: 'background 0.15s' }}>
+              <div style={{ width: '32%', maxWidth: 20, height: anim ? `${Math.max(5, (r.valor / max) * 100)}%` : '5%', borderRadius: '5px 5px 2px 2px', background: 'linear-gradient(180deg, #E8C48A, #B8935A)', transition: 'height 0.9s cubic-bezier(0.25, 0.8, 0.3, 1)' }} />
+              <div style={{ width: '32%', maxWidth: 20, height: anim ? `${Math.max(5, (r.pago / max) * 100)}%` : '5%', borderRadius: '5px 5px 2px 2px', background: 'linear-gradient(180deg, #4ADE80, #15803D)', transition: 'height 0.9s cubic-bezier(0.25, 0.8, 0.3, 1) 0.12s' }} />
+            </div>
+            <span style={{ fontSize: 9.5, fontWeight: 800, color: sel === m ? INK : '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{abrev(m)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1198,49 +1243,69 @@ function App({ dentista, email, prazoPagamento }) {
         )}
         {aba === 'financeiro' && (
           <>
-            <div style={{ ...cartao, background: INK, border: 'none', padding: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#A8A29E', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Saldo a pagar</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: saldo > 0 ? GOLD : '#86EFAC', marginTop: 4 }}>{formatReais(Math.max(0, saldo))}</div>
-              {saldo < 0 && <div style={{ fontSize: 12, color: '#86EFAC', marginTop: 2 }}>Você tem {formatReais(-saldo)} de crédito</div>}
-              {prazoPagamento && (
-                <div style={{ marginTop: 12, background: 'rgba(184,147,90,0.15)', borderRadius: 10, padding: '9px 12px', fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
-                  Combinado de pagamento: {prazoPagamento}
+            {/* Cartão-herói do saldo: identidade da marca (preto + dourado + estrela em marca d'água) */}
+            <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+              <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
+              <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08 }}><Estrela size={58} color={GOLD} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Estrela size={10} color={GOLD} />
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Financeiro</span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.55)', marginTop: 13 }}>Saldo a pagar</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: saldo > 0 ? GOLD : '#86EFAC', lineHeight: 1.15, textShadow: '0 8px 26px rgba(184,147,90,0.35)' }}>{formatReais(Math.max(0, saldo))}</div>
+              {saldo <= 0 && (
+                <div style={{ fontSize: 12, color: '#86EFAC', fontWeight: 700, marginTop: 2 }}>
+                  {saldo < 0 ? `Você tem ${formatReais(-saldo)} de crédito` : 'Tudo em dia com o laboratório ✓'}
                 </div>
               )}
+              {prazoPagamento && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: GOLD, fontWeight: 700 }}>
+                  <CalendarClock size={13} /> Combinado: {prazoPagamento}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                {[
+                  ['Em andamento', totalAndamento, '#F5A54A'],
+                  ['Entregues', totalEntregue, '#E0BC85'],
+                  ['Já pago', totalPago, '#4ADE80'],
+                ].map(([rot, val, cor]) => (
+                  <div key={rot} style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 4, background: cor, boxShadow: `0 0 6px ${cor}66`, flexShrink: 0 }} />
+                      <span style={{ fontSize: 8.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{rot}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: '#fff', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatReais(val)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
+            {/* Pix: mesmo funcionamento de sempre (chave + código com valor exato), visual premium */}
             {info.chavePix && saldo > 0 && (
-              <div style={{ ...cartao, border: `2px solid ${VERDE}` }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 8, letterSpacing: '0.02em' }}>Pagar com Pix</div>
-                <div style={{ fontSize: 12, color: '#57534E', marginBottom: 4 }}>Chave Pix do laboratório:</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <div style={{ flex: 1, background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.chavePix}</div>
-                  <button onClick={() => copiar(info.chavePix, 'Chave Pix copiada ✓')} style={{ padding: '10px 14px', borderRadius: 10, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE }}>Copiar</button>
+              <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1.5px solid #E8C48A', borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 14px 34px -22px rgba(122,86,40,0.55)' }}>
+                <div style={{ position: 'absolute', right: -14, top: -16, opacity: 0.06 }}><Estrela size={50} color={INK} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 21, background: 'linear-gradient(135deg, #DCF3E4, #A7E3BC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: INK }}>Pagar com Pix</div>
+                    <div style={{ fontSize: 11, color: '#78716C', marginTop: 1 }}>O código já vai com o valor exato preenchido</div>
+                  </div>
                 </div>
                 <button onClick={() => copiar(gerarPixCopiaCola(info.chavePix, Math.max(0, saldo)), `Código Pix de ${formatReais(saldo)} copiado — cole no app do seu banco ✓`)}
-                  style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>
-                  Copiar código Pix de {formatReais(Math.max(0, saldo))} (copia e cola)
+                  style={{ width: '100%', marginTop: 13, padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #22C55E, #15803D)', color: '#fff', fontWeight: 800, fontSize: 14.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 12px 26px -14px rgba(21,128,61,0.8)' }}>
+                  Copiar código Pix de {formatReais(Math.max(0, saldo))}
                 </button>
-                <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 8, lineHeight: 1.5 }}>
-                  Abra o app do seu banco → Pix → "Pix copia e cola" → cole o código — o valor já vai preenchido. Depois de pagar, o laboratório registra e seu saldo atualiza aqui.
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <div style={{ flex: 1, background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 11, padding: '9px 12px', fontSize: 12, fontWeight: 700, color: '#57534E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.chavePix}</div>
+                  <button onClick={() => copiar(info.chavePix, 'Chave Pix copiada ✓')} style={{ padding: '9px 14px', borderRadius: 11, border: `1px solid ${GOLD}`, background: 'transparent', color: '#7A6234', fontWeight: 800, fontSize: 11.5, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>Copiar chave</button>
+                </div>
+                <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 9, lineHeight: 1.5 }}>
+                  Abra o app do seu banco → Pix → "Pix copia e cola" → cole o código. Depois de pagar, o laboratório registra e seu saldo atualiza aqui.
                 </div>
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Em andamento</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#B54708', marginTop: 2 }}>{formatReais(totalAndamento)}</div>
-              </div>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Entregues</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: INK, marginTop: 2 }}>{formatReais(totalEntregue)}</div>
-              </div>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Já pago</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: VERDE, marginTop: 2 }}>{formatReais(totalPago)}</div>
-              </div>
-            </div>
+            <GraficoFinanceiro meses={mesesOrdenados} formatReais={formatReais} nomeMes={nomeMes} />
             {/* Relatório mensal: cada mês fechado com o que foi feito e o que foi pago */}
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Relatório mensal</div>
             {mesesOrdenados.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E', marginBottom: 10 }}>Assim que houver entregas, cada mês aparece aqui com o total feito e o total pago.</div>}
