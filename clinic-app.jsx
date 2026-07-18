@@ -1193,6 +1193,39 @@ function App({ dentista, email, prazoPagamento }) {
         )}
         {aba === 'previsao' && (
           <>
+            {naoEntregues.length > 0 && (() => {
+              const comPrazo = naoEntregues.filter(c => c.prazo);
+              const saemLogo = comPrazo.filter(c => diasRestantes(c.prazo) >= 0 && diasRestantes(c.prazo) <= 1).length;
+              const naSemana = comPrazo.filter(c => diasRestantes(c.prazo) >= 0 && diasRestantes(c.prazo) <= 7).length;
+              const atrasadosP = comPrazo.filter(c => diasRestantes(c.prazo) < 0).length;
+              return (
+                <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+                  <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
+                  <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08 }}><Estrela size={54} color={GOLD} /></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Estrela size={10} color={GOLD} />
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Previsão de entregas</span>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.55)', marginTop: 13 }}>Próxima entrega</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', lineHeight: 1.15 }}>{proximaEntrega ? formatDateBR(proximaEntrega.prazo) : '—'}</div>
+                  {proximaEntrega && <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proximaEntrega.paciente} • {proximaEntrega.tipoTrabalho}</div>}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: '#F5A54A', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Hoje / amanhã</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 3 }}>{saemLogo} {saemLogo === 1 ? 'trabalho' : 'trabalhos'}</div>
+                    </div>
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Próximos 7 dias</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 3 }}>{naSemana} {naSemana === 1 ? 'trabalho' : 'trabalhos'}</div>
+                    </div>
+                    <div style={{ flex: 1, background: atrasadosP > 0 ? 'rgba(220,38,38,0.16)' : 'rgba(22,163,74,0.14)', border: `1px solid ${atrasadosP > 0 ? 'rgba(248,113,113,0.35)' : 'rgba(74,222,128,0.25)'}`, borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: atrasadosP > 0 ? '#FCA5A5' : '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{atrasadosP > 0 ? 'Em atraso' : 'Prazos'}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: atrasadosP > 0 ? '#FCA5A5' : '#86EFAC', marginTop: 3 }}>{atrasadosP > 0 ? atrasadosP : 'Em dia ✓'}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             {naoEntregues.length === 0 && (
               <div style={{ ...cartao, textAlign: 'center', padding: 32 }}>
                 <div style={{ width: 52, height: 52, borderRadius: 26, background: '#DCF3E4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
@@ -1217,7 +1250,7 @@ function App({ dentista, email, prazoPagamento }) {
               const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
               const situacao = c.status === 'Pronto' ? 'Pronto — aguardando entrega' : comecou ? `Em produção • ${feitas} de ${total} etapas` : 'Na fila para começar';
               return (
-                <div key={c.id} style={{ ...cartao, cursor: 'pointer' }} onClick={() => setDetalhe(c)}>
+                <div key={c.id} style={{ ...cartao, cursor: 'pointer', borderLeft: `3px solid ${c.status === 'Pronto' ? VERDE : corE}` }} onClick={() => setDetalhe(c)}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800, fontSize: 15, color: INK }}>{c.paciente}</div>
@@ -2038,7 +2071,15 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   const arqRef = useRef(null);
   const vidRef = useRef(null);
 
-  const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', background: '#fff', boxSizing: 'border-box' };
+  const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #EEECE7', fontSize: 14, fontFamily: FONTE, outline: 'none', background: '#FAF9F7', boxSizing: 'border-box' };
+  const cartaoSec = { position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: 15, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
+  // Cabeçalho de cada passo: bolinha dourada numerada + rótulo
+  const Passo = ({ n, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+      <span style={{ width: 21, height: 21, borderRadius: 11, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 10px -4px rgba(184,147,90,0.8)' }}>{n}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</span>
+    </div>
+  );
 
   const addFoto = async (ev) => {
     const file = ev.target.files && ev.target.files[0];
@@ -2127,104 +2168,128 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Passo 1 — paciente */}
+      <div style={cartaoSec}>
+        <Passo n="1">Paciente</Passo>
         <input style={inputStyle} value={paciente} onChange={e => { setPaciente(e.target.value); setErro(''); }} placeholder="Nome do paciente *" />
-        <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
-          <option value="">{itens.length > 0 ? 'Adicionar outro item...' : 'Escolha o item *'}</option>
-          {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
-        </select>
-        {tipo && (
-          <div style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quantidade</div>
-              {(() => {
-                const t = tipos.find(x => x.nome === tipo);
-                const unit = t ? (t.valor || 0) : 0;
-                return unit > 0
-                  ? <div style={{ fontSize: 12, color: '#78716C', marginTop: 3 }}>{formatReaisG(unit)} por unidade</div>
-                  : <div style={{ fontSize: 12, color: '#A8A29E', marginTop: 3 }}>valor a combinar</div>;
-              })()}
-            </div>
-            <SeletorQtd qtd={qtd} setQtd={setQtd} />
-          </div>
-        )}
-        {tipo && (
-          <button onClick={adicionarItem} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: INK, color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>＋ Adicionar item</button>
-        )}
-        {itens.length === 0 && !tipo && (
-          <div style={{ fontSize: 11.5, color: '#A8A29E', lineHeight: 1.5 }}>Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>
-        )}
-        {itens.length > 0 && (
-          <div style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 12, overflow: 'hidden' }}>
-            {itens.map((it, idx) => {
-              const t = tipos.find(x => x.nome === it.nome);
-              const unit = t ? (t.valor || 0) : 0;
-              return (
-                <div key={it.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderTop: idx > 0 ? '1px solid #F0EFEC' : 'none' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                    <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${t.prazoDias || 5} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
-                  </div>
-                  {unit > 0 && <div style={{ fontSize: 13.5, fontWeight: 800, color: VERDE }}>{formatReaisG(unit * it.quantidade)}</div>}
-                  <button onClick={() => removerItem(it.nome)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E', fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {valorTotal > 0 && (
-          <div style={{ background: INK, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 12, color: '#A8A29E', fontWeight: 700 }}>VALOR TOTAL DO SERVIÇO</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReaisG(valorTotal)}</span>
-          </div>
-        )}
-        <textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observações: cor, dente(s), instruções..." />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
-        {[
-          [Camera, 'Foto', camRef],
-          [Video, 'Vídeo', vidRef],
-          [Image, 'Galeria', fileRef],
-          [FileText, 'Arquivo', arqRef],
-        ].map(([Icone, rotulo, ref]) => (
-          <button key={rotulo} onClick={() => ref.current && ref.current.click()}
-            style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, boxShadow: '0 8px 18px -14px rgba(28,27,25,0.3)' }}>
-            <Icone size={19} color={GOLD} strokeWidth={2.2} />
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>{rotulo}</span>
-          </button>
-        ))}
+      {/* Passo 2 — itens do trabalho */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05 }}><Estrela size={52} color={INK} /></div>
+        <Passo n="2">Itens do trabalho</Passo>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
+            <option value="">{itens.length > 0 ? 'Adicionar outro item...' : 'Escolha o item *'}</option>
+            {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
+          </select>
+          {tipo && (
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quantidade</div>
+                {(() => {
+                  const t = tipos.find(x => x.nome === tipo);
+                  const unit = t ? (t.valor || 0) : 0;
+                  return unit > 0
+                    ? <div style={{ fontSize: 12, color: '#78716C', marginTop: 3 }}>{formatReaisG(unit)} por unidade</div>
+                    : <div style={{ fontSize: 12, color: '#A8A29E', marginTop: 3 }}>valor a combinar</div>;
+                })()}
+              </div>
+              <SeletorQtd qtd={qtd} setQtd={setQtd} />
+            </div>
+          )}
+          {tipo && (
+            <button onClick={adicionarItem} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>＋ Adicionar item</button>
+          )}
+          {itens.length === 0 && !tipo && (
+            <div style={{ fontSize: 11.5, color: '#A8A29E', lineHeight: 1.5 }}>Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>
+          )}
+          {itens.length > 0 && (
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
+              {itens.map((it, idx) => {
+                const t = tipos.find(x => x.nome === it.nome);
+                const unit = t ? (t.valor || 0) : 0;
+                return (
+                  <div key={it.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderTop: idx > 0 ? '1px solid #EEECE7' : 'none' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                      <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${t.prazoDias || 5} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
+                    </div>
+                    {unit > 0 && <div style={{ fontSize: 13.5, fontWeight: 800, color: '#166B3A' }}>{formatReaisG(unit * it.quantidade)}</div>}
+                    <button onClick={() => removerItem(it.nome)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E', fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {valorTotal > 0 && (
+            <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1 }}><Estrela size={34} color={GOLD} /></div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL DO SERVIÇO</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReaisG(valorTotal)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Passo 3 — anexos */}
+      <div style={cartaoSec}>
+        <Passo n="3">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {[
+            [Camera, 'Foto', camRef],
+            [Video, 'Vídeo', vidRef],
+            [Image, 'Galeria', fileRef],
+            [FileText, 'Arquivo', arqRef],
+          ].map(([Icone, rotulo, ref]) => (
+            <button key={rotulo} onClick={() => ref.current && ref.current.click()}
+              style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #EEECE7', background: '#FAF9F7', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 17, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icone size={17} color="#7A6234" strokeWidth={2.2} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: INK }}>{rotulo}</span>
+            </button>
+          ))}
+        </div>
+        {fotos.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {fotos.map((f, i) => (
+              <div key={i} style={{ position: 'relative' }}>
+                {String(f.mime || '').startsWith('image') ? (
+                  <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
+                ) : (
+                  <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
+                    <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
+                    <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
+                  </div>
+                )}
+                <button onClick={() => setFotos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={vidRef} type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={addArquivo} />
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={arqRef} type="file" style={{ display: 'none' }} onChange={addArquivo} />
 
-      {fotos.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          {fotos.map((f, i) => (
-            <div key={i} style={{ position: 'relative' }}>
-              {String(f.mime || '').startsWith('image') ? (
-                <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
-              ) : (
-                <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
-                  <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
-                  <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
-                </div>
-              )}
-              <button onClick={() => setFotos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
-            </div>
-          ))}
-        </div>
+      {/* Passo 4 — observações */}
+      <div style={cartaoSec}>
+        <Passo n="4">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <textarea style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Cor, dente(s), instruções..." />
+      </div>
+
+      {erro && (
+        <div style={{ background: '#FCE4E4', border: '1px solid #F5B5B5', borderRadius: 12, padding: '11px 13px', color: '#B42318', fontSize: 12.5, fontWeight: 700 }}>{erro}</div>
       )}
 
-      {erro && <div style={{ color: '#B42318', fontSize: 12, fontWeight: 700, marginTop: 12 }}>{erro}</div>}
-
-      <button onClick={enviar} disabled={enviando} style={{ width: '100%', marginTop: 16, padding: 15, borderRadius: 14, border: 'none', background: enviando ? '#A8A29E' : VERDE, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: FONTE }}>
-        {enviando ? 'Enviando...' : 'Enviar para produção'}
+      <button onClick={enviar} disabled={enviando}
+        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: enviando ? '#D6D3D1' : 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: enviando ? 'none' : '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+        {enviando ? 'Enviando...' : <>Enviar para produção <span style={{ fontSize: 17 }}>→</span></>}
       </button>
-      <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 10, lineHeight: 1.5, textAlign: 'center' }}>
+      <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, textAlign: 'center' }}>
         O trabalho entra direto na fila de produção do laboratório, com prazo calculado automaticamente — e você acompanha cada etapa por aqui.
       </div>
     </div>
