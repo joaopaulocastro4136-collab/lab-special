@@ -1,0 +1,21 @@
+# Checagem rápida: mostra QUAIS segredos existem no cofre e o tamanho de cada um.
+# Nunca imprime o valor — só o número de caracteres (0 = não existe/vazio).
+name: Checagem de segredos
+
+on:
+  push:
+    branches: [claude/special-lab-test-mode-9jrxb1]
+    paths: ['.github/workflows/checar-segredos.yml']
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confere os segredos (só o tamanho, nunca o valor)
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GK: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "FIREBASE_SERVICE_ACCOUNT: ${#SA} caracteres"
+          echo "GEMINI_API_KEY: ${#GK} caracteres"
