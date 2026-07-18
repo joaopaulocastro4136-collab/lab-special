@@ -46,7 +46,12 @@ jobs:
             echo "::error::Falta o segredo GEMINI_API_KEY no GitHub (Settings → Secrets → Actions)."
             exit 1
           fi
-          printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" > functions/.env
+          # A chave do Gemini é UMA linha começando com AIza — barra colagens erradas (ex.: o .json do Firebase)
+          if ! printf '%s' "$GEMINI_API_KEY" | tr -d '\r' | grep -qE '^AIza[0-9A-Za-z_-]{10,}$'; then
+            echo "::error::O segredo GEMINI_API_KEY não parece uma chave do Gemini (deve ser UMA linha começando com AIza...). Atualize o segredo no GitHub colando a chave criada em aistudio.google.com/apikey."
+            exit 1
+          fi
+          printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" | tr -d '\r' > functions/.env
           echo "Chave entregue via functions/.env (não vai para o git) ✓"
 
       - name: Publica as funções
