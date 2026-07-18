@@ -9,6 +9,9 @@ name: Funções → Firebase
 
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/special-lab-test-mode-9jrxb1]
+    paths: ['functions/**', '.github/workflows/functions.yml']
 
 jobs:
   deploy:
