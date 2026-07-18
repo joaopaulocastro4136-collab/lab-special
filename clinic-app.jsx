@@ -419,8 +419,8 @@ function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
   return (
     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 10, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
       {/* brilho dourado de fundo + estrela da marca em marca d'água */}
-      <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
-      <div style={{ position: 'absolute', right: 16, bottom: 8, opacity: 0.09 }}><Estrela size={52} color={GOLD} /></div>
+      <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', right: 16, bottom: 8, opacity: 0.09, pointerEvents: 'none' }}><Estrela size={52} color={GOLD} /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Estrela size={10} color={GOLD} />
         <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Seus trabalhos</div>
@@ -703,7 +703,7 @@ function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
   const selecionado = ult.find(([m]) => m === sel);
   return (
     <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: '16px 16px 12px', marginBottom: 12, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
-      <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05 }}><Estrela size={52} color={INK} /></div>
+      <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ flex: 1, fontSize: 12, fontWeight: 800, color: INK, letterSpacing: '0.04em' }}>Movimento dos últimos meses</div>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#78716C' }}>
@@ -957,7 +957,7 @@ function App({ dentista, email, prazoPagamento }) {
   const bannerIA = (
     <button onClick={() => setIaAberta(true)}
       style={{ width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden', borderRadius: 18, marginBottom: 18, padding: 15, background: 'linear-gradient(120deg, #2A2116, #1C1B19 60%, #33281A)', border: '1px solid rgba(184,147,90,0.5)', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 16px 36px -20px rgba(122,86,40,0.65)' }}>
-      <div style={{ position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 65%)' }} />
+      <div style={{ position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 65%)', pointerEvents: 'none' }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.9)' }}>
           <Sparkles size={21} color={INK} />
@@ -1200,8 +1200,8 @@ function App({ dentista, email, prazoPagamento }) {
               const atrasadosP = comPrazo.filter(c => diasRestantes(c.prazo) < 0).length;
               return (
                 <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
-                  <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
-                  <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08 }}><Estrela size={54} color={GOLD} /></div>
+                  <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={54} color={GOLD} /></div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Estrela size={10} color={GOLD} />
                     <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Previsão de entregas</span>
@@ -1278,8 +1278,8 @@ function App({ dentista, email, prazoPagamento }) {
           <>
             {/* Cartão-herói do saldo: identidade da marca (preto + dourado + estrela em marca d'água) */}
             <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
-              <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
-              <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08 }}><Estrela size={58} color={GOLD} /></div>
+              <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={58} color={GOLD} /></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Estrela size={10} color={GOLD} />
                 <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Financeiro</span>
@@ -1316,7 +1316,7 @@ function App({ dentista, email, prazoPagamento }) {
             {/* Pix: mesmo funcionamento de sempre (chave + código com valor exato), visual premium */}
             {info.chavePix && saldo > 0 && (
               <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1.5px solid #E8C48A', borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 14px 34px -22px rgba(122,86,40,0.55)' }}>
-                <div style={{ position: 'absolute', right: -14, top: -16, opacity: 0.06 }}><Estrela size={50} color={INK} /></div>
+                <div style={{ position: 'absolute', right: -14, top: -16, opacity: 0.06, pointerEvents: 'none' }}><Estrela size={50} color={INK} /></div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 21, background: 'linear-gradient(135deg, #DCF3E4, #A7E3BC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1433,10 +1433,99 @@ function App({ dentista, email, prazoPagamento }) {
   );
 }
 
+// ─── Visor de imagem em tela cheia: pinça para zoom, arrastar, girar e compartilhar ───
+function VisorImagem({ nome, src, aoFechar, aoAvisar }) {
+  const [t, setT] = useState({ escala: 1, rot: 0, x: 0, y: 0 });
+  const gesto = useRef({ modo: null, ultimoToque: 0 });
+  useGestoVoltar(aoFechar);
+
+  const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const aoIniciar = (e) => {
+    if (e.touches.length === 2) {
+      gesto.current = { ...gesto.current, modo: 'pinca', d0: dist(e.touches), escala0: t.escala };
+    } else if (e.touches.length === 1) {
+      gesto.current = { ...gesto.current, modo: 'arrasto', x0: e.touches[0].clientX, y0: e.touches[0].clientY, tx0: t.x, ty0: t.y };
+    }
+  };
+  const aoMover = (e) => {
+    const g = gesto.current;
+    if (g.modo === 'pinca' && e.touches.length === 2) {
+      const esc = Math.max(1, Math.min(6, g.escala0 * (dist(e.touches) / g.d0)));
+      setT(v => ({ ...v, escala: esc }));
+    } else if (g.modo === 'arrasto' && e.touches.length === 1) {
+      setT(v => ({ ...v, x: g.tx0 + (e.touches[0].clientX - g.x0), y: g.ty0 + (e.touches[0].clientY - g.y0) }));
+    }
+  };
+  const aoSoltar = () => {
+    const agora = Date.now();
+    if (gesto.current.modo === 'arrasto') {
+      const g = gesto.current;
+      const moveu = Math.hypot(t.x - g.tx0, t.y - g.ty0) > 8;
+      if (!moveu) {
+        // toque duplo: alterna zoom 1x ↔ 2.5x
+        if (agora - gesto.current.ultimoToque < 300) {
+          setT(v => v.escala > 1 ? { ...v, escala: 1, x: 0, y: 0 } : { ...v, escala: 2.5 });
+        }
+        gesto.current.ultimoToque = agora;
+      }
+    }
+    gesto.current.modo = null;
+  };
+
+  const compartilhar = async () => {
+    try {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      const file = new File([blob], nome || 'foto.jpg', { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: nome });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = nome || 'foto.jpg';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch (e) { if (e && e.name !== 'AbortError' && aoAvisar) aoAvisar('Não consegui compartilhar esta foto.'); }
+  };
+
+  const btnRedondo = { width: 46, height: 46, borderRadius: 23, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(30,28,25,0.85)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTE };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: '#0D0C0B', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: FONTE }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', touchAction: 'none' }}
+        onTouchStart={aoIniciar} onTouchMove={aoMover} onTouchEnd={aoSoltar}
+        onWheel={(e) => setT(v => ({ ...v, escala: Math.max(1, Math.min(6, v.escala - e.deltaY / 400)) }))}
+        onDoubleClick={() => setT(v => v.escala > 1 ? { ...v, escala: 1, x: 0, y: 0 } : { ...v, escala: 2.5 })}>
+        <img src={src} alt={nome} draggable={false}
+          style={{ maxWidth: '100vw', maxHeight: '100vh', transform: `translate(${t.x}px, ${t.y}px) scale(${t.escala}) rotate(${t.rot}deg)`, transition: gesto.current.modo ? 'none' : 'transform 0.18s ease', userSelect: 'none' }} />
+      </div>
+      {/* topo: nome + fechar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', paddingTop: 'calc(10px + env(safe-area-inset-top))', background: 'linear-gradient(180deg, rgba(0,0,0,0.7), transparent)' }}>
+        <Estrela size={11} color={GOLD} />
+        <span style={{ flex: 1, minWidth: 0, color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+        <button onClick={aoFechar} style={{ ...btnRedondo, width: 38, height: 38, fontSize: 17, fontWeight: 800 }}>×</button>
+      </div>
+      {/* rodapé: girar, ajustar, compartilhar */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '14px 12px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', background: 'linear-gradient(0deg, rgba(0,0,0,0.7), transparent)' }}>
+        <button onClick={() => setT(v => ({ ...v, rot: (v.rot + 90) % 360 }))} title="Girar" style={btnRedondo}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v6h-6" /></svg>
+        </button>
+        <button onClick={() => setT({ escala: 1, rot: 0, x: 0, y: 0 })} title="Ajustar" style={{ ...btnRedondo, width: 'auto', padding: '0 18px', fontSize: 12.5, fontWeight: 800, color: GOLD }}>Ajustar</button>
+        <button onClick={compartilhar} title="Compartilhar" style={btnRedondo}>
+          <Share2 size={18} color="#fff" />
+        </button>
+      </div>
+      <div style={{ position: 'absolute', bottom: 'calc(78px + env(safe-area-inset-bottom))', left: 0, right: 0, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, pointerEvents: 'none' }}>
+        pinça para zoom • arraste para mover • toque duplo amplia
+      </div>
+    </div>
+  );
+}
+
 function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const [imagens, setImagens] = useState({});
   const [videoAberto, setVideoAberto] = useState(null);
   const [stlAberto, setStlAberto] = useState(null);
+  const [fotoAberta, setFotoAberta] = useState(null); // visor de imagem em tela cheia
+  const [baixando, setBaixando] = useState(null); // id do anexo sendo carregado
   const [editando, setEditando] = useState(false);
   const semPrefixoQtd = (t) => String(t || '').replace(/^Quantidade: \d+ unidades?\. ?/, '');
   const [pacE, setPacE] = useState(caso.paciente);
@@ -1476,8 +1565,9 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     else setEditando(false);
   };
 
-  // Deslizar da borda esquerda: fecha o 3D/vídeo aberto ou o detalhe (respeitando a trava de salvar)
+  // Deslizar da borda esquerda: fecha o visor/3D/vídeo aberto ou o detalhe (respeitando a trava de salvar)
   useGestoVoltar(() => {
+    if (fotoAberta) { setFotoAberta(null); return; }
     if (stlAberto) { setStlAberto(null); return; }
     if (videoAberto) { setVideoAberto(null); return; }
     tentarFechar();
@@ -1642,35 +1732,47 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const abrirAnexo = async (a) => {
     const ehVideo = String(a.mime || '').startsWith('video');
     const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
+    const ehImagem = String(a.mime || '').startsWith('image');
     // Formato novo: o anexo já tem o link direto do armazém — abre na hora, sem baixar antes
     if (a.url) {
       if (ehVideo) { setVideoAberto({ nome: a.nome, dataURL: a.url }); return; }
       if (ehSTL) { setStlAberto({ nome: a.nome, url: a.url }); return; }
-      setImagens(m => ({ ...m, [a.id]: m[a.id] ? null : a.url }));
+      if (ehImagem) { setFotoAberta({ nome: a.nome, src: a.url }); return; }
+      // Documento: baixa/abre direto
+      const abre = document.createElement('a');
+      abre.href = a.url; abre.download = a.nome; abre.target = '_blank'; abre.rel = 'noopener';
+      document.body.appendChild(abre); abre.click(); document.body.removeChild(abre);
       return;
     }
-    if (ehVideo) {
-      // Vídeo abre no reprodutor em tela cheia
+    // Formato antigo (guardado no banco): baixa e abre
+    setBaixando(a.id);
+    try {
+      if (ehVideo) {
+        const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
+        if (dataURL) {
+          setImagens(m => ({ ...m, [a.id]: dataURL }));
+          setVideoAberto({ nome: a.nome, dataURL });
+        }
+        return;
+      }
+      if (ehSTL) {
+        // STL abre o visualizador 3D NA HORA; o arquivo baixa com o "carregando" já na tela
+        setStlAberto({ nome: a.nome, dataURL: imagens[a.id] || null });
+        if (!imagens[a.id]) {
+          const dataURL = ((await lerAnexo(a.id)) || {}).dataURL;
+          if (dataURL) setStlAberto(s => s ? { nome: a.nome, dataURL } : s);
+          else setStlAberto(null);
+        }
+        return;
+      }
       const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
-      if (dataURL) {
-        setImagens(m => ({ ...m, [a.id]: dataURL }));
-        setVideoAberto({ nome: a.nome, dataURL });
-      }
-      return;
-    }
-    if (ehSTL) {
-      // STL abre o visualizador 3D NA HORA; o arquivo baixa com o "carregando" já na tela
-      setStlAberto({ nome: a.nome, dataURL: imagens[a.id] || null });
-      if (!imagens[a.id]) {
-        const dataURL = ((await lerAnexo(a.id)) || {}).dataURL;
-        if (dataURL) setStlAberto(s => s ? { nome: a.nome, dataURL } : s);
-        else setStlAberto(null);
-      }
-      return;
-    }
-    if (imagens[a.id]) { setImagens(m => ({ ...m, [a.id]: null })); return; }
-    const dados = await lerAnexo(a.id);
-    if (dados && dados.dataURL) setImagens(m => ({ ...m, [a.id]: dados.dataURL }));
+      if (!dataURL) return;
+      setImagens(m => ({ ...m, [a.id]: dataURL }));
+      if (ehImagem) { setFotoAberta({ nome: a.nome, src: dataURL }); return; }
+      const abre = document.createElement('a');
+      abre.href = dataURL; abre.download = a.nome;
+      document.body.appendChild(abre); abre.click(); document.body.removeChild(abre);
+    } finally { setBaixando(null); }
   };
 
   // Dentista aprova um arquivo que o laboratório pediu p/ avaliar — o lab é avisado
@@ -1699,21 +1801,42 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       <div style={{ background: '#F5F4F0', borderRadius: (typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1024px)').matches) ? 22 : '22px 22px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 30px' }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 44, height: 4, borderRadius: 2, background: '#D6D3D1', margin: '0 auto 16px' }} />
         {!editando ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 19, color: INK }}>{caso.paciente}</div>
-              <div style={{ fontSize: 13, color: '#78716C', marginTop: 2 }}>
-                {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
-              </div>
+          <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '17px 16px 15px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 16px 38px -20px rgba(28,27,25,0.6)' }}>
+            <div style={{ position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', right: 12, bottom: 2, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={44} color={GOLD} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Estrela size={9} color={GOLD} />
+              <span style={{ flex: 1, fontSize: 9.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Paciente</span>
+              <EtiquetaStatus status={caso.status} discreta />
             </div>
-            <EtiquetaStatus status={caso.status} discreta />
-            <button onClick={iniciarEdicao} style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 10, padding: '7px 12px', fontSize: 12, fontWeight: 800, color: INK, cursor: 'pointer', fontFamily: FONTE }}>✏️ Editar</button>
+            <div style={{ fontWeight: 800, fontSize: 21, color: '#fff', marginTop: 8, lineHeight: 1.2 }}>{caso.paciente}</div>
+            <div style={{ fontSize: 12.5, color: GOLD, fontWeight: 700, marginTop: 3 }}>
+              {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+              {caso.prazo && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '6px 11px', fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>
+                  <CalendarClock size={12} color={GOLD} /> entrega {formatDateBR(caso.prazo)}
+                </span>
+              )}
+              {caso.valor > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '6px 11px', fontSize: 11, color: GOLD, fontWeight: 800 }}>
+                  {formatReaisG(caso.valor)}
+                </span>
+              )}
+              <span style={{ flex: 1 }} />
+              <button onClick={iniciarEdicao} style={{ background: 'transparent', border: `1.5px solid ${GOLD}`, borderRadius: 11, padding: '7px 13px', fontSize: 11.5, fontWeight: 800, color: GOLD, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>✏️ Editar</button>
+            </div>
           </div>
         ) : (
-          <div style={{ background: '#fff', border: `2px solid ${GOLD}`, borderRadius: 16, padding: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#7A6234', marginBottom: 10 }}>✏️ EDITANDO ORDEM DE TRABALHO</div>
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1.5px solid #E8C48A', borderRadius: 18, padding: 15, boxShadow: '0 14px 34px -22px rgba(122,86,40,0.55)' }}>
+            <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 13, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>✏️</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Editando trabalho</span>
+            </div>
             <input value={pacE} onChange={e => setPacE(e.target.value)} placeholder="Nome do paciente"
-              style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', marginBottom: 10 }} />
+              style={{ width: '100%', padding: '12px 13px', borderRadius: 12, border: '1px solid #EEECE7', background: '#FAF9F7', fontSize: 14.5, fontWeight: 700, fontFamily: FONTE, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }} />
             <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Itens do trabalho</div>
             {caso.origem === 'clinica' && caso.status === 'Em Produção' && (
               <select value={tipoAdd} onChange={e => setTipoAdd(e.target.value)}
@@ -1751,8 +1874,9 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
             {(() => {
               const total = itensE.reduce((s, i) => s + unitDoItem(i.nome) * i.quantidade, 0);
               return total > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: INK, borderRadius: 11, padding: '11px 13px', marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>VALOR TOTAL</span>
+                <div style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 10 }}>
+                  <div style={{ position: 'absolute', right: 40, top: -8, opacity: 0.1, pointerEvents: 'none' }}><Estrela size={30} color={GOLD} /></div>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL</span>
                   <span style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{formatReaisG(total)}</span>
                 </div>
               ) : (
@@ -1831,41 +1955,76 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         )}
 
         {(caso.anexos || []).length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4' }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Arquivos e fotos</div>
-            {caso.anexos.map(a => {
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', borderRadius: 18, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4', boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+            <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: INK, letterSpacing: '0.04em' }}>Arquivos e fotos</span>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 999, padding: '2px 8px' }}>{caso.anexos.length}</span>
+            </div>
+
+            {/* Pedidos de aprovação em destaque */}
+            {caso.anexos.filter(a => a.aprovacao?.status === 'pendente').map(a => {
               const ehVideo = String(a.mime || '').startsWith('video');
               const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
               return (
-                <div key={a.id} style={{ marginBottom: 8 }}>
-                  <button onClick={() => abrirAnexo(a)} style={{ width: '100%', textAlign: 'left', background: a.aprovacao?.status === 'pendente' ? '#FDF6EC' : '#FAF9F7', border: a.aprovacao?.status === 'pendente' ? '1.5px solid #E8C48A' : '1px solid #E7E5E4', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: FONTE }}>
-                    {ehVideo ? '🎥' : (ehSTL ? '🦷' : '📎')} {a.nome} {ehVideo ? <span style={{ color: GOLD }}>▶ tocar</span> : (ehSTL ? <span style={{ color: GOLD }}>ver em 3D</span> : (imagens[a.id] ? '▲' : '▼'))}
-                  </button>
-                  {a.aprovacao?.status === 'pendente' && (
-                    <div style={{ background: '#FDF6EC', border: '1px solid #E8C48A', borderRadius: 12, padding: '10px 12px', marginTop: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#7A6234', marginBottom: 8 }}>👍 O laboratório pediu sua aprovação deste arquivo. Abra, confira e aprove:</div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => abrirAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
-                          {ehSTL ? 'Ver em 3D' : (ehVideo ? 'Ver o vídeo' : 'Abrir')}
-                        </button>
-                        <button onClick={() => aprovarAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
-                          ✓ Aprovar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {a.aprovacao?.status === 'aprovado' && (
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#166B3A', marginTop: 5 }}>✓ Você aprovou este arquivo{a.aprovacao.respondidaEm ? ` em ${formatDateBR(a.aprovacao.respondidaEm)}` : ''}</div>
-                  )}
-                  {imagens[a.id] && String(a.mime || '').startsWith('image') && (
-                    <img src={imagens[a.id]} alt={a.nome} style={{ width: '100%', borderRadius: 12, marginTop: 8 }} />
-                  )}
-                  {imagens[a.id] && !String(a.mime || '').startsWith('image') && !ehVideo && (
-                    <a href={imagens[a.id]} download={a.nome} style={{ display: 'block', marginTop: 8, fontSize: 13, color: GOLD, fontWeight: 700 }}>⬇ Baixar arquivo</a>
-                  )}
+                <div key={'ap-' + a.id} style={{ background: '#FDF6EC', border: '1.5px solid #E8C48A', borderRadius: 14, padding: '11px 12px', marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#7A6234', marginBottom: 8 }}>👍 O laboratório pediu sua aprovação: <b>{a.nome}</b></div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => abrirAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E8C48A', background: '#fff', color: INK, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                      {ehSTL ? 'Ver em 3D' : (ehVideo ? 'Ver o vídeo' : 'Abrir')}
+                    </button>
+                    <button onClick={() => aprovarAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                      ✓ Aprovar
+                    </button>
+                  </div>
                 </div>
               );
             })}
+
+            {/* Grade de miniaturas: foto mostra a foto; vídeo, 3D e documento com cartões próprios */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {caso.anexos.map(a => {
+                const ehVideo = String(a.mime || '').startsWith('video');
+                const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
+                const ehImagem = String(a.mime || '').startsWith('image');
+                const miniatura = ehImagem ? (a.url || imagens[a.id]) : null;
+                const aprovado = a.aprovacao?.status === 'aprovado';
+                const pendente = a.aprovacao?.status === 'pendente';
+                return (
+                  <button key={a.id} onClick={() => abrirAnexo(a)}
+                    style={{ position: 'relative', aspectRatio: '1', borderRadius: 14, overflow: 'hidden', border: pendente ? '2px solid #E8C48A' : '1px solid #E7E5E4', background: ehVideo ? '#1C1B19' : (ehSTL ? '#F6EEDD' : '#FAF9F7'), cursor: 'pointer', padding: 0, fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                    {miniatura ? (
+                      <img src={miniatura} alt={a.nome} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 26 }}>{ehVideo ? '🎥' : ehSTL ? '🦷' : ehImagem ? '🖼' : '📄'}</span>
+                        <span style={{ fontSize: 8.5, fontWeight: 700, color: ehVideo ? 'rgba(255,255,255,0.7)' : '#78716C', maxWidth: '86%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
+                      </>
+                    )}
+                    {(ehVideo || ehSTL) && (
+                      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ width: 36, height: 36, borderRadius: 18, background: ehVideo ? 'rgba(255,255,255,0.92)' : 'rgba(28,27,25,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: ehVideo ? 14 : 9.5, fontWeight: 800, color: ehVideo ? INK : GOLD, boxShadow: '0 6px 16px rgba(0,0,0,0.3)' }}>
+                          {ehVideo ? '▶' : '3D'}
+                        </span>
+                      </span>
+                    )}
+                    {miniatura && (
+                      <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 6px 5px', background: 'linear-gradient(0deg, rgba(0,0,0,0.55), transparent)', fontSize: 8.5, fontWeight: 700, color: 'rgba(255,255,255,0.9)', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
+                    )}
+                    {aprovado && (
+                      <span style={{ position: 'absolute', top: 5, right: 5, width: 20, height: 20, borderRadius: 10, background: VERDE, color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.25)' }}>✓</span>
+                    )}
+                    {pendente && (
+                      <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 13 }}>👍</span>
+                    )}
+                    {baixando === a.id && (
+                      <span style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#7A6234' }}>abrindo...</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 10, textAlign: 'center' }}>Toque na foto para ampliar • no vídeo para assistir • no 3D para girar a peça</div>
           </div>
         )}
 
@@ -1917,6 +2076,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
           </div>
         )}
 
+        {fotoAberta && <VisorImagem nome={fotoAberta.nome} src={fotoAberta.src} aoFechar={() => setFotoAberta(null)} aoAvisar={aoAvisar} />}
         {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} url={stlAberto.url} onFechar={() => setStlAberto(null)} />}
         {videoAberto && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'black', display: 'flex', flexDirection: 'column' }} onClick={() => setVideoAberto(null)}>
@@ -2177,7 +2337,7 @@ function NovoPedido({ dentista, info, aoEnviar }) {
 
       {/* Passo 2 — itens do trabalho */}
       <div style={cartaoSec}>
-        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05 }}><Estrela size={52} color={INK} /></div>
+        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
         <Passo n="2">Itens do trabalho</Passo>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
@@ -2225,7 +2385,7 @@ function NovoPedido({ dentista, info, aoEnviar }) {
           )}
           {valorTotal > 0 && (
             <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1 }}><Estrela size={34} color={GOLD} /></div>
+              <div style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1, pointerEvents: 'none' }}><Estrela size={34} color={GOLD} /></div>
               <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL DO SERVIÇO</span>
               <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReaisG(valorTotal)}</span>
             </div>

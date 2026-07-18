@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/special-lab-test-mode-9jrxb1]
-    paths: ['functions/**', '.github/workflows/functions.yml']
+    paths: ['functions/**', '.github/workflows/functions.yml', 'abrir-porta-funcao.mjs']
 
 jobs:
   deploy:
@@ -56,3 +56,6 @@ jobs:
 
       - name: Publica as funções
         run: npx firebase-tools deploy --only functions --project laboratorio-special --non-interactive --force
+
+      - name: Abre a porta da IA (invocação pública, com login checado dentro da função)
+        run: node abrir-porta-funcao.mjs
