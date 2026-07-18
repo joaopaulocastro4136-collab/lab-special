@@ -1,0 +1,51 @@
+# Fábrica das Cloud Functions: publica o "cérebro" do servidor (push + IA Special).
+# Precisa de 2 segredos no GitHub (Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT — o conteúdo do .json de conta de serviço do Firebase
+#     (Console do Firebase → Configurações do projeto → Contas de serviço → Gerar nova chave privada)
+#   GEMINI_API_KEY — a chave da IA criada em aistudio.google.com/apikey (opcional:
+#     se estiver vazia, o robô mantém a que já estiver gravada no projeto)
+# Rodar manualmente: aba Actions → "Funções → Firebase" → Run workflow.
+name: Funções → Firebase
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prepara a credencial do Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT no GitHub (Settings → Secrets → Actions)."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: Instala dependências das funções
+        run: cd functions && npm ci
+
+      - name: Grava a chave da IA (Gemini) no cofre do projeto
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            printf '%s' "$GEMINI_API_KEY" | npx firebase-tools functions:secrets:set GEMINI_API_KEY \
+              --project laboratorio-special --data-file=- --non-interactive --force
+            echo "Chave da IA gravada ✓"
+          else
+            echo "Sem GEMINI_API_KEY no GitHub — mantendo a chave já gravada no projeto."
+          fi
+
+      - name: Publica as funções
+        run: npx firebase-tools deploy --only functions --project laboratorio-special --non-interactive --force
