@@ -10,6 +10,7 @@ import {
   initializeFirestore, persistentLocalCache, collection, doc,
   getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles } from 'lucide-react';
 import logoMarca from './logo-special.png';
@@ -38,6 +39,7 @@ const auth = ehIosNativo
   ? initializeAuth(fbApp, { persistence: indexedDBLocalPersistence })
   : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
+const funcoes = getFunctions(fbApp, 'southamerica-east1');
 
 const docKV = (k) => doc(db, 'labs', LAB, 'kv', k);
 
@@ -481,60 +483,36 @@ function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
   );
 }
 
-// ─── IA Special: simulação de sorriso processada 100% no aparelho (sem custo por uso) ───
-// Realça o sorriso clareando os tons de dente da foto: cada pixel claro/amarelado
-// caminha para um branco natural conforme a intensidade escolhida.
-function simularSorriso(dataURL, intensidade) {
-  return new Promise((res, rej) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const MAX = 1400;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) { const r = Math.min(MAX / width, MAX / height); width = Math.round(width * r); height = Math.round(height * r); }
-      const c = document.createElement('canvas');
-      c.width = width; c.height = height;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-      const im = ctx.getImageData(0, 0, width, height);
-      const p = im.data;
-      const k = intensidade / 100;
-      const suave = (x) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
-      for (let i = 0; i < p.length; i += 4) {
-        const r = p[i], g = p[i + 1], b = p[i + 2];
-        // dente: claro, pouco saturado e puxado pro amarelo (azul é o canal mais baixo)
-        if (b > r || b > g * 1.08) continue;
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        const maxc = Math.max(r, g, b);
-        const sat = maxc === 0 ? 0 : (maxc - Math.min(r, g, b)) / maxc;
-        // Pele é bem mais avermelhada que dente (verde fica longe do vermelho) — protege rosto e gengiva
-        const wDente = r === 0 ? 0 : suave((g / r - 0.82) / 0.1);
-        const w = suave((lum - 95) / 70) * suave((0.5 - sat) / 0.28) * wDente;
-        if (w <= 0.02) continue;
-        const alvo = Math.min(255, lum * 1.06 + 34); // branco natural, sem estourar
-        const f = w * k;
-        p[i] = r + (alvo - r) * f;
-        p[i + 1] = g + (alvo - g) * f;
-        p[i + 2] = b + (alvo - b) * f * 1.15; // azul sobe um pouco mais: neutraliza o amarelado
-      }
-      ctx.putImageData(im, 0, 0);
-      res(c.toDataURL('image/jpeg', 0.92));
-    };
-    img.onerror = () => rej(new Error('foto inválida'));
-    img.src = dataURL;
-  });
+// ─── IA Special: transformador de sorriso (forma + simetria + cor) ───
+// A foto vai com segurança para a Cloud Function do laboratório, que usa IA
+// generativa para redesenhar os dentes — alinhamento, simetria, proporção e o
+// tom escolhido — e devolve a foto transformada.
+const TONS_IA = [
+  { rotulo: 'Mais claro', valor: 'claro', cor: '#FDFDFB' },
+  { rotulo: 'Natural', valor: 'natural', cor: '#F2ECDC' },
+  { rotulo: 'Mais escuro', valor: 'escuro', cor: '#E3D5B8' },
+];
+
+async function transformarSorrisoNaNuvem(fotoDataURL, tom) {
+  const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
+  const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+  return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
 }
 
-const NIVEIS_IA = [
-  { rotulo: 'Suave', valor: 40 },
-  { rotulo: 'Natural', valor: 65 },
-  { rotulo: 'Máximo', valor: 90 },
-];
+function mensagemErroIA(e) {
+  const codigo = String((e && e.code) || '');
+  if (codigo.includes('resource-exhausted')) return 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.';
+  if (codigo.includes('unauthenticated')) return 'Entre na sua conta para usar a IA Special.';
+  if (codigo.includes('not-found') || codigo.includes('unimplemented')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
+  if (codigo.includes('invalid-argument')) return 'Essa foto não serviu. Tente uma foto mais nítida do sorriso.';
+  return 'Não consegui transformar agora. Verifique a internet e tente de novo.';
+}
 
 function IASpecial({ aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
-  const [intensidade, setIntensidade] = useState(65);
+  const [tom, setTom] = useState('natural');
   const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
   const inputRef = useRef(null);
   useGestoVoltar(aoFechar);
@@ -551,18 +529,19 @@ function IASpecial({ aoFechar, aoAvisar }) {
     } catch (err) { aoAvisar('Não consegui ler essa foto. Tente outra.'); }
   };
 
-  const gerar = async (nivel) => {
+  const gerar = async (tomNovo) => {
     if (!foto || processando) return;
-    const alvo = nivel ?? intensidade;
-    setIntensidade(alvo);
+    const alvo = tomNovo ?? tom;
+    setTom(alvo);
     setProcessando(true);
-    // um respiro para a análise aparecer na tela (o processamento em si é instantâneo)
-    await new Promise(r => setTimeout(r, 1100));
     try {
-      const out = await simularSorriso(foto, alvo);
+      const out = await transformarSorrisoNaNuvem(foto, alvo);
       setResultado(out);
       setCorte(50);
-    } catch (e) { aoAvisar('Não consegui processar essa foto. Tente outra.'); }
+    } catch (e) {
+      console.error('IA Special', e);
+      aoAvisar(mensagemErroIA(e));
+    }
     setProcessando(false);
   };
 
@@ -604,7 +583,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
               <span style={{ fontSize: 17, fontWeight: 800, color: '#fff' }}>IA Special</span>
               <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>BETA</span>
             </div>
-            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>Simulação de clareamento do sorriso</div>
+            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>Transformação de sorriso com IA</div>
           </div>
         </div>
 
@@ -619,7 +598,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 6, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria.<br />Quanto mais nítido o sorriso, melhor o resultado.</div>
             </button>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              {[['📸', 'Foto do paciente sorrindo'], ['✨', 'A IA clareia os dentes na hora'], ['📲', 'Salve e mostre ao paciente']].map(([ic, tx]) => (
+              {[['📸', 'Foto do paciente sorrindo'], ['✨', 'A IA redesenha: forma, simetria e alinhamento'], ['🎨', 'Você escolhe o tom da cor']].map(([ic, tx]) => (
                 <div key={tx} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 10px', textAlign: 'center' }}>
                   <div style={{ fontSize: 20 }}>{ic}</div>
                   <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{tx}</div>
@@ -650,8 +629,8 @@ function IASpecial({ aoFechar, aoAvisar }) {
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,12,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', left: 0, right: 0, height: 3, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, animation: 'iaVarredura 2.2s ease-in-out infinite', boxShadow: `0 0 18px ${GOLD}` }} />
                   <div style={{ animation: 'iaPulso 1.3s ease-in-out infinite' }}><Estrela size={30} color={GOLD} /></div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', marginTop: 14 }}>IA Special analisando o sorriso...</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 4 }}>realçando os dentes da foto</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', marginTop: 14 }}>IA Special redesenhando o sorriso...</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 4 }}>alinhando forma, simetria e cor — leva alguns segundos</div>
                 </div>
               )}
             </div>
@@ -660,19 +639,24 @@ function IASpecial({ aoFechar, aoAvisar }) {
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              {NIVEIS_IA.map(n => (
-                <button key={n.valor} onClick={() => gerar(n.valor)} disabled={processando}
-                  style={{ flex: 1, padding: '11px 0', borderRadius: 12, fontFamily: FONTE, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', border: intensidade === n.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: intensidade === n.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: intensidade === n.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Tom dos dentes</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {TONS_IA.map(n => (
+                <button key={n.valor} onClick={() => resultado ? gerar(n.valor) : setTom(n.valor)} disabled={processando}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontFamily: FONTE, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, border: tom === n.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: tom === n.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: tom === n.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+                  <span style={{ width: 13, height: 13, borderRadius: 7, background: n.cor, border: '1px solid rgba(0,0,0,0.25)', flexShrink: 0 }} />
                   {n.rotulo}
                 </button>
               ))}
             </div>
+            {resultado && !processando && (
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 7 }}>Toque em outro tom para gerar de novo com ele</div>
+            )}
 
             {!resultado && (
               <button onClick={() => gerar()} disabled={processando}
                 style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 16, fontSize: 15, opacity: processando ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
-                <Sparkles size={18} /> {processando ? 'Gerando...' : 'Gerar simulação'}
+                <Sparkles size={18} /> {processando ? 'Transformando...' : 'Transformar sorriso'}
               </button>
             )}
 
@@ -696,8 +680,8 @@ function IASpecial({ aoFechar, aoAvisar }) {
         )}
 
         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', lineHeight: 1.55, textAlign: 'center', marginTop: 18 }}>
-          Simulação ilustrativa gerada no seu aparelho, sem custo e sem enviar a foto para a internet.
-          O resultado real do tratamento depende do planejamento clínico com o laboratório.
+          A foto é enviada com segurança para a IA do laboratório e usada apenas nesta simulação.
+          O resultado é ilustrativo — o tratamento real depende do planejamento clínico com o Laboratório Special.
         </div>
       </div>
       <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
@@ -938,7 +922,7 @@ function App({ dentista, email, prazoPagamento }) {
             <span style={{ fontSize: 15.5, fontWeight: 800, color: '#fff' }}>IA Special</span>
             <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>NOVO</span>
           </div>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.65)', marginTop: 2.5, lineHeight: 1.4 }}>Envie a foto do sorriso do paciente e veja o clareamento na hora</div>
+          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.65)', marginTop: 2.5, lineHeight: 1.4 }}>Transforme o sorriso do paciente: alinhamento, simetria e cor</div>
         </div>
         <span style={{ color: GOLD, fontSize: 20, flexShrink: 0, fontWeight: 300 }}>›</span>
       </div>
