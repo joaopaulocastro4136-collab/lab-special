@@ -83,6 +83,48 @@ const vincula = await api('POST', `/v1/betaGroups/${grupo.id}/relationships/buil
 });
 console.log('Build no grupo:', vincula.status < 300 ? 'ok ✓' : `aviso (${vincula.status})`);
 
+// 5b. Informações de teste (a Apple exige descrição + e-mail antes da análise externa)
+const DESCRICAO = 'Aplicativo do Laboratório Special para dentistas parceiros: acompanhe seus trabalhos protéticos em tempo real, envie novos casos com fotos e arquivos, aprove provas, veja a previsão de entregas, o financeiro com pagamento por Pix e use a IA Special para simular a transformação do sorriso do paciente. O acesso é liberado pelo laboratório para os dentistas cadastrados.';
+const EMAIL_CONTATO = 'joaopaulocastro41@gmail.com';
+const locs = await api('GET', `/v1/apps/${app.id}/betaAppLocalizations`);
+const listaLoc = (locs.dados && locs.dados.data) || [];
+if (listaLoc.length === 0) {
+  const novaLoc = await api('POST', '/v1/betaAppLocalizations', {
+    data: {
+      type: 'betaAppLocalizations',
+      attributes: { locale: 'pt-BR', description: DESCRICAO, feedbackEmail: EMAIL_CONTATO },
+      relationships: { app: { data: { type: 'apps', id: app.id } } },
+    },
+  });
+  console.log('Descrição do beta criada:', novaLoc.status < 300 ? 'ok ✓' : `aviso (${novaLoc.status}) ${JSON.stringify(novaLoc.dados || {}).slice(0, 200)}`);
+} else {
+  for (const loc of listaLoc) {
+    const atualiza = await api('PATCH', `/v1/betaAppLocalizations/${loc.id}`, {
+      data: { type: 'betaAppLocalizations', id: loc.id, attributes: { description: DESCRICAO, feedbackEmail: EMAIL_CONTATO } },
+    });
+    console.log(`Descrição do beta (${loc.attributes.locale}):`, atualiza.status < 300 ? 'ok ✓' : `aviso (${atualiza.status})`);
+  }
+}
+// Contato para a análise beta (quem a Apple procura se tiver dúvida)
+const det = await api('GET', `/v1/apps/${app.id}/betaAppReviewDetail`);
+if (det.dados && det.dados.data) {
+  const d = det.dados.data;
+  const atualizaDet = await api('PATCH', `/v1/betaAppReviewDetails/${d.id}`, {
+    data: {
+      type: 'betaAppReviewDetails', id: d.id,
+      attributes: {
+        contactFirstName: d.attributes.contactFirstName || 'Joao Paulo',
+        contactLastName: d.attributes.contactLastName || 'de Castro',
+        contactEmail: d.attributes.contactEmail || EMAIL_CONTATO,
+        contactPhone: d.attributes.contactPhone || '',
+        demoAccountRequired: false,
+        notes: 'App B2B do Laboratorio Special (protese dental). O login e via conta Google autorizada pelo laboratorio para seus dentistas parceiros. As telas principais (acompanhamento, previsao, financeiro, IA de simulacao de sorriso) ficam disponiveis apos o laboratorio cadastrar o e-mail do dentista.',
+      },
+    },
+  });
+  console.log('Contato da análise:', atualizaDet.status < 300 ? 'ok ✓' : `aviso (${atualizaDet.status}) ${JSON.stringify(atualizaDet.dados || {}).slice(0, 200)}`);
+}
+
 // 6. Envia para a análise beta (necessária só na primeira vez / builds novos)
 const rev = await api('POST', '/v1/betaAppReviewSubmissions', {
   data: { type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: build.id } } } },
