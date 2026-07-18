@@ -922,7 +922,6 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
-  const [entregaProposta, setEntregaProposta] = useState(null); // caixinha pós-finalizar: oferece registrar a entrega na hora
   const [origemDetalhe, setOrigemDetalhe] = useState('lista');
 
   const usuarioAtivo = funcionarios.find(f => f.id === usuarioAtivoId) || null;
@@ -1317,7 +1316,6 @@ export default function App() {
       const antesDoPrazo = diasRestantes(caso.prazo) > 0;
       const msgComissao = registrarComissoes(caso, caso.etapas || []);
       criarNotificacao('pronto', `${nome} foi finalizado${antesDoPrazo ? ' antes do prazo' : ''}!${msgComissao}`, id);
-      setEntregaProposta({ ...caso, ...patch }); // já abre a caixinha de entrega
     } else if (novoStatus === 'Entregue') {
       criarNotificacao('entregue', `${nome} foi entregue.`, id);
     }
@@ -1853,44 +1851,6 @@ export default function App() {
         const dObj = dentistas.find(d => d.nome === casoImpressao.dentista);
         return <FichaImpressao caso={casoImpressao} dentistaInfo={dObj} ehGestor={ehGestor} onFechar={() => setImprimindoCasoId(null)} />;
       })()}
-
-      {/* Caixinha de entrega: aparece assim que um trabalho é finalizado */}
-      {entregaProposta && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center no-print" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setEntregaProposta(null)}>
-          <div className="w-full max-w-[420px] bg-white rounded-t-3xl lg:rounded-3xl px-6 pt-6 pb-8 lg:pb-6" onClick={e => e.stopPropagation()} style={{ boxShadow: '0 -20px 60px rgba(0,0,0,0.3)' }}>
-            <div className="w-11 h-1 rounded-full mx-auto mb-5 lg:hidden" style={{ background: '#D6D3D1' }} />
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 text-2xl" style={{ background: '#DCF3E4' }}>🎉</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-extrabold text-lg" style={{ color: INK }}>Trabalho finalizado!</div>
-                <div className="text-xs text-stone-500 mt-0.5">Já quer registrar a entrega?</div>
-              </div>
-            </div>
-            <div className="rounded-2xl p-3.5 mt-4 border border-stone-200" style={{ background: '#FAF9F7' }}>
-              <div className="font-bold text-sm truncate" style={{ color: INK }}>{entregaProposta.paciente}</div>
-              <div className="text-xs text-stone-500 mt-0.5 truncate">{entregaProposta.tipoTrabalho} • {entregaProposta.dentista}</div>
-              {enderecoDe(dentistas, entregaProposta.dentista) && (
-                <div className="flex items-center gap-1.5 text-xs mt-2" style={{ color: '#7A6234' }}>
-                  <MapPin size={12} className="flex-shrink-0" />
-                  <span className="truncate">{enderecoDe(dentistas, entregaProposta.dentista)}</span>
-                </div>
-              )}
-            </div>
-            <button onClick={() => { const id = entregaProposta.id; setEntregaProposta(null); updateStatus(id, 'Entregue'); }}
-              className="w-full mt-4 py-3.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2" style={{ background: VERDE }}>
-              <Check size={17} /> Entregar agora
-            </button>
-            <button onClick={() => { setEntregaProposta(null); setView('entregas'); }}
-              className="w-full mt-2 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ color: INK, borderColor: '#D6D3D1', background: 'white' }}>
-              <Flag size={15} color={VERDE} /> Ver fila de entregas
-            </button>
-            <button onClick={() => setEntregaProposta(null)}
-              className="w-full mt-2 py-3 rounded-2xl font-bold text-xs text-stone-500">
-              Deixar para depois — fica em "Prontos p/ Entrega"
-            </button>
-          </div>
-        </div>
-      )}
 
       <PuxarAtualizar aoAtualizar={carregarDados} />
 
