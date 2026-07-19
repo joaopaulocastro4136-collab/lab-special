@@ -1200,7 +1200,7 @@ export default function App() {
   const addCaso = (dados) => {
     const nomesItens = (dados.itens && dados.itens.length) ? dados.itens.map(i => i.nome) : [dados.tipoTrabalho];
     const etapas = etapasDeItens(tiposTrabalho, nomesItens).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
-    const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: [], etapas, naClinica: false, provaPendente: false };
+    const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: dados.anexos || [], etapas, naClinica: false, provaPendente: false };
     persistCasos([novo, ...casos]);
     setView('lista');
   };
@@ -1497,11 +1497,28 @@ export default function App() {
     else { try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ } }
     updateCaso(casoId, { anexos: (caso.anexos || []).filter(a => a.id !== anexoId) });
   };
-  // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista)
-  const atualizarAnexoMeta = (casoId, anexoId, patch) => {
+  // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista).
+  // Grava DIRETO o caso na nuvem e AVISA se falhar — o pedido de aprovação é o
+  // que dispara a notificação no celular do dentista, não pode se perder calado.
+  const atualizarAnexoMeta = async (casoId, anexoId, patch) => {
     const caso = casos.find(c => c.id === casoId);
-    if (!caso) return;
-    updateCaso(casoId, { anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) });
+    if (!caso) return false;
+    const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
+    const novaLista = casos.map(c => c.id === casoId ? atualizado : c);
+    setCasos(novaLista);
+    setSaveStatus('saving');
+    try {
+      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
+      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1500);
+      return true;
+    } catch (e) {
+      console.error('salvar anexo', e);
+      setSaveStatus('idle');
+      alert('Não consegui salvar na nuvem — confira a internet e toque de novo.');
+      return false;
+    }
   };
 
   // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
@@ -2814,7 +2831,55 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
   const [prazoEditadoManual, setPrazoEditadoManual] = useState(false);
   const [prazo, setPrazo] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [dentes, setDentes] = useState([]); // odontograma: dentes do trabalho (FDI)
+  const [gengiva, setGengiva] = useState([]); // odontograma: onde a prótese leva gengiva
+  const [anexosNovos, setAnexosNovos] = useState([]); // arquivos escolhidos antes de salvar
+  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const fotoRefN = useRef(null);
+  const camRefN = useRef(null);
+  const arqRefN = useRef(null);
+  const vidRefN = useRef(null);
+
+  const categoriaArq = (file) => {
+    const t = String(file.type || '');
+    const n = String(file.name || '').toLowerCase();
+    if (t.startsWith('video')) return 'video';
+    if (n.endsWith('.stl')) return 'stl';
+    if (t.startsWith('image')) return 'foto';
+    return 'documento';
+  };
+  const comprimirFotoN = (file) => new Promise((res, rej) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1280;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) { const r = Math.min(MAX / width, MAX / height); width = Math.round(width * r); height = Math.round(height * r); }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); };
+    img.src = url;
+  });
+  const addFotoN = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    try {
+      const dataURL = await comprimirFotoN(file);
+      setAnexosNovos(l => [...l, { nome: file.name || `foto-${l.length + 1}.jpg`, dataURL, mime: 'image/jpeg', categoria: 'foto' }]);
+    } catch (e) { setErro('Não consegui ler essa imagem. Tente outra.'); }
+  };
+  const addArquivoN = (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    setAnexosNovos(l => [...l, { nome: file.name, file, mime: file.type || 'application/octet-stream', categoria: categoriaArq(file) }]);
+  };
 
   const tipoAtual = tiposTrabalho.find(t => t.nome === tipoNome);
   const etapasPreview = itens.length ? etapasDeItens(tiposTrabalho, itens.map(i => i.nome)) : [];
@@ -2845,7 +2910,7 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
 
   const inputClass = "w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
 
-  const handleSalvar = () => {
+  const handleSalvar = async () => {
     if (dentistas.length === 0) {
       setErro('Cadastre os dentistas em Ajustes antes de criar casos.');
       return;
@@ -2866,15 +2931,31 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
     });
     const umSo = itensFinal.length === 1;
     const obsFinal = (umSo && itensFinal[0].quantidade > 1 ? `Quantidade: ${itensFinal[0].quantidade} unidades. ` : '') + observacoes.trim();
-    onSalvar({
-      paciente: paciente.trim(), dentista,
-      tipoTrabalho: umSo ? itensFinal[0].nome : rotuloItens(itensFinal),
-      itens: itensFinal,
-      material,
-      quantidade: umSo ? itensFinal[0].quantidade : 1,
-      dataEntrada, prazo: proximoDiaUtil(prazo, diasTrabalho), observacoes: obsFinal,
-      valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
-    });
+    setSalvando(true);
+    try {
+      // Sobe os anexos escolhidos ANTES de criar o caso (mesmo fluxo do Clinic)
+      const anexos = [];
+      for (const f of anexosNovos) {
+        const anexoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        const origem = f.file || dataURLparaBlob(f.dataURL, f.mime || 'image/jpeg');
+        const { url, caminho } = await window.arquivos.subir(origem, f.nome);
+        anexos.push({ id: anexoId, nome: f.nome, mime: f.mime || 'image/jpeg', categoria: f.categoria || 'foto', tamanho: f.file ? f.file.size : Math.round((f.dataURL || '').length * 0.75), url, caminho });
+      }
+      onSalvar({
+        paciente: paciente.trim(), dentista,
+        tipoTrabalho: umSo ? itensFinal[0].nome : rotuloItens(itensFinal),
+        itens: itensFinal,
+        material,
+        quantidade: umSo ? itensFinal[0].quantidade : 1,
+        dataEntrada, prazo: proximoDiaUtil(prazo, diasTrabalho), observacoes: obsFinal,
+        valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
+        anexos, dentes, gengiva,
+      });
+    } catch (e) {
+      console.error('salvar caso', e);
+      setErro('Não consegui enviar os anexos. Confira a internet e tente de novo.');
+    }
+    setSalvando(false);
   };
 
   // Visual igual ao "Novo Trabalho" do Special Clinic: cartões brancos com
@@ -2981,9 +3062,58 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
         </div>
       </div>
 
-      {/* Passo 3 — datas */}
+      {/* Passo 3 — odontograma: quais dentes e onde tem gengiva */}
       <div style={cartaoSec}>
-        <Passo n="3">Datas</Passo>
+        <div style={{ position: 'absolute', left: -14, bottom: -16, opacity: 0.05, pointerEvents: 'none' }}><EstrelaLogo size={52} color={INK} /></div>
+        <Passo n="3">Dentes do trabalho <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <OdontogramaEdit dentes={dentes} gengiva={gengiva} aoMudar={({ dentes: d, gengiva: g }) => { setDentes(d); setGengiva(g); }} />
+      </div>
+
+      {/* Passo 4 — anexos */}
+      <div style={cartaoSec}>
+        <Passo n="4">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {[
+            [Camera, 'Foto', camRefN],
+            [Box, 'Vídeo', vidRefN],
+            [Paperclip, 'Galeria', fotoRefN],
+            [FileText, 'Arquivo', arqRefN],
+          ].map(([Icone, rotulo, ref]) => (
+            <button key={rotulo} onClick={() => ref.current && ref.current.click()}
+              style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #EEECE7', background: '#FAF9F7', cursor: 'pointer', fontFamily: FONTE_LAB, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 17, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icone size={17} color="#7A6234" strokeWidth={2.2} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: INK }}>{rotulo}</span>
+            </button>
+          ))}
+        </div>
+        {anexosNovos.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {anexosNovos.map((f, i) => (
+              <div key={i} style={{ position: 'relative' }}>
+                {String(f.mime || '').startsWith('image') && f.dataURL ? (
+                  <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
+                ) : (
+                  <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
+                    <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
+                    <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
+                  </div>
+                )}
+                <button onClick={() => setAnexosNovos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input ref={camRefN} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFotoN} />
+        <input ref={vidRefN} type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={addArquivoN} />
+        <input ref={fotoRefN} type="file" accept="image/*" style={{ display: 'none' }} onChange={addFotoN} />
+        <input ref={arqRefN} type="file" style={{ display: 'none' }} onChange={addArquivoN} />
+      </div>
+
+      {/* Passo 5 — datas */}
+      <div style={cartaoSec}>
+        <Passo n="5">Datas</Passo>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Entrada *</div>
@@ -3002,9 +3132,9 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
         )}
       </div>
 
-      {/* Passo 4 — observações */}
+      {/* Passo 6 — observações */}
       <div style={cartaoSec}>
-        <Passo n="4">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <Passo n="6">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
         <textarea style={{ ...inputEstilo, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Cor, dente(s), instruções..." />
       </div>
 
@@ -3012,9 +3142,9 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
         <div style={{ background: '#FCE4E4', border: '1px solid #F5B5B5', borderRadius: 12, padding: '11px 13px', color: '#B42318', fontSize: 12.5, fontWeight: 700 }}>{erro}</div>
       )}
 
-      <button onClick={handleSalvar}
-        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE_LAB, boxShadow: '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
-        Salvar trabalho <span style={{ fontSize: 17 }}>→</span>
+      <button onClick={handleSalvar} disabled={salvando}
+        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: salvando ? '#D6D3D1' : 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE_LAB, boxShadow: salvando ? 'none' : '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+        {salvando ? 'Enviando anexos...' : <>Salvar trabalho <span style={{ fontSize: 17 }}>→</span></>}
       </button>
       <button onClick={onCancelar}
         style={{ width: '100%', padding: 13, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE_LAB }}>
@@ -4416,6 +4546,69 @@ function OdontogramaLeitura({ dentes = [], gengiva = [] }) {
         {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
         {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
       </div>
+    </div>
+  );
+}
+
+// Odontograma interativo (igual ao do Special Clinic): toca no dente (dourado)
+// e no modo Gengiva marca o anel rosa onde a prótese leva gengiva.
+function OdontogramaEdit({ dentes = [], gengiva = [], aoMudar }) {
+  const [modo, setModo] = useState('dente');
+  const FONTE_OD = "'Manrope', -apple-system, sans-serif";
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  const tocar = (num) => {
+    if (modo === 'dente') {
+      const tem = dentes.includes(num);
+      aoMudar({ dentes: tem ? dentes.filter(d => d !== num) : [...dentes, num].sort((a, b) => a - b), gengiva });
+    } else {
+      const tem = gengiva.includes(num);
+      aoMudar({ dentes, gengiva: tem ? gengiva.filter(d => d !== num) : [...gengiva, num].sort((a, b) => a - b) });
+    }
+  };
+  const chip = (ativo, cor, corFundo) => ({ flex: 1, padding: '9px 6px', borderRadius: 11, fontFamily: FONTE_OD, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: ativo ? `1.5px solid ${cor}` : '1px solid #E7E5E4', background: ativo ? corFundo : '#FAF9F7', color: ativo ? cor : '#78716C' });
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+        <button onClick={() => setModo('dente')} style={chip(modo === 'dente', '#7A6234', 'rgba(184,147,90,0.14)')}>
+          <span style={{ width: 12, height: 12, borderRadius: 6, background: GOLD, flexShrink: 0 }} /> Dentes
+        </button>
+        <button onClick={() => setModo('gengiva')} style={chip(modo === 'gengiva', ROSA_GENGIVA, 'rgba(217,107,143,0.1)')}>
+          <span style={{ width: 12, height: 12, borderRadius: 6, border: `2.5px solid ${ROSA_GENGIVA}`, boxSizing: 'border-box', flexShrink: 0 }} /> Gengiva
+        </button>
+      </div>
+      <svg viewBox="0 0 340 402" style={{ width: '100%', display: 'block', touchAction: 'manipulation' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num} onClick={() => tocar(p.num)} style={{ cursor: 'pointer' }}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? '#1C1B19' : '#8A8580'} style={{ userSelect: 'none' }}>{p.num}</text>
+              <circle cx={p.x} cy={p.y} r="18" fill="rgba(0,0,0,0)" />
+            </g>
+          );
+        })}
+      </svg>
+      {(dentes.length > 0 || gengiva.length > 0) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 6 }}>
+          <div style={{ flex: 1, fontSize: 11.5, color: '#57534E', lineHeight: 1.6 }}>
+            {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+            {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+          </div>
+          <button onClick={() => aoMudar({ dentes: [], gengiva: [] })}
+            style={{ border: '1px solid #E7E5E4', background: '#fff', borderRadius: 9, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE_OD, flexShrink: 0 }}>Limpar</button>
+        </div>
+      )}
+      {dentes.length === 0 && gengiva.length === 0 && (
+        <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, marginTop: 2 }}>Toque nos dentes que entram no trabalho. No modo <b style={{ color: ROSA_GENGIVA }}>Gengiva</b>, marque onde a prótese leva gengiva.</div>
+      )}
     </div>
   );
 }

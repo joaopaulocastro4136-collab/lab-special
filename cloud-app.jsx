@@ -47,6 +47,17 @@ function instalarIA() {
   };
 }
 
+// Grava UM caso direto na nuvem (usado pelo pedido de aprovação — precisa
+// chegar com certeza, é ele que dispara o aviso no celular do dentista)
+function instalarNuvemCasos() {
+  window.nuvemCasos = {
+    async salvarCaso(caso) {
+      await setDoc(docCaso(caso.id), caso);
+      espelhoCasos.set(caso.id, JSON.stringify(caso));
+    },
+  };
+}
+
 function instalarArquivos() {
   const st = getStorage();
   window.arquivos = {
@@ -479,12 +490,12 @@ function CloudRoot({ entrarNativo }) {
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
     getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); setAcesso('ok'); } })
+      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); setAcesso('ok'); } })
       .catch(e => {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); instalarIA(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
+        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
       });
     return () => { ativo = false; };
   }, [usuario, tentativa]);
