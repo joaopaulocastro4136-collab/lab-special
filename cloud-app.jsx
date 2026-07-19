@@ -158,7 +158,18 @@ async function lerCasos() {
   return ordenarCasos([...porId.values()]);
 }
 
-async function gravarCasos(lista) {
+// Fila única: uma gravação de casos por vez, na ordem em que foram pedidas.
+// Duas gravações quase juntas (ex.: concluir etapa dispara várias) não se atropelam.
+let filaCasos = Promise.resolve();
+let gravandoCasos = 0;
+function gravarCasos(lista) {
+  const tarefa = filaCasos.then(() => gravarCasosAgora(lista));
+  filaCasos = tarefa.catch(() => { });
+  gravandoCasos++;
+  return tarefa.finally(() => { gravandoCasos--; });
+}
+
+async function gravarCasosAgora(lista) {
   const idsNovos = new Set();
   const ops = [];
   for (const c of lista) {
@@ -558,6 +569,8 @@ function CloudRoot({ entrarNativo }) {
     };
     const agendarAgora = () => {
       if (!refreshPendente.current) return;
+      // Nunca recarrega no meio de uma gravação nossa — espera terminar
+      if (gravandoCasos > 0) { timerRef.current = setTimeout(agendarAgora, 2500); return; }
       refreshPendente.current = false;
       setAppKey(k => k + 1);
     };

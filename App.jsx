@@ -1070,7 +1070,17 @@ export default function App() {
 
   const persistCasos = (newCasos) => {
     setCasos(newCasos);
-    return flashSave(() => window.storage.set('casos-laboratorio', JSON.stringify(newCasos)));
+    return flashSave(async () => {
+      try {
+        await window.storage.set('casos-laboratorio', JSON.stringify(newCasos));
+      } catch (e) {
+        // Falha ao gravar os casos NUNCA pode ser muda: registra na nuvem e avisa na tela
+        const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
+        if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'erro-gravar-casos', resultado: String((e && e.message) || e).slice(0, 180), versao: versaoApp });
+        alert('Não consegui salvar na nuvem — confira a internet e tente de novo.');
+        throw e;
+      }
+    });
   };
   const persistConfig = (patch) => {
     const novo = {
@@ -1403,6 +1413,10 @@ export default function App() {
       patch.dataFinalizado = todayISO();
       patch.naClinica = false;
       patch.provaPendente = false;
+      // Telemetria: registra a virada para Pronto ANTES de gravar (diagnóstico de longe)
+      if (window.nuvemCasos && window.nuvemCasos.logar) {
+        window.nuvemCasos.logar({ acao: 'virou-pronto', casoId, versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev' });
+      }
       updateCaso(casoId, patch);
       const antesDoPrazo = diasRestantes(caso.prazo) > 0;
       const msgComissao = registrarComissoes(caso, novasEtapas);
