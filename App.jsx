@@ -3430,6 +3430,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
   const [erroDentista, setErroDentista] = useState('');
   const [erroTipo, setErroTipo] = useState('');
   const [erroFunc, setErroFunc] = useState('');
+  const [dentistaCombinado, setDentistaCombinado] = useState(null); // dentista com o editor de combinado de pagamento aberto
   const [expandido, setExpandido] = useState(null);
 
   const inputClass = "px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
@@ -3723,6 +3724,31 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                   <Send size={12} className="text-stone-300 flex-shrink-0" />
                   <input type="tel" className="flex-1 px-2 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white" value={d.telefone || ''} onChange={e => onUpdateDentista(d.nome, { telefone: e.target.value })} placeholder="Telefone / WhatsApp" />
                 </div>
+                {/* Combinado de pagamento: dia marcado do mês OU prazo em dias após a entrega */}
+                <button onClick={() => setDentistaCombinado(dentistaCombinado === d.nome ? null : d.nome)}
+                  className="flex items-center gap-1.5 mt-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg"
+                  style={(d.diasPagamento ?? null) !== null || d.dataPagamento
+                    ? { background: '#DCF3E4', color: '#166B3A' }
+                    : { background: '#F0EFEC', color: '#57534E' }}>
+                  <DollarSign size={12} />
+                  {d.dataPagamento
+                    ? `Pagamento: dia marcado ${formatDateBR(d.dataPagamento)}`
+                    : (d.diasPagamento ?? null) !== null
+                      ? `Pagamento: até ${d.diasPagamento} ${d.diasPagamento === 1 ? 'dia' : 'dias'} após a entrega`
+                      : 'Definir combinado de pagamento'}
+                  <span style={{ marginLeft: 'auto', opacity: 0.6 }}>{dentistaCombinado === d.nome ? '▲' : '▼'}</span>
+                </button>
+                {dentistaCombinado === d.nome && (
+                  <div className="mt-1.5">
+                    <PrazoPagamentoEdit
+                      atual={d.prazoPagamento}
+                      onSalvar={(texto) => onUpdateDentista(d.nome, { prazoPagamento: texto || null })}
+                      diasAtual={d.diasPagamento ?? null}
+                      onSalvarDias={(n) => onUpdateDentista(d.nome, { diasPagamento: n ?? null, dataPagamento: null })}
+                      dataAtual={d.dataPagamento || null}
+                      onSalvarData={(data) => onUpdateDentista(d.nome, { dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) })} />
+                  </div>
+                )}
               </div>
             ))}
           </div>
