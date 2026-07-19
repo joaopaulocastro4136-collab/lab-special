@@ -2003,14 +2003,17 @@ function SeletorUsuario({ funcionarios, usuarioAtivoId, onTrocar, onFechar, onIr
 
 function StatCard({ label, value, color, icon: Icon, onClick, sub, destaque }) {
   return (
-    <button onClick={onClick} className="rounded-2xl p-4 text-left active:bg-stone-50" style={{ background: destaque && value > 0 ? GOLD_SOFT : 'white', border: destaque && value > 0 ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4' }}>
-      <div className="flex items-center justify-between mb-2">
-        <Icon size={18} color={color} />
-        <ArrowRight size={14} className="text-stone-300" />
+    <button onClick={onClick} className="rounded-2xl p-4 text-left active:bg-stone-50"
+      style={{ position: 'relative', overflow: 'hidden', background: destaque && value > 0 ? GOLD_SOFT : '#fff', border: destaque && value > 0 ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.35)' }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 17, background: `${color}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={17} color={color} strokeWidth={2.2} />
+        </span>
+        <ArrowRight size={14} style={{ color: '#D8CDB8' }} />
       </div>
-      <div className="text-2xl font-extrabold" style={{ color: INK }}>{value}</div>
-      <div className="text-xs text-stone-500 mt-0.5">{label}</div>
-      {sub && <div className="text-xs mt-0.5 font-semibold" style={{ color }}>{sub}</div>}
+      <div className="text-2xl font-extrabold" style={{ color: INK, letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 3 }}>{label}</div>
+      {sub && <div className="text-xs mt-1 font-semibold" style={{ color }}>{sub}</div>}
     </button>
   );
 }
@@ -2110,33 +2113,45 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
       <div className="flex flex-col lg:grid lg:grid-cols-3 lg:gap-5 lg:items-start">
       <div className="order-1 lg:order-2 lg:col-start-3 flex flex-col">
       {ehGestor && temFuncionarios && (
-        <button onClick={onAbrirEquipe} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left" style={{ background: INK }}>
-          <BarChart3 size={20} color={GOLD} />
+        <button onClick={onAbrirEquipe} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #2B2620, #1C1B19)', border: '1px solid rgba(184,147,90,0.45)', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.1, pointerEvents: 'none' }}><EstrelaLogo size={44} color={GOLD} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <BarChart3 size={18} color={GOLD} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold text-white">Relatório da equipe</div>
-            <div className="text-xs" style={{ color: GOLD_SOFT }}>Produção, comissões e tempos médios</div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Produção, comissões e tempos médios</div>
           </div>
           <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       {ehGestor && (
-        <button onClick={onAbrirFinancas} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left border" style={{ background: 'white', borderColor: VERDE }}>
-          <TrendingUp size={20} color={VERDE} />
+        <button onClick={onAbrirFinancas} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E8D5B0', boxShadow: '0 14px 30px -22px rgba(122,98,52,0.5)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.06, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: '#DCF3E4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TrendingUp size={18} color={VERDE} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold" style={{ color: INK }}>Finanças</div>
             <div className="text-xs text-stone-400">Entradas, valores dos serviços e comissões</div>
           </div>
-          <ArrowRight size={16} className="text-stone-400" />
+          <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       {usuarioAtivo && (
-        <button onClick={onAbrirMeu} className="w-full mb-6 p-4 rounded-2xl flex items-center gap-3 text-left border" style={{ background: 'white', borderColor: GOLD }}>
-          <DollarSign size={20} color={VERDE} />
+        <button onClick={onAbrirMeu} className="w-full mb-6 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E8D5B0', boxShadow: '0 14px 30px -22px rgba(122,98,52,0.5)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.06, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <DollarSign size={18} color={'#7A6234'} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold" style={{ color: INK }}>Meu desempenho</div>
             <div className="text-xs text-stone-400">Minhas comissões, finalizados e tempos</div>
           </div>
-          <ArrowRight size={16} className="text-stone-400" />
+          <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       <button onClick={onNovo} className="w-full mb-3 py-3.5 rounded-2xl text-white font-bold hidden lg:flex items-center justify-center gap-2" style={{ background: INK }}>
@@ -2853,16 +2868,27 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
     });
   };
 
-  return (
-    <div className="flex flex-col gap-4 lg:max-w-[640px]">
-      <Campo label="Paciente *">
-        <input className={inputClass} value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente" />
-      </Campo>
+  // Visual igual ao "Novo Trabalho" do Special Clinic: cartões brancos com
+  // passos numerados em dourado e botão principal dourado.
+  const FONTE_LAB = "'Manrope', -apple-system, sans-serif";
+  const cartaoSec = { position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: 15, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
+  const inputEstilo = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #EEECE7', fontSize: 14, fontFamily: FONTE_LAB, outline: 'none', background: '#FAF9F7', boxSizing: 'border-box' };
+  const Passo = ({ n, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+      <span style={{ width: 21, height: 21, borderRadius: 11, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 10px -4px rgba(184,147,90,0.8)' }}>{n}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</span>
+    </div>
+  );
 
-      <Campo label="Dentista / Clínica *">
+  return (
+    <div className="flex flex-col gap-2.5 lg:max-w-[640px]" style={{ fontFamily: FONTE_LAB }}>
+      {/* Passo 1 — paciente e dentista */}
+      <div style={cartaoSec}>
+        <Passo n="1">Paciente e dentista</Passo>
+        <input style={{ ...inputEstilo, marginBottom: 9 }} value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente *" />
         {dentistas.length > 0 ? (
           <div>
-            <select className={inputClass} value={dentista} onChange={e => setDentista(e.target.value)}>
+            <select style={inputEstilo} value={dentista} onChange={e => setDentista(e.target.value)}>
               {dentistas.map(d => <option key={d.nome} value={d.nome}>{d.nome}</option>)}
             </select>
             {(() => {
@@ -2881,98 +2907,112 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
             <button onClick={onIrParaAjustes} className="mt-2 px-3 py-2 rounded-lg text-xs font-bold text-white" style={{ background: INK }}>Cadastrar em Ajustes →</button>
           </div>
         )}
-      </Campo>
+      </div>
 
-      <Campo label="Itens do trabalho *">
+      {/* Passo 2 — itens do trabalho */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><EstrelaLogo size={52} color={INK} /></div>
+        <Passo n="2">Itens do trabalho</Passo>
         <div className="flex flex-col gap-2">
-          <select className={inputClass} value={tipoNome} onChange={e => setTipoNome(e.target.value)}>
+          <select style={inputEstilo} value={tipoNome} onChange={e => setTipoNome(e.target.value)}>
             {tiposTrabalho.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias} dias • {formatHoras(tempoDoTipo(tiposTrabalho, t.nome))}{(t.valor || 0) > 0 ? ` • ${formatReais(t.valor)}` : ''})</option>)}
           </select>
-          <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 flex items-center justify-between gap-2">
+          <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '10px 13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div className="flex items-center gap-3">
-              <button onClick={() => setQuantidade(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg border border-stone-200 font-extrabold text-lg" style={{ color: INK }}>−</button>
+              <button onClick={() => setQuantidade(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg font-extrabold text-lg" style={{ color: INK, border: '1px solid #E7E5E4', background: '#fff' }}>−</button>
               <div className="text-center" style={{ minWidth: '52px' }}>
                 <div className="font-extrabold text-lg" style={{ color: INK }}>{quantidade}</div>
                 <div className="text-xs text-stone-400 -mt-1">{quantidade === 1 ? 'unidade' : 'unidades'}</div>
               </div>
-              <button onClick={() => setQuantidade(q => Math.min(32, q + 1))} className="w-9 h-9 rounded-lg border border-stone-200 font-extrabold text-lg" style={{ color: INK }}>＋</button>
+              <button onClick={() => setQuantidade(q => Math.min(32, q + 1))} className="w-9 h-9 rounded-lg font-extrabold text-lg" style={{ color: INK, border: '1px solid #E7E5E4', background: '#fff' }}>＋</button>
             </div>
-            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm text-white flex-shrink-0" style={{ background: INK }}>＋ Adicionar item</button>
+            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>＋ Adicionar item</button>
           </div>
           {itens.length > 0 && (
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
               {itens.map((it, idx) => {
                 const t = tiposTrabalho.find(x => x.nome === it.nome);
                 const unit = t?.valor || 0;
                 return (
-                  <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #F0EFEC' } : undefined}>
+                  <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #EEECE7' } : undefined}>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                      <div className="text-sm font-bold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
                       <div className="text-xs text-stone-400">{t ? `${t.prazoDias} dias` : ''}{unit > 0 ? ` • ${formatReais(unit)} / un.` : ' • sem valor no tipo (defina em Ajustes)'}</div>
                     </div>
-                    {unit > 0 && <div className="text-sm font-bold flex-shrink-0" style={{ color: VERDE }}>{formatReais(unit * it.quantidade)}</div>}
-                    <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 font-bold flex-shrink-0">×</button>
+                    {unit > 0 && <div className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(unit * it.quantidade)}</div>}
+                    <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg font-bold flex-shrink-0" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E' }}>×</button>
                   </div>
                 );
               })}
-              {valorTotal > 0 && (
-                <div className="flex items-center justify-between px-3 py-2.5" style={{ background: '#FAF9F7', borderTop: '1px solid #F0EFEC' }}>
-                  <span className="text-xs font-bold text-stone-500">TOTAL DO SERVIÇO</span>
-                  <span className="font-extrabold text-base" style={{ color: VERDE }}>{formatReais(valorTotal)}</span>
-                </div>
-              )}
+            </div>
+          )}
+          {valorTotal > 0 && (
+            <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1, pointerEvents: 'none' }}><EstrelaLogo size={34} color={GOLD} /></span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL DO SERVIÇO</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReais(valorTotal)}</span>
             </div>
           )}
           {itens.length === 0 && <div className="text-xs text-stone-400">Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>}
-        </div>
-      </Campo>
-
-      {etapasPreview.length > 1 && (
-        <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-          <div className="font-bold mb-1 flex items-center gap-1"><ListChecks size={13} /> Etapas deste trabalho:</div>
-          {etapasPreview.map((e, i) => (
-            <div key={i} className="flex items-center justify-between py-0.5">
-              <span>{i + 1}. {itens.length > 1 && e.item ? `${e.item} — ` : ''}{e.nome}{e.prova ? ' 🩺' : ''}</span>
-              <span className="font-semibold">{formatHoras(e.horas)}</span>
+          {etapasPreview.length > 1 && (
+            <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+              <div className="font-bold mb-1 flex items-center gap-1"><ListChecks size={13} /> Etapas deste trabalho:</div>
+              {etapasPreview.map((e, i) => (
+                <div key={i} className="flex items-center justify-between py-0.5">
+                  <span>{i + 1}. {itens.length > 1 && e.item ? `${e.item} — ` : ''}{e.nome}{e.prova ? ' 🩺' : ''}</span>
+                  <span className="font-semibold">{formatHoras(e.horas)}</span>
+                </div>
+              ))}
+              <div className="mt-1 opacity-75">🩺 = etapa com prova na clínica</div>
             </div>
-          ))}
-          <div className="mt-1 opacity-75">🩺 = etapa com prova na clínica</div>
+          )}
+          <select style={inputEstilo} value={material} onChange={e => setMaterial(e.target.value)}>
+            {MATERIAIS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
-      )}
-
-      <Campo label="Material">
-        <select className={inputClass} value={material} onChange={e => setMaterial(e.target.value)}>
-          {MATERIAIS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-      </Campo>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Campo label="Data de entrada *">
-          <input type="date" className={inputClass} value={dataEntrada} onChange={e => setDataEntrada(e.target.value)} />
-        </Campo>
-        <Campo label="Prazo de entrega *">
-          <input type="date" className={inputClass} value={prazo} onChange={e => { setPrazo(e.target.value); setPrazoEditadoManual(true); }} />
-        </Campo>
       </div>
 
-      {itens.length > 0 && !prazoEditadoManual && prazo && (
-        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-          <Timer size={14} />
-          <span>Prazo calculado: {prazoDiasCalc} dias (item mais demorado) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
+      {/* Passo 3 — datas */}
+      <div style={cartaoSec}>
+        <Passo n="3">Datas</Passo>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Entrada *</div>
+            <input type="date" style={inputEstilo} value={dataEntrada} onChange={e => setDataEntrada(e.target.value)} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Prazo de entrega *</div>
+            <input type="date" style={inputEstilo} value={prazo} onChange={e => { setPrazo(e.target.value); setPrazoEditadoManual(true); }} />
+          </div>
         </div>
+        {itens.length > 0 && !prazoEditadoManual && prazo && (
+          <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl mt-2" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+            <Timer size={14} />
+            <span>Prazo calculado: {prazoDiasCalc} dias (item mais demorado) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
+          </div>
+        )}
+      </div>
+
+      {/* Passo 4 — observações */}
+      <div style={cartaoSec}>
+        <Passo n="4">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <textarea style={{ ...inputEstilo, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Cor, dente(s), instruções..." />
+      </div>
+
+      {erro && (
+        <div style={{ background: '#FCE4E4', border: '1px solid #F5B5B5', borderRadius: 12, padding: '11px 13px', color: '#B42318', fontSize: 12.5, fontWeight: 700 }}>{erro}</div>
       )}
 
-      <Campo label="Observações">
-        <textarea className={inputClass} style={{ minHeight: '80px' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Detalhes adicionais (opcional)" />
-      </Campo>
-
-      <div className="text-xs text-stone-400">O caso já entra <b>em produção</b> — o dentista é avisado quando a equipe tocar em "Iniciar" na primeira etapa. Fotos e arquivos podem ser anexados depois de salvar.</div>
-
-      {erro && <div className="text-xs text-red-600 font-medium">{erro}</div>}
-
-      <div className="flex gap-3 mt-1">
-        <button onClick={onCancelar} className="flex-1 py-3 rounded-xl font-semibold text-sm bg-stone-100 text-stone-600">Cancelar</button>
-        <button onClick={handleSalvar} className="flex-1 py-3 rounded-xl font-semibold text-sm text-white" style={{ background: INK }}>Salvar Caso</button>
+      <button onClick={handleSalvar}
+        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE_LAB, boxShadow: '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+        Salvar trabalho <span style={{ fontSize: 17 }}>→</span>
+      </button>
+      <button onClick={onCancelar}
+        style={{ width: '100%', padding: 13, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE_LAB }}>
+        Cancelar
+      </button>
+      <div className="text-xs text-stone-400 text-center" style={{ lineHeight: 1.5 }}>
+        O caso já entra <b>em produção</b> — o dentista é avisado quando a equipe tocar em "Iniciar" na primeira etapa. Fotos e arquivos podem ser anexados depois de salvar.
       </div>
     </div>
   );
