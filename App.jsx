@@ -5317,44 +5317,101 @@ function EntregasView({ casos, provasLevar, provasNaClinica, getEndereco, getTel
 // ─── Finanças (só gestor): entradas, valores e comissões ───
 // Combinado de pagamento do dentista (aparece para ele no Special Clinic)
 function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtual, onSalvarData }) {
-  const [texto, setTexto] = useState(atual || '');
+  // Escolha fica local e SÓ grava quando toca em Salvar (nada muda sem querer)
+  const [modo, setModo] = useState(dataAtual ? 'data' : (diasAtual ?? null) !== null ? 'dias' : null);
+  const [dias, setDias] = useState((diasAtual ?? null) !== null ? String(diasAtual) : '');
+  const [data, setData] = useState(dataAtual || '');
   const [salvo, setSalvo] = useState(false);
+
+  const podeSalvar = modo === 'dias' ? parseInt(dias, 10) >= 0 : (modo === 'data' ? !!data : true);
+  const salvar = () => {
+    if (modo === 'dias') {
+      const n = parseInt(dias, 10);
+      onSalvarDias(n);
+      onSalvar(`pagar até ${n} ${n === 1 ? 'dia' : 'dias'} após a entrega`);
+    } else if (modo === 'data') {
+      onSalvarData(data);
+      onSalvar(`pagamento até ${data.split('-').reverse().join('/')}`);
+    } else {
+      onSalvarDias(null);
+      onSalvarData(null);
+      onSalvar('');
+    }
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2200);
+  };
+  const estiloCard = (ativo) => ({
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+    padding: '12px 13px', borderRadius: 14, cursor: 'pointer', marginBottom: 8,
+    background: ativo ? '#fff' : '#FBFAF8',
+    border: ativo ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4',
+    boxShadow: ativo ? '0 8px 20px -14px rgba(184,147,90,0.6)' : 'none',
+  });
+  const bolinha = (ativo) => (
+    <span style={{ width: 18, height: 18, borderRadius: 9, flexShrink: 0, border: ativo ? `5.5px solid ${GOLD}` : '2px solid #D6D3D1', background: '#fff', boxSizing: 'border-box' }} />
+  );
   return (
     <div className="rounded-xl p-3 mb-2" style={{ background: '#F5F4F0' }}>
-      <div className="text-xs font-bold mb-2" style={{ color: INK }}>Combinado de pagamento <span className="font-normal text-stone-400">(o dentista vê no Special Clinic)</span>:</div>
-      <div className="flex gap-2">
-        <input className="flex-1 px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" value={texto}
-          onChange={e => { setTexto(e.target.value); setSalvo(false); }} placeholder='Ex.: "todo dia 10" ou "15 dias após entrega"' />
-        <button onClick={() => { onSalvar(texto.trim()); setSalvo(true); }} className="px-4 rounded-xl text-xs font-bold text-white" style={{ background: salvo ? VERDE : INK }}>
-          {salvo ? '✓' : 'Salvar'}
-        </button>
-      </div>
-      {/* Vencimento automático — DUAS formas de combinar (uma exclui a outra):
-          • PRAZO: N dias após cada entrega  • DATA: um dia marcado pro pagamento
-          Nos dois casos, passou sem baixa → fica VERMELHO no app do dentista
-          e o robô da nuvem manda notificação de atraso todo dia de manhã. */}
-      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Vencimento: prazo em dias após a entrega <span className="font-normal text-stone-400">(fica vermelho no app dele se passar)</span>:</div>
-      <div className="flex gap-1.5 flex-wrap">
-        {[[null, 'Sem prazo'], [2, '2 dias'], [5, '5 dias'], [7, '7 dias'], [15, '15 dias'], [30, '30 dias']].map(([n, rot]) => (
-          <button key={rot} onClick={() => onSalvarDias(n)}
-            className="px-3 py-2 rounded-xl text-xs font-bold"
-            style={!dataAtual && (diasAtual ?? null) === n
-              ? { background: INK, color: GOLD, border: `1px solid ${INK}` }
-              : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
-            {rot}
-          </button>
-        ))}
-      </div>
-      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Ou uma data marcada para o pagamento:</div>
-      <div className="flex items-center gap-2">
-        <input type="date" value={dataAtual || ''} onChange={e => onSalvarData(e.target.value || null)}
-          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
-          style={dataAtual ? { background: INK, color: GOLD, border: `1px solid ${INK}`, colorScheme: 'dark' } : { background: '#fff', color: '#57534E', border: '1px solid #E7E5E4' }} />
-        {dataAtual && (
-          <button onClick={() => onSalvarData(null)} className="px-3 py-2.5 rounded-xl text-xs font-bold" style={{ background: '#fff', color: '#B42318', border: '1px solid #F5B5B5' }}>Limpar</button>
-        )}
-      </div>
-      {dataAtual && <div className="text-xs mt-1.5" style={{ color: '#7A6234' }}>Combinado: pagamento até <b>{dataAtual.split('-').reverse().join('/')}</b> — passou sem baixa, fica vermelho e o dentista é notificado.</div>}
+      <div className="text-xs font-bold mb-2.5" style={{ color: INK }}>Combinado de pagamento <span className="font-normal text-stone-400">(marque UMA opção e salve — o dentista vê no Special Clinic)</span></div>
+
+      {/* Opção 1: X dias após a entrega */}
+      <button onClick={() => { setModo('dias'); setSalvo(false); }} style={estiloCard(modo === 'dias')}>
+        {bolinha(modo === 'dias')}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="block text-sm font-bold" style={{ color: INK }}>Pagar em dias após a entrega</span>
+          <span className="block text-xs text-stone-400 mt-0.5">Cada trabalho entregue vence tantos dias depois</span>
+        </span>
+      </button>
+      {modo === 'dias' && (
+        <div className="flex items-center gap-2 mb-2 pl-1">
+          <input type="text" inputMode="numeric" value={dias}
+            onChange={e => { setDias(e.target.value.replace(/[^\d]/g, '')); setSalvo(false); }}
+            className="px-3 py-2.5 rounded-xl border text-sm outline-none bg-white text-center font-bold" style={{ width: 74, borderColor: GOLD }} placeholder="?" />
+          <span className="text-xs font-bold" style={{ color: INK }}>dias após a entrega</span>
+          <span className="flex gap-1 ml-auto">
+            {[2, 5, 7, 15, 30].map(n => (
+              <button key={n} onClick={() => { setDias(String(n)); setSalvo(false); }}
+                className="px-2 py-1.5 rounded-lg text-xs font-bold"
+                style={dias === String(n) ? { background: INK, color: GOLD } : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
+                {n}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+
+      {/* Opção 2: data escolhida */}
+      <button onClick={() => { setModo('data'); setSalvo(false); }} style={estiloCard(modo === 'data')}>
+        {bolinha(modo === 'data')}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="block text-sm font-bold" style={{ color: INK }}>Pagar numa data escolhida</span>
+          <span className="block text-xs text-stone-400 mt-0.5">Tudo que foi entregue até essa data é pago nesse dia</span>
+        </span>
+      </button>
+      {modo === 'data' && (
+        <div className="mb-2 pl-1">
+          <input type="date" value={data} onChange={e => { setData(e.target.value); setSalvo(false); }}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none bg-white" style={{ border: `1.5px solid ${GOLD}`, color: INK, fontWeight: 700 }} />
+        </div>
+      )}
+
+      {/* Opção 3: sem combinado */}
+      <button onClick={() => { setModo(null); setSalvo(false); }} style={estiloCard(modo === null)}>
+        {bolinha(modo === null)}
+        <span className="text-sm font-bold" style={{ color: '#78716C' }}>Sem combinado (não cobra automático)</span>
+      </button>
+
+      <button onClick={salvar} disabled={!podeSalvar}
+        className="w-full py-3 rounded-xl text-sm font-extrabold text-white mt-1 disabled:opacity-40"
+        style={{ background: salvo ? VERDE : INK }}>
+        {salvo ? '✓ Salvo — o dentista já vê no Special Clinic' : 'Salvar combinado'}
+      </button>
+      {modo === 'dias' && parseInt(dias, 10) >= 0 && !salvo && (
+        <div className="text-xs mt-2 text-center" style={{ color: '#7A6234' }}>Entregou e passou de <b>{dias} {parseInt(dias, 10) === 1 ? 'dia' : 'dias'}</b> sem pagamento → fica vermelho e o robô cobra às 9h.</div>
+      )}
+      {modo === 'data' && data && !salvo && (
+        <div className="text-xs mt-2 text-center" style={{ color: '#7A6234' }}>Entregas até <b>{data.split('-').reverse().join('/')}</b> devem ser pagas nesse dia → passou, fica vermelho e o robô cobra às 9h.</div>
+      )}
     </div>
   );
 }
