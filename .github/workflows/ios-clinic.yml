@@ -8,7 +8,7 @@ on:
       versao:
         description: "Versão visível (ex.: 1.0)"
         required: false
-        default: "1.0"
+        default: "5.3"
 
 jobs:
   build:
@@ -61,7 +61,7 @@ jobs:
           xcodebuild -project clinic-native/ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
-            MARKETING_VERSION=${{ github.event.inputs.versao || '1.0' }} \
+            MARKETING_VERSION=${{ github.event.inputs.versao || '5.3' }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Exporta o IPA
