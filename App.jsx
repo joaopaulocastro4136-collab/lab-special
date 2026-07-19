@@ -2091,7 +2091,12 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
         <div style={{ color: '#fff', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', marginTop: 14, lineHeight: 1.15 }}>
           {saudacao}{usuarioAtivo ? `, ${String(typeof usuarioAtivo === 'string' ? usuarioAtivo : usuarioAtivo.nome || '').split(' ')[0]}` : ''}!
         </div>
-        <div style={{ color: GOLD, fontSize: 12.5, fontWeight: 700, marginTop: 4, textTransform: 'capitalize' }}>{hojeExtenso()}</div>
+        <div style={{ color: GOLD, fontSize: 12.5, fontWeight: 700, marginTop: 4, textTransform: 'capitalize' }}>
+          {hojeExtenso()}
+          <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'none', marginLeft: 8 }}>
+            v{typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev'}
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
           {[
             ['Em produção', producaoAtiva, '#F5A54A'],
