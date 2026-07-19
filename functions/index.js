@@ -117,8 +117,18 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
   for (const a of (depois.anexos || [])) {
     const statusNovo = a.aprovacao && a.aprovacao.status;
     const statusVelho = mapaAntes[a.id] && mapaAntes[a.id].aprovacao && mapaAntes[a.id].aprovacao.status;
-    // (o aviso de aprovação pendente agora sai pelo canal reserva avisosAprovacao,
-    //  gravado pelo Lab junto com o pedido — não notifica daqui pra não duplicar)
+    if (statusNovo === 'pendente' && statusVelho !== 'pendente' && depois.dentista) {
+      // Se o canal reserva (avisosAprovacao) já avisou este pedido há pouco, não repete
+      let jaAvisado = false;
+      try {
+        const corte = new Date(Date.now() - 3 * 60000).toISOString();
+        const avs = await admin.firestore().collection('labs/principal/avisosAprovacao').where('casoId', '==', casoId).get();
+        jaAvisado = avs.docs.some((x) => { const v = x.data(); return v.anexoNome === a.nome && String(v.em) > corte; });
+      } catch (e) { console.error('dedupe aviso', e); }
+      if (!jaAvisado) {
+        await notificar('clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`, { casoId });
+      }
+    }
     if (statusNovo === 'aprovado' && statusVelho !== 'aprovado') {
       await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
     }

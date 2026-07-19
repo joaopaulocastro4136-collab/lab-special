@@ -1,0 +1,26 @@
+# Dispara um pedido de aprovação REAL direto na nuvem (teste ponta a ponta do aviso).
+name: Teste de aprovação
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/special-lab-test-mode-9jrxb1]
+    paths: ['testar-aprovacao.mjs', '.github/workflows/testar-aprovacao.yml']
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepara a credencial
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Dispara o pedido de aprovação
+        run: node testar-aprovacao.mjs
