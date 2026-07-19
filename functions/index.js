@@ -161,24 +161,32 @@ exports.transformarSorriso = onCall(
 Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
 Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
 
-    const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=' + chave, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [
-          { inline_data: { mime_type: 'image/jpeg', data: foto } },
-          { text: prompt },
-        ] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-      }),
-    });
-    if (!resp.ok) {
+    // Tenta os modelos em sequência: cada um tem cota própria — se um esgotar, o próximo assume
+    const MODELOS = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+    let dados = null;
+    let esgotados = 0;
+    for (const modelo of MODELOS) {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=` + chave, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'image/jpeg', data: foto } },
+            { text: prompt },
+          ] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+        }),
+      });
+      if (resp.ok) { dados = await resp.json(); console.log(`Modelo usado: ${modelo}`); break; }
       const txt = await resp.text();
-      console.error('Gemini falhou', resp.status, txt.slice(0, 500));
-      if (resp.status === 429) throw new HttpsError('resource-exhausted', 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.');
+      console.error(`Gemini ${modelo} falhou`, resp.status, txt.slice(0, 300));
+      if (resp.status === 429) { esgotados++; continue; }
       throw new HttpsError('internal', 'A IA não conseguiu processar esta foto. Tente outra.');
     }
-    const dados = await resp.json();
+    if (!dados) {
+      if (esgotados === MODELOS.length) throw new HttpsError('resource-exhausted', 'A IA Special está sem créditos no Google neste momento. Avise o laboratório para reativar.');
+      throw new HttpsError('internal', 'A IA não conseguiu processar esta foto. Tente outra.');
+    }
     const partes = (dados.candidates && dados.candidates[0] && dados.candidates[0].content && dados.candidates[0].content.parts) || [];
     const parteImg = partes.map((p) => p.inlineData || p.inline_data).find((d) => d && d.data);
     if (!parteImg) {
