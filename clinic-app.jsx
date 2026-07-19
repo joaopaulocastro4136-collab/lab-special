@@ -540,6 +540,99 @@ function ComparadorImagens({ antes, depois, corte, setCorte }) {
   );
 }
 
+// ─── Cartão "antes e depois" para compartilhar no WhatsApp ───
+// Monta uma imagem única: antes | depois lado a lado, etiquetas, divisor dourado
+// e rodapé com a marca Special e o nome do paciente.
+function carregarImg(src) {
+  return new Promise((res, rej) => {
+    const im = new window.Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('não carregou a imagem'));
+    im.src = src;
+  });
+}
+
+async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente) {
+  const [a, d] = await Promise.all([carregarImg(antesSrc), carregarImg(depoisSrc)]);
+  const W = 1080, HIMG = 850, RODAPE = 140, H = HIMG + RODAPE;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#141311'; x.fillRect(0, 0, W, H);
+  const cover = (img, dx, dw) => {
+    const r = Math.max(dw / img.width, HIMG / img.height);
+    const sw = dw / r, sh = HIMG / r;
+    x.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, dx, 0, dw, HIMG);
+  };
+  x.save(); x.beginPath(); x.rect(0, 0, W / 2, HIMG); x.clip(); cover(a, 0, W / 2); x.restore();
+  x.save(); x.beginPath(); x.rect(W / 2, 0, W / 2, HIMG); x.clip(); cover(d, W / 2, W / 2); x.restore();
+  // divisor dourado
+  const grad = x.createLinearGradient(0, 0, 0, HIMG);
+  grad.addColorStop(0, '#E8C48A'); grad.addColorStop(1, '#B8935A');
+  x.fillStyle = grad; x.fillRect(W / 2 - 3, 0, 6, HIMG);
+  // etiquetas ANTES / DEPOIS
+  const etiqueta = (texto, cx, dourada) => {
+    x.font = '800 34px Manrope, -apple-system, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    const tw = x.measureText(texto).width;
+    const pw = tw + 48, ph = 58, py = 26;
+    x.fillStyle = dourada ? '#B8935A' : 'rgba(0,0,0,0.62)';
+    x.beginPath();
+    if (x.roundRect) x.roundRect(cx - pw / 2, py, pw, ph, 29); else x.rect(cx - pw / 2, py, pw, ph);
+    x.fill();
+    x.fillStyle = dourada ? '#1C1B19' : '#FFFFFF';
+    x.fillText(texto, cx, py + ph / 2 + 2);
+  };
+  etiqueta('ANTES', W / 4, false);
+  etiqueta('DEPOIS ✨', (3 * W) / 4, true);
+  // rodapé: estrela + SPECIAL + paciente
+  const yR = HIMG + RODAPE / 2;
+  x.save();
+  x.translate(64, yR);
+  x.scale(0.62, 0.62);
+  x.fillStyle = '#B8935A';
+  const estrela = new Path2D('M0,-55 C4,-17 17,-4 46,0 C17,4 4,17 0,55 C-4,17 -17,4 -46,0 C-17,-4 -4,-17 0,-55 Z');
+  x.fill(estrela);
+  x.restore();
+  x.textAlign = 'left'; x.textBaseline = 'middle';
+  x.font = '300 40px Manrope, -apple-system, sans-serif';
+  x.fillStyle = '#FFFFFF';
+  x.fillText('S P E C I A L', 108, yR - 16);
+  x.font = '700 24px Manrope, -apple-system, sans-serif';
+  x.fillStyle = '#B8935A';
+  x.fillText('IA SPECIAL — simulação de sorriso', 108, yR + 26);
+  if (paciente) {
+    x.textAlign = 'right';
+    x.font = '800 30px Manrope, -apple-system, sans-serif';
+    x.fillStyle = '#FFFFFF';
+    x.fillText(paciente, W - 44, yR - 14);
+    x.font = '600 22px Manrope, -apple-system, sans-serif';
+    x.fillStyle = 'rgba(255,255,255,0.55)';
+    x.fillText(formatDateBR(todayISO()), W - 44, yR + 22);
+  }
+  return c.toDataURL('image/jpeg', 0.92);
+}
+
+async function compartilharAntesDepois(antesSrc, depoisSrc, paciente, aoAvisar) {
+  try {
+    const dataURL = await gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente);
+    const blob = dataURLparaBlob(dataURL, 'image/jpeg');
+    const nome = `antes-depois-${String(paciente || 'sorriso').replace(/\s+/g, '-').toLowerCase()}.jpg`;
+    const file = new File([blob], nome, { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: `Antes e depois — ${paciente}` });
+      return;
+    }
+    const el = document.createElement('a');
+    el.href = URL.createObjectURL(blob); el.download = nome;
+    document.body.appendChild(el); el.click(); document.body.removeChild(el);
+    if (aoAvisar) aoAvisar('Antes e depois salvo ✓');
+  } catch (e) {
+    console.error('cartão antes/depois', e);
+    if (e && e.name !== 'AbortError' && aoAvisar) aoAvisar('Não consegui montar o antes e depois. Tente de novo.');
+  }
+}
+
 function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
@@ -619,24 +712,17 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
     setProcessando(false);
   };
 
-  const baixar = () => {
-    const a = document.createElement('a');
-    a.href = resultado;
-    a.download = `sorriso-ia-special-${todayISO()}.jpg`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    aoAvisar('Simulação salva ✓');
-  };
-
-  const compartilhar = async () => {
+  // Compartilhar/baixar = o cartão antes+depois com a marca (pronto pro WhatsApp)
+  const compartilhar = () => compartilharAntesDepois(foto, resultado, paciente.trim() || 'Paciente', aoAvisar);
+  const baixar = async () => {
     try {
-      const blob = dataURLparaBlob(resultado, 'image/jpeg');
-      const file = new File([blob], 'sorriso-ia-special.jpg', { type: 'image/jpeg' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Simulação IA Special' });
-        return;
-      }
-      baixar();
-    } catch (e) { if (e && e.name !== 'AbortError') baixar(); }
+      const dataURL = await gerarCartaoAntesDepois(foto, resultado, paciente.trim() || 'Paciente');
+      const a = document.createElement('a');
+      a.href = dataURL;
+      a.download = `antes-depois-${todayISO()}.jpg`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      aoAvisar('Antes e depois salvo ✓');
+    } catch (e) { aoAvisar('Não consegui montar o antes e depois.'); }
   };
 
   const btnDourado = { border: 'none', borderRadius: 14, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontFamily: FONTE, cursor: 'pointer', boxShadow: '0 12px 26px -14px rgba(184,147,90,0.9)' };
@@ -720,17 +806,9 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
               <ComparadorImagens antes={verSim.antesUrl} depois={verSim.depoisUrl} corte={corte} setCorte={setCorte} />
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
-            <button onClick={async () => {
-              try {
-                const resp = await fetch(verSim.depoisUrl);
-                const blob = await resp.blob();
-                const file = new File([blob], `sorriso-${verSim.paciente}.jpg`, { type: blob.type || 'image/jpeg' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: `Sorriso de ${verSim.paciente}` }); return; }
-                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `sorriso-${verSim.paciente}.jpg`;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-              } catch (e) { if (e && e.name !== 'AbortError') aoAvisar('Não consegui compartilhar.'); }
-            }} style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <Share2 size={16} /> Compartilhar
+            <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar)}
+              style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Share2 size={16} /> Compartilhar antes e depois
             </button>
           </div>
         )}
@@ -781,7 +859,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
             {resultado && !processando && (
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button onClick={compartilhar} style={{ ...btnDourado, flex: 1, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Share2 size={16} /> Compartilhar
+                  <Share2 size={16} /> Compartilhar antes e depois
                 </button>
                 <button onClick={baixar} title="Baixar"
                   style={{ width: 54, borderRadius: 14, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
