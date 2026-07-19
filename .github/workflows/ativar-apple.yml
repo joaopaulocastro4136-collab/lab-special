@@ -5,9 +5,6 @@ name: Ativar Sign In with Apple
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/test-coverage-analysis-rb37qe, claude/special-lab-test-mode-9jrxb1]
-    paths: ['ativar-apple.mjs', '.github/workflows/ativar-apple.yml']
 
 jobs:
   ativar:
