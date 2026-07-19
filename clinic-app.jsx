@@ -1186,6 +1186,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
   const [iaAberta, setIaAberta] = useState(false);
   const [perguntasAbertas, setPerguntasAbertas] = useState(false);
+  const [extratoVer, setExtratoVer] = useState(null); // extrato aberto pra VER antes de decidir compartilhar
   const [previsaoModo, setPrevisaoModo] = useState('lista'); // previsão: 'lista' (urgência) ou 'datas' (calendário do mês)
   const [mesCal, setMesCal] = useState(() => todayISO().slice(0, 7)); // mês aberto no calendário da previsão
   const [diaCal, setDiaCal] = useState(() => todayISO()); // dia tocado no calendário
@@ -1201,8 +1202,10 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
   const iniciais = (dentista || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const statusAnterior = useRef({});
   const producaoAnterior = useRef({});
-  // Deslizar da borda esquerda: volta pra aba Trabalhos (o detalhe aberto trata o gesto primeiro)
+  // Deslizar da borda esquerda: fecha o extrato aberto ou volta pra aba Trabalhos
+  // (o detalhe aberto trata o gesto primeiro)
   useGestoVoltar(() => {
+    if (extratoVer) { setExtratoVer(null); return; }
     if (aba !== 'trabalhos') { setAba('trabalhos'); return; }
     return false;
   });
@@ -1410,9 +1413,9 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
     }
   };
 
-  // Extrato pro WhatsApp: entregas do mês OU trabalhos em produção (com valores),
-  // pra combinar com o laboratório o que vai ser pago.
-  const compartilharExtrato = async (qual) => {
+  // Extrato: entregas do mês OU trabalhos em produção (com valores). Primeiro ABRE
+  // pra ver na tela; aí o dentista decide se compartilha (PDF pro WhatsApp).
+  const abrirExtrato = (qual) => {
     try {
       const mesAtual = todayISO().slice(0, 7);
       const ehMes = qual === 'mes';
@@ -1424,9 +1427,10 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
         return;
       }
       const total = Math.round(lista.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+      const titulo = ehMes ? 'Entregas do mês' : 'Trabalhos em produção';
       const img = desenharExtrato({
         dentista,
-        titulo: ehMes ? 'Entregas do mês' : 'Trabalhos em produção',
+        titulo,
         subtitulo: ehMes ? nomeMes(mesAtual) : formatDateBR(todayISO()),
         linhas: lista.map(c => ({
           titulo: c.paciente,
@@ -1440,23 +1444,32 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
           ? '✓ Trabalhos entregues pelo Laboratório Special no mês.'
           : '⏳ Trabalhos ainda em produção no Laboratório Special.',
       });
-      const pdf = jpegParaPDF(img);
-      const nomeArq = `${ehMes ? 'entregas-do-mes' : 'em-producao'}-${todayISO()}.pdf`;
-      const file = new File([pdf], nomeArq, { type: 'application/pdf' });
+      setExtratoVer({ img, titulo, nomeArq: `${ehMes ? 'entregas-do-mes' : 'em-producao'}-${todayISO()}.pdf` });
+    } catch (e) {
+      console.error(e);
+      mostrarToast('Não consegui montar o extrato. Tente de novo.');
+    }
+  };
+
+  const compartilharExtratoAberto = async () => {
+    if (!extratoVer) return;
+    try {
+      const pdf = jpegParaPDF(extratoVer.img);
+      const file = new File([pdf], extratoVer.nomeArq, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: ehMes ? 'Entregas do mês' : 'Trabalhos em produção' });
+        await navigator.share({ files: [file], title: extratoVer.titulo });
         return;
       }
       const u = URL.createObjectURL(pdf);
       const a = document.createElement('a');
-      a.href = u; a.download = nomeArq;
+      a.href = u; a.download = extratoVer.nomeArq;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(u), 5000);
       mostrarToast('Extrato baixado ✓');
     } catch (e) {
       if (e && e.name === 'AbortError') return;
       console.error(e);
-      mostrarToast('Não consegui montar o extrato. Tente de novo.');
+      mostrarToast('Não consegui compartilhar. Tente de novo.');
     }
   };
 
@@ -2044,19 +2057,19 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
               <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <Share2 size={15} color="#7A6234" />
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Enviar extrato</span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Extrato</span>
               </div>
               <div style={{ fontSize: 11.5, color: '#78716C', lineHeight: 1.5, marginBottom: 11 }}>
-                Um PDF com os trabalhos e valores — pronto pro WhatsApp, pra combinar o que vai ser pago.
+                Veja os trabalhos e valores na tela — e, se quiser, compartilhe o PDF no WhatsApp pra combinar o que vai ser pago.
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => compartilharExtrato('mes')}
+                <button onClick={() => abrirExtrato('mes')}
                   style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  📦 Entregas do mês
+                  📦 Ver entregas do mês
                 </button>
-                <button onClick={() => compartilharExtrato('producao')}
+                <button onClick={() => abrirExtrato('producao')}
                   style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: `1.5px solid ${GOLD}`, background: 'rgba(184,147,90,0.08)', color: '#7A6234', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  ⚙️ Em produção
+                  ⚙️ Ver em produção
                 </button>
               </div>
             </div>
@@ -2149,6 +2162,30 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
       {iaAberta && <IASpecial dentista={dentista} aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
       {perguntasAbertas && <PerguntasIA dentista={dentista} aoFechar={() => setPerguntasAbertas(false)} aoAvisar={mostrarToast} />}
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
+
+      {/* Visor do extrato: vê os trabalhos e valores na tela; compartilhar é opcional */}
+      {extratoVer && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 8800, background: '#141311', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: 'calc(12px + env(safe-area-inset-top)) 14px 10px' }}>
+            <Estrela size={11} color={GOLD} />
+            <span style={{ flex: 1, minWidth: 0, color: '#fff', fontSize: 14.5, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{extratoVer.titulo}</span>
+            <button onClick={() => setExtratoVer(null)} style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>×</button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 10px', WebkitOverflowScrolling: 'touch' }}>
+            <img src={extratoVer.img} alt={extratoVer.titulo} style={{ display: 'block', width: '100%', maxWidth: 560, margin: '0 auto', borderRadius: 16, boxShadow: '0 20px 50px -20px rgba(0,0,0,0.8)' }} />
+          </div>
+          <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))', display: 'flex', gap: 8 }}>
+            <button onClick={compartilharExtratoAberto}
+              style={{ flex: 1, padding: 15, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 14.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 12px 26px -14px rgba(184,147,90,0.9)' }}>
+              <Share2 size={16} /> Compartilhar PDF
+            </button>
+            <button onClick={() => setExtratoVer(null)}
+              style={{ padding: '15px 18px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={{ position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, background: INK, color: '#fff', borderRadius: 14, padding: '12px 18px', fontSize: 13, fontWeight: 700, boxShadow: '0 14px 34px rgba(0,0,0,0.35)', maxWidth: '90%', fontFamily: FONTE }}>
