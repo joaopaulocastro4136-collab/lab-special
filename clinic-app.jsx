@@ -1778,7 +1778,29 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             {termoBusca !== '' && (
               <Secao titulo={`Resultados da busca (${resultadosBusca.length})`} cor="#7A6234" itens={resultadosBusca} vazio="Nenhum trabalho encontrado — confira o nome ou o ID." />
             )}
-            {termoBusca === '' && <>
+            {/* Caixa tocada → a lista abre deslizando; sem caixa tocada, a tela fica limpa (sem rolagem comprida) */}
+            {termoBusca === '' && filtroSecao && (
+              <div key={filtroSecao} style={{ animation: 'secaoAbre 0.3s cubic-bezier(0.2, 0.8, 0.3, 1)' }}>
+                <style>{`@keyframes secaoAbre { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
+                {filtroSecao === 'producao' && (
+                  <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
+                )}
+                {filtroSecao === 'prontos' && (
+                  <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
+                )}
+                {filtroSecao === 'entregues' && (
+                  <Secao titulo="Entregues" itens={todasEntregas.slice(0, 40)} vazio="Nenhuma entrega registrada ainda." />
+                )}
+                <button onClick={() => setFiltroSecao(null)}
+                  style={{ width: '100%', padding: 12, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, marginBottom: 18 }}>
+                  ✕ Fechar lista
+                </button>
+              </div>
+            )}
+            {termoBusca === '' && !filtroSecao && <>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textAlign: 'center', margin: '-4px 0 14px' }}>
+              Toque numa caixa acima para abrir a lista
+            </div>
             {bannerIA}
             {bannerPerguntas}
             {enviadosHoje.length > 0 && (
@@ -1792,21 +1814,6 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
                   <Download size={18} />
                 </button>
               </div>
-            )}
-            {(!filtroSecao || filtroSecao === 'producao') && (
-              <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
-            )}
-            {(!filtroSecao || filtroSecao === 'prontos') && (
-              <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
-            )}
-            {(!filtroSecao || filtroSecao === 'entregues') && (
-              <Secao titulo={filtroSecao === 'entregues' ? 'Entregues' : 'Entregues recentemente'} itens={filtroSecao === 'entregues' ? todasEntregas.slice(0, 40) : entregues} vazio="Nenhuma entrega registrada ainda." />
-            )}
-            {filtroSecao && (
-              <button onClick={() => setFiltroSecao(null)}
-                style={{ width: '100%', padding: 12, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, marginBottom: 18 }}>
-                Mostrar tudo
-              </button>
             )}
             </>}
           </>
