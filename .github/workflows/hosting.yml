@@ -1,0 +1,36 @@
+# Fábrica dos sites: publica as páginas já prontas (dist-web e dist-clinic)
+# no Firebase Hosting — inclui a página de suporte exigida pela Apple
+# (https://laboratorio-special.web.app/suporte.html).
+# Rodar manualmente: aba Actions → "Sites → Firebase Hosting" → Run workflow.
+name: Sites → Firebase Hosting
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['dist-web/**', 'dist-clinic/**', '.github/workflows/hosting.yml']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prepara a credencial do Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT no GitHub (Settings → Secrets → Actions)."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+
+      - name: Publica os sites (lab e clinic)
+        run: npx firebase-tools deploy --only hosting --project laboratorio-special --non-interactive --force
