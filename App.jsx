@@ -1512,6 +1512,10 @@ export default function App() {
       else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 1500);
+      // Pedido de aprovação: confirma na tela que CHEGOU na nuvem (o aviso ao dentista dispara sozinho)
+      if (patch && patch.aprovacao && patch.aprovacao.status === 'pendente') {
+        alert('Pedido de aprovação enviado ✓\nO dentista recebe o aviso no celular agora.');
+      }
       return true;
     } catch (e) {
       console.error('salvar anexo', e);
@@ -1978,7 +1982,7 @@ function SeletorUsuario({ funcionarios, usuarioAtivoId, onTrocar, onFechar, onIr
                   <button key={f.id} onClick={() => tentar(f)}
                     className="flex items-center gap-3 p-3 rounded-2xl text-left"
                     style={{ border: f.id === usuarioAtivoId ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: f.id === usuarioAtivoId ? GOLD_SOFT : 'white' }}>
-                    <span className="w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>
+                    <span className="w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                       {f.nome.charAt(0).toUpperCase()}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -2621,7 +2625,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                 className="w-8 h-8 rounded-lg font-extrabold disabled:opacity-30" style={{ background: 'white', border: '1px solid #E7E5E4', color: INK }}>−</button>
               <span className="text-sm font-extrabold text-center" style={{ color: INK, width: '22px' }}>{pessoasDoDia}</span>
               <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.min(20, pessoasDoDia + 1) })}
-                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: INK, color: GOLD }}>+</button>
+                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
             </div>
             <div className="text-xs mt-1" style={{ color: '#7A6234' }}>
               Capacidade {dia === 'hoje' ? 'de hoje' : 'de amanhã'}: {formatHoras(horasDoDia)} × {pessoasDoDia} {pessoasDoDia === 1 ? 'pessoa' : 'pessoas'} = <b>{formatHoras(horasDoDia * pessoasDoDia)}</b>
@@ -3016,7 +3020,7 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
               </div>
               <button onClick={() => setQuantidade(q => Math.min(32, q + 1))} className="w-9 h-9 rounded-lg font-extrabold text-lg" style={{ color: INK, border: '1px solid #E7E5E4', background: '#fff' }}>＋</button>
             </div>
-            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>＋ Adicionar item</button>
+            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>＋ Adicionar item</button>
           </div>
           {itens.length > 0 && (
             <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
@@ -3318,7 +3322,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
   const [salvo, setSalvo] = useState(false);
   useEffect(() => { setTexto(chavePix || ''); }, [chavePix]);
   return (
-    <div className="rounded-2xl p-4 bg-white border border-stone-200">
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
       <div className="flex items-center gap-2 mb-1">
         <DollarSign size={16} color={GOLD} />
         <h2 className="text-sm font-bold" style={{ color: INK }}>Chave Pix do laboratório</h2>
@@ -3427,7 +3431,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
     && !(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     && !window.navigator.standalone;
   const cartaoInstalar = mostrarInstalar ? (
-    <div className="rounded-2xl p-4 bg-white border border-stone-200">
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
       <div className="flex items-center gap-2 mb-1">
         <Download size={16} color={GOLD} />
         <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Instalar o aplicativo</h2>
@@ -3449,7 +3453,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="text-stone-500 text-sm font-medium">Ajustes disponíveis apenas para gestores.</div>
           <div className="text-stone-400 text-xs mt-1">Dentistas, tipos de trabalho, prazos, comissões e equipe são configurados pelo gestor do laboratório.</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <div className="text-sm font-bold mb-1" style={{ color: INK }}>O que você pode fazer:</div>
           <div className="text-xs text-stone-500 leading-relaxed">Ver e trabalhar nos casos, usar a tela "Dia", cronometrar suas etapas com Iniciar/Concluir, enviar trabalhos para prova e finalizar. Suas comissões e tempos ficam em <b>Meu desempenho</b>, no Início.</div>
         </div>
@@ -3462,7 +3466,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       {cartaoInstalar}
       <ChavePixCard chavePix={chavePix} onSalvar={onSetChavePix} />
       {/* Autorregulação de tempos */}
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2">
           <TrendingUp size={16} color={autoAjuste ? VERDE : '#A8A29E'} />
           <div className="flex-1">
@@ -3481,7 +3485,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       </div>
 
       {/* Equipe */}
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Users size={16} color={GOLD} />
           <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Equipe</h2>
@@ -3511,7 +3515,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="flex flex-col mt-3">
             {funcionarios.map(f => (
               <div key={f.id} className="flex items-center gap-3 py-2.5 border-t border-stone-100">
-                <span className="w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-xs flex-shrink-0" style={{ background: INK, color: GOLD }}>
+                <span className="w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-xs flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                   {f.nome.charAt(0).toUpperCase()}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -3533,7 +3537,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         )}
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Hourglass size={16} color={GOLD} />
           <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dias e horários de trabalho</h2>
@@ -3596,13 +3600,13 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                 className="w-9 h-9 rounded-xl font-extrabold text-lg disabled:opacity-30" style={{ background: '#F0EFEC', color: INK }}>−</button>
               <span className="text-lg font-extrabold text-center" style={{ color: INK, width: '28px' }}>{pessoas >= 1 ? pessoas : 1}</span>
               <button onClick={() => onSetPessoas(Math.min(20, (pessoas || 1) + 1))}
-                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: INK, color: GOLD }}>+</button>
+                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-3">
           <UserPlus size={16} color={GOLD} />
           <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
@@ -3648,7 +3652,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         )}
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Timer size={16} color={GOLD} />
           <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Tipos de trabalho, etapas e comissões</h2>
@@ -3730,7 +3734,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </button>
 
         <div className="flex items-center gap-3 mb-5">
-          <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: INK, color: GOLD }}>
+          <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
             {f.nome.charAt(0).toUpperCase()}
           </span>
           <div>
@@ -3739,7 +3743,8 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
           </div>
         </div>
 
-        <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+        <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
           <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Comissões — {mesNome}</div>
           <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
           <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>
@@ -3748,12 +3753,12 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="rounded-2xl p-4 bg-white border border-stone-200">
+          <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
             <ListChecks size={17} color={GOLD} className="mb-1.5" />
             <div className="text-xl font-extrabold" style={{ color: INK }}>{temposDoMes.length}</div>
             <div className="text-xs text-stone-500">etapas cronometradas ({mesNome})</div>
           </div>
-          <div className="rounded-2xl p-4 bg-white border border-stone-200">
+          <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
             <Hourglass size={17} color={GOLD} className="mb-1.5" />
             <div className="text-xl font-extrabold" style={{ color: INK }}>{minutosMes > 0 ? formatMinutos(minutosMes) : '0min'}</div>
             <div className="text-xs text-stone-500">tempo de bancada ({mesNome})</div>
@@ -3840,21 +3845,22 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         )}
       </div>
 
-      <div className="rounded-2xl p-4 mb-5" style={{ background: INK }}>
+      <div className="rounded-2xl mb-5" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Comissões de {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
       </div>
 
-      <h2 className="text-sm font-bold mb-1" style={{ color: INK }}>Produção por funcionário ({mesNome})</h2>
+      <h2 className="font-bold mb-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Produção por funcionário ({mesNome})</h2>
       <p className="text-xs text-stone-400 mb-3">Toque num funcionário para abrir a ficha dele: etapas executadas, tempos e comissões por serviço.</p>
       {porFuncionario.length === 0 ? (
         <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-sm">Nenhum funcionário cadastrado.</div>
       ) : (
         <div className="flex flex-col gap-2 mb-6">
           {porFuncionario.map(f => (
-            <button key={f.id} onClick={() => setFuncionarioSel(f.id)} className="w-full text-left rounded-2xl p-4 bg-white border border-stone-200 flex items-center gap-3 active:bg-stone-50">
-              <span className="w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>
+            <button key={f.id} onClick={() => setFuncionarioSel(f.id)} className="w-full text-left rounded-2xl p-4 bg-white flex items-center gap-3 active:bg-stone-50" style={{ border: '1px solid #E8D5B0', boxShadow: '0 12px 28px -22px rgba(122,98,52,0.45)' }}>
+              <span className="w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                 {f.nome.charAt(0).toUpperCase()}
               </span>
               <div className="flex-1 min-w-0">
@@ -3872,7 +3878,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </div>
       )}
 
-      <h2 className="text-sm font-bold mb-3" style={{ color: INK }}>Tempo estimado × tempo real</h2>
+      <h2 className="font-bold mb-3" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Tempo estimado × tempo real</h2>
       <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-6">
         {Object.keys(medias).length === 0 ? (
           <div className="text-xs text-stone-400">Ainda não há tempos cronometrados. Peça à equipe para usar os botões <b>Iniciar</b> e <b>Concluir</b> nas etapas — cada registro alimenta este relatório.</div>
@@ -4971,7 +4977,7 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
       </button>
 
       <div className="flex items-center gap-3 mb-5">
-        <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: INK, color: GOLD }}>
+        <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
           {usuarioAtivo.nome.charAt(0).toUpperCase()}
         </span>
         <div>
@@ -4980,7 +4986,8 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+      <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Minhas comissões — {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>
@@ -4989,19 +4996,19 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <ListChecks size={17} color={GOLD} className="mb-1.5" />
           <div className="text-xl font-extrabold" style={{ color: INK }}>{meusTemposMes.length}</div>
           <div className="text-xs text-stone-500">etapas cronometradas ({mesNome})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Hourglass size={17} color={GOLD} className="mb-1.5" />
           <div className="text-xl font-extrabold" style={{ color: INK }}>{formatMinutos(minutosMes) === '—' ? '0min' : formatMinutos(minutosMes)}</div>
           <div className="text-xs text-stone-500">tempo de bancada ({mesNome})</div>
         </div>
       </div>
 
-      <h2 className="text-sm font-bold mb-3" style={{ color: INK }}>Meus tempos médios</h2>
+      <h2 className="font-bold mb-3" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Meus tempos médios</h2>
       <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-6">
         {Object.keys(minhasMedias).length === 0 ? (
           <div className="text-xs text-stone-400">Ainda sem tempos cronometrados. Use os botões <b>Iniciar</b> e <b>Concluir</b> nas etapas para registrar.</div>
@@ -5366,7 +5373,8 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+      <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Entrou de serviço em {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(valorEntrou)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{entraram.length} {entraram.length === 1 ? 'trabalho recebido' : 'trabalhos recebidos'} no mês</div>
@@ -5378,17 +5386,17 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Flag size={16} style={{ color: VERDE }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: INK }}>{formatReais(valorFinalizado)}</div>
           <div className="text-xs text-stone-500">finalizados no mês ({finalizados.length})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <CheckCircle2 size={16} style={{ color: VERDE }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: INK }}>{formatReais(valorEntregue)}</div>
           <div className="text-xs text-stone-500">entregues no mês ({entregues.length})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Users size={16} style={{ color: '#EA580C' }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: '#EA580C' }}>− {formatReais(totalComissoes)}</div>
           <div className="text-xs text-stone-500">comissões no mês</div>
