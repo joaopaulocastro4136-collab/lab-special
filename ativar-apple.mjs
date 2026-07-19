@@ -50,7 +50,10 @@ for (const app of APPS) {
     const liga = await api('POST', '/bundleIdCapabilities', {
       data: {
         type: 'bundleIdCapabilities',
-        attributes: { capabilityType: 'APPLE_ID_AUTH', settings: [] },
+        attributes: {
+          capabilityType: 'APPLE_ID_AUTH',
+          settings: [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT' }] }],
+        },
         relationships: { bundleId: { data: { type: 'bundleIds', id: registro.id } } },
       },
     });
