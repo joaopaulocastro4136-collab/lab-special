@@ -1334,10 +1334,13 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   // Prova devolvida pelo dentista: também está esperando o laboratório buscar
   const devolvidoAguardando = (c) => c.naClinica && c.retornoSolicitado && c.status !== 'Entregue';
   const paraRetirada = casos.filter(c => aguardandoRetirada(c) || devolvidoAguardando(c));
+  // A caminho: prova que saiu da bancada e está indo para a clínica
+  // (some daqui quando o laboratório marca "Entregue" → vai para "Na clínica")
+  const aCaminho = casos.filter(c => c.provaPendente && !c.naClinica && c.status !== 'Entregue');
   // Na clínica: prova que o laboratório entregou e está com o dentista agora
   // (quando devolve, sai daqui e entra na caixa Retirada)
   const naClinicaLista = casos.filter(c => c.naClinica && !c.retornoSolicitado && c.status !== 'Entregue');
-  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c) && !c.naClinica);
+  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c) && !c.naClinica && !(c.provaPendente && !c.naClinica));
   const prontos = casos.filter(c => c.status === 'Pronto');
   const todasEntregas = casos.filter(c => c.status === 'Entregue');
   const entregues = todasEntregas.slice(0, 20);
@@ -1526,6 +1529,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const dadosPanorama = [
     { chave: 'retirada', rotulo: 'Aguardando retirada', curto: 'Retirada', n: paraRetirada.length, cor: '#2563EB', corClara: '#60A5FA' },
     { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emProducaoSo.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'acaminho', rotulo: 'A caminho (prova)', curto: 'A caminho', n: aCaminho.length, cor: '#0E7490', corClara: '#22D3EE' },
     { chave: 'clinica', rotulo: 'Na clínica (prova)', curto: 'Na clínica', n: naClinicaLista.length, cor: '#7C3AED', corClara: '#A78BFA' },
     { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
     { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
@@ -1537,7 +1541,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   );
   // Cartões grandes de situação (estilo do início do Lab): ícone colorido, número
   // grandão e setinha — toca e a lista abre numa tela própria (Voltar retorna)
-  const ICONES_SITUACAO = { retirada: Inbox, producao: Hammer, clinica: Stethoscope, prontos: Package, entregues: Flag };
+  const ICONES_SITUACAO = { retirada: Inbox, producao: Hammer, acaminho: Send, clinica: Stethoscope, prontos: Package, entregues: Flag };
   const caixinhasSituacao = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
       {dadosPanorama.map(d => {
@@ -1798,6 +1802,16 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             )}
             {filtroSecao === 'producao' && (
               <Secao titulo={`Em produção (${emProducaoSo.length})`} cor="#B54708" itens={emProducaoSo} vazio="Nenhum trabalho em produção no momento." />
+            )}
+            {filtroSecao === 'acaminho' && (
+              <Secao titulo={`A caminho da clínica — prova (${aCaminho.length})`} cor="#0E7490" itens={aCaminho}
+                vazio="Nenhuma prova a caminho da sua clínica agora."
+                rodapeItem={() => (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#E0F5FA', color: '#155E70', fontSize: 12, fontWeight: 800 }}>
+                    🚗 Saiu do laboratório — chega em breve na sua clínica
+                  </div>
+                )}
+              />
             )}
             {filtroSecao === 'clinica' && (
               <Secao titulo={`Na clínica — prova (${naClinicaLista.length})`} cor="#6D28D9" itens={naClinicaLista}

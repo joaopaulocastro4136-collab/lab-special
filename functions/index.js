@@ -121,6 +121,11 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
     await notificar('lab', null, '🔁 Buscar na clínica', `${depois.dentista} avisou: ${depois.paciente} (${depois.tipoTrabalho}) está pronto para o laboratório buscar.`, { casoId });
   }
 
+  // Prova saiu da bancada rumo à clínica → avisa o dentista que está a caminho
+  if (!antes.provaPendente && depois.provaPendente && !depois.naClinica && depois.dentista) {
+    await notificar('clinica', depois.dentista, '🦷 Prova a caminho', `${depois.paciente} (${depois.tipoTrabalho}): a prova saiu do laboratório e está a caminho da sua clínica.`, { casoId });
+  }
+
   // Aprovações de arquivo: compara os anexos de antes e de depois
   const mapaAntes = {};
   (antes.anexos || []).forEach((a) => { mapaAntes[a.id] = a; });
