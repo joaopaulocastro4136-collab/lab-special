@@ -1,0 +1,26 @@
+# Rajada de notificações de teste numeradas (Clinic + controle no Lab).
+name: Rajada de push de teste
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/special-lab-test-mode-9jrxb1]
+    paths: ['mandar-push-teste.mjs', '.github/workflows/mandar-push-teste.yml']
+
+jobs:
+  mandar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepara a credencial
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Manda a rajada
+        run: node mandar-push-teste.mjs
