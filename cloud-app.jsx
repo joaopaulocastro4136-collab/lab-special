@@ -172,7 +172,7 @@ async function sincronizarAcesso(configJson) {
     const batch = writeBatch(db);
     atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
-      batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null });
+      batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null });
     }
     // Informações que a clínica usa: tipos completos (para criar o caso direto) e dias de trabalho (cálculo do prazo)
     batch.set(doc(db, 'labs', LAB, 'publicoClinica', 'info'), {

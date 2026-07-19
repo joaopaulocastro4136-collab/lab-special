@@ -1172,7 +1172,7 @@ function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
   );
 }
 
-function App({ dentista, email, prazoPagamento }) {
+function App({ dentista, email, prazoPagamento, diasPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
   const [pagamentosLab, setPagamentosLab] = useState([]); // pagamentos registrados pelo laboratório (data + valor)
@@ -1186,7 +1186,9 @@ function App({ dentista, email, prazoPagamento }) {
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
   const [iaAberta, setIaAberta] = useState(false);
   const [perguntasAbertas, setPerguntasAbertas] = useState(false);
-  const [previsaoModo, setPrevisaoModo] = useState('lista'); // previsão: 'lista' (urgência) ou 'datas' (agenda por dia)
+  const [previsaoModo, setPrevisaoModo] = useState('lista'); // previsão: 'lista' (urgência) ou 'datas' (calendário do mês)
+  const [mesCal, setMesCal] = useState(() => todayISO().slice(0, 7)); // mês aberto no calendário da previsão
+  const [diaCal, setDiaCal] = useState(() => todayISO()); // dia tocado no calendário
   // Avisos já vistos (fica só neste aparelho)
   const [avisosVistos, setAvisosVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
@@ -1298,6 +1300,32 @@ function App({ dentista, email, prazoPagamento }) {
   const totalAndamento = Math.round(naoEntregues.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
   // O valor entra na conta assim que o trabalho é criado (andamento + entregues − pago)
   const saldo = Math.round((totalAndamento + totalEntregue - totalPago) * 100) / 100;
+
+  // Vencimento por entrega: o combinado (N dias após a entrega) vira uma data em cada
+  // trabalho entregue. Os pagamentos quitam as entregas mais antigas primeiro; o que
+  // sobrar sem baixa e passar da data fica VERMELHO (vencido).
+  const diasPagamentoN = (diasPagamento === null || diasPagamento === undefined || diasPagamento === '') ? null : Number(diasPagamento);
+  const situacaoPag = {}; // id → { pago } ou { vence, diasV }
+  {
+    let restante = totalPago;
+    [...todasEntregas]
+      .filter(c => (c.valor || 0) > 0)
+      .sort((a, b) => String(a.dataSaida || '').localeCompare(String(b.dataSaida || '')))
+      .forEach(c => {
+        if (restante >= (c.valor || 0) - 0.005) {
+          restante = Math.round((restante - (c.valor || 0)) * 100) / 100;
+          situacaoPag[c.id] = { pago: true };
+        } else if (c.dataSaida && diasPagamentoN !== null) {
+          const vence = addDias(c.dataSaida, diasPagamentoN);
+          situacaoPag[c.id] = { pago: false, vence, diasV: diasRestantes(vence) };
+        } else {
+          situacaoPag[c.id] = { pago: false };
+        }
+      });
+  }
+  const entregasVencidas = todasEntregas.filter(c => situacaoPag[c.id] && !situacaoPag[c.id].pago && situacaoPag[c.id].vence && situacaoPag[c.id].diasV < 0);
+  const totalVencido = Math.round(entregasVencidas.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+  const vencidoDesde = entregasVencidas.map(c => situacaoPag[c.id].vence).sort()[0] || null;
   const formatReais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
   const copiar = async (texto, aviso) => {
     try { await navigator.clipboard.writeText(texto); mostrarToast(aviso); }
@@ -1773,69 +1801,108 @@ function App({ dentista, email, prazoPagamento }) {
               </div>
             )}
 
-            {/* Agenda por data: cada dia de entrega com os trabalhos daquele dia */}
+            {/* Calendário do mês: todos os dias (1, 2, 3...) com as entregas marcadas.
+                Toque num dia para ver os trabalhos que saem nele. */}
             {previsaoModo === 'datas' && naoEntregues.length > 0 && (() => {
-              const DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
-              const grupos = {};
-              naoEntregues.forEach(c => {
-                const k = c.prazo || 'sem-prazo';
-                (grupos[k] = grupos[k] || []).push(c);
-              });
-              const chaves = Object.keys(grupos).sort((a, b) => (a === 'sem-prazo' ? 1 : b === 'sem-prazo' ? -1 : a.localeCompare(b)));
-              return chaves.map(k => {
-                const semPrazo = k === 'sem-prazo';
-                const dias = semPrazo ? null : diasRestantes(k);
-                const d = semPrazo ? null : new Date(k + 'T00:00:00');
-                let pill, corP;
-                if (semPrazo) { pill = 'A combinar'; corP = '#78716C'; }
-                else if (dias < 0) { pill = `Atrasado ${-dias}d`; corP = '#B42318'; }
-                else if (dias === 0) { pill = 'Hoje'; corP = '#E07C1F'; }
-                else if (dias === 1) { pill = 'Amanhã'; corP = '#E07C1F'; }
-                else { pill = `Em ${dias} dias`; corP = '#16A34A'; }
+              const [anoC, mmC] = mesCal.split('-').map(Number);
+              const diasNoMes = new Date(anoC, mmC, 0).getDate();
+              const inicioSemana = new Date(anoC, mmC - 1, 1).getDay();
+              const hoje = todayISO();
+              const porDia = {};
+              naoEntregues.forEach(c => { if (c.prazo) (porDia[c.prazo] = porDia[c.prazo] || []).push(c); });
+              const semPrazoLista = naoEntregues.filter(c => !c.prazo);
+              const mudarMes = (delta) => {
+                const d = new Date(anoC, mmC - 1 + delta, 1);
+                setMesCal(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+              };
+              const celulas = [];
+              for (let i = 0; i < inicioSemana; i++) celulas.push(null);
+              for (let d = 1; d <= diasNoMes; d++) celulas.push(`${mesCal}-${String(d).padStart(2, '0')}`);
+              const doDia = porDia[diaCal] || [];
+              const CardTrabalho = ({ c }) => {
+                const feitas = (c.etapas || []).filter(e => e.concluida).length;
+                const total = (c.etapas || []).length;
+                const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
                 return (
-                  <div key={k} style={{ marginBottom: 14 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <div style={{ width: 46, height: 50, borderRadius: 13, background: dias !== null && dias < 0 ? '#FCE4E4' : 'linear-gradient(135deg, #24221E, #1C1B19)', border: dias !== null && dias < 0 ? '1px solid #F5B5B5' : '1px solid rgba(184,147,90,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <span style={{ fontSize: 17, fontWeight: 800, color: dias !== null && dias < 0 ? '#B42318' : GOLD, lineHeight: 1 }}>{semPrazo ? '?' : d.getDate()}</span>
-                        <span style={{ fontSize: 7.5, fontWeight: 800, color: dias !== null && dias < 0 ? '#B42318' : 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>{semPrazo ? 'S/ data' : NOMES_MESES[d.getMonth()].slice(0, 3)}</span>
-                      </div>
+                  <div onClick={() => setDetalhe(c)} style={{ ...cartao, cursor: 'pointer', padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>{semPrazo ? 'Sem prazo definido' : DIAS_SEMANA[d.getDay()]}</div>
-                        <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{semPrazo ? 'combinar com o laboratório' : formatDateBR(k)} • {grupos[k].length} {grupos[k].length === 1 ? 'trabalho' : 'trabalhos'}</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.paciente}</div>
+                        <div style={{ fontSize: 11.5, color: '#78716C', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.tipoTrabalho}</div>
                       </div>
-                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '5px 11px', borderRadius: 999, background: '#fff', color: corP, border: '1px solid #EDEAE4', flexShrink: 0 }}>{pill}</span>
-                    </div>
-                    <div style={{ borderLeft: '2px solid #EDEAE4', marginLeft: 22, paddingLeft: 16 }}>
-                      {grupos[k].map(c => {
-                        const feitas = (c.etapas || []).filter(e => e.concluida).length;
-                        const total = (c.etapas || []).length;
-                        const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
-                        return (
-                          <div key={c.id} onClick={() => setDetalhe(c)}
-                            style={{ ...cartao, cursor: 'pointer', padding: 12, marginBottom: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.paciente}</div>
-                                <div style={{ fontSize: 11.5, color: '#78716C', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.tipoTrabalho}</div>
-                              </div>
-                              {c.status === 'Pronto' ? (
-                                <span style={{ fontSize: 10, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '4px 10px', flexShrink: 0 }}>Pronto ✓</span>
-                              ) : (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                  <div style={{ width: 44, height: 4.5, borderRadius: 3, background: '#F0EFEC', overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${pct}%`, background: GOLD }} />
-                                  </div>
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E' }}>{pct}%</span>
-                                </div>
-                              )}
-                            </div>
+                      {c.status === 'Pronto' ? (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '4px 10px', flexShrink: 0 }}>Pronto ✓</span>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <div style={{ width: 44, height: 4.5, borderRadius: 3, background: '#F0EFEC', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: GOLD }} />
                           </div>
-                        );
-                      })}
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E' }}>{pct}%</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
-              });
+              };
+              return (
+                <>
+                  <div style={{ ...cartao, padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+                      <button onClick={() => mudarMes(-1)} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid #E7E5E4', background: '#FAF9F7', color: '#78716C', fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>‹</button>
+                      <div style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: 800, color: INK }}>{NOMES_MESES[mmC - 1]} de {anoC}</div>
+                      <button onClick={() => mudarMes(1)} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid #E7E5E4', background: '#FAF9F7', color: '#78716C', fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>›</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                        <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: '#B6B1AB', letterSpacing: '0.05em' }}>{d}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                      {celulas.map((data, i) => {
+                        if (!data) return <div key={`v${i}`} />;
+                        const n = (porDia[data] || []).length;
+                        const atrasado = n > 0 && data < hoje;
+                        const ehHoje = data === hoje;
+                        const sel = data === diaCal;
+                        return (
+                          <button key={data} onClick={() => setDiaCal(data)}
+                            style={{
+                              aspectRatio: '1', borderRadius: 11, cursor: 'pointer', fontFamily: FONTE, padding: 0,
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                              border: sel ? `2px solid ${INK}` : (ehHoje ? `2px solid ${GOLD}` : '1px solid #EFECE7'),
+                              background: sel ? INK : (atrasado ? '#FCE4E4' : (n > 0 ? 'rgba(184,147,90,0.14)' : '#FAF9F7')),
+                            }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1, color: sel ? GOLD : (atrasado ? '#B42318' : (n > 0 ? '#7A6234' : '#A8A29E')) }}>{parseInt(data.slice(8), 10)}</span>
+                            {n > 0 ? (
+                              <span style={{ minWidth: 14, height: 14, borderRadius: 7, padding: '0 3px', fontSize: 8.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel ? GOLD : (atrasado ? '#DC2626' : INK), color: sel ? INK : '#fff' }}>{n}</span>
+                            ) : (
+                              <span style={{ height: 14 }} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, background: 'rgba(184,147,90,0.6)' }} /> com entrega</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, background: '#DC2626' }} /> atrasado</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, border: `2px solid ${GOLD}`, boxSizing: 'border-box', background: '#fff' }} /> hoje</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '4px 2px 8px' }}>
+                    {formatDateBR(diaCal)}{diaCal === hoje ? ' — hoje' : ''}
+                  </div>
+                  {doDia.length === 0 && (
+                    <div style={{ ...cartao, fontSize: 12, color: '#A8A29E', textAlign: 'center', padding: 18 }}>Nenhuma entrega prevista neste dia.</div>
+                  )}
+                  {doDia.map(c => <CardTrabalho key={c.id} c={c} />)}
+                  {semPrazoLista.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '10px 2px 8px' }}>Sem prazo definido</div>
+                      {semPrazoLista.map(c => <CardTrabalho key={c.id} c={c} />)}
+                    </>
+                  )}
+                </>
+              );
             })()}
 
             {previsaoModo === 'lista' && (
@@ -1896,9 +1963,14 @@ function App({ dentista, email, prazoPagamento }) {
                   {saldo < 0 ? `Você tem ${formatReais(-saldo)} de crédito` : 'Tudo em dia com o laboratório ✓'}
                 </div>
               )}
-              {prazoPagamento && (
+              {(prazoPagamento || diasPagamentoN !== null) && (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: GOLD, fontWeight: 700 }}>
-                  <CalendarClock size={13} /> Combinado: {prazoPagamento}
+                  <CalendarClock size={13} /> Combinado: {diasPagamentoN !== null ? `pagar até ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : prazoPagamento}
+                </div>
+              )}
+              {totalVencido > 0 && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, marginLeft: 8, background: 'rgba(220,38,38,0.22)', border: '1px solid rgba(248,113,113,0.55)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: '#FCA5A5', fontWeight: 800 }}>
+                  ⚠️ {formatReais(totalVencido)} vencido
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -1917,6 +1989,30 @@ function App({ dentista, email, prazoPagamento }) {
                 ))}
               </div>
             </div>
+
+            {/* Pagamento VENCIDO: bem explícito, em vermelho, até a baixa ser dada no laboratório */}
+            {totalVencido > 0 && (
+              <div style={{ position: 'relative', overflow: 'hidden', background: '#FEF1F1', border: '2px solid #F87171', borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 14px 34px -20px rgba(220,38,38,0.5)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 22, background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, boxShadow: '0 8px 20px -8px rgba(220,38,38,0.8)' }}>⚠️</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#B42318' }}>Pagamento vencido</div>
+                    <div style={{ fontSize: 11.5, color: '#7F1D1D', marginTop: 2, lineHeight: 1.45 }}>
+                      {entregasVencidas.length === 1 ? '1 trabalho passou' : `${entregasVencidas.length} trabalhos passaram`} do prazo combinado
+                      {diasPagamentoN !== null ? ` de ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : ''}
+                      {vencidoDesde ? ` — desde ${formatDateBR(vencidoDesde)}` : ''}.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#DC2626', flexShrink: 0 }}>{formatReais(totalVencido)}</div>
+                </div>
+                {info.chavePix && (
+                  <button onClick={() => copiar(gerarPixCopiaCola(info.chavePix, totalVencido), `Código Pix de ${formatReais(totalVencido)} copiado — cole no app do seu banco ✓`)}
+                    style={{ width: '100%', marginTop: 12, padding: 13, borderRadius: 13, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+                    Pagar o vencido agora — Pix de {formatReais(totalVencido)}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Pix: mesmo funcionamento de sempre (chave + código com valor exato), visual premium */}
             {info.chavePix && saldo > 0 && (
@@ -2023,15 +2119,25 @@ function App({ dentista, email, prazoPagamento }) {
 
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Entregas e valores</div>
             {todasEntregas.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E' }}>Nenhum trabalho entregue ainda.</div>}
-            {todasEntregas.slice(0, 30).map(c => (
-              <div key={c.id} style={{ ...cartao, display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{c.paciente}</div>
-                  <div style={{ fontSize: 11, color: '#A8A29E' }}>{c.tipoTrabalho}{c.dataSaida ? ` • ${formatDateBR(c.dataSaida)}` : ''}</div>
+            {todasEntregas.slice(0, 30).map(c => {
+              const sp = situacaoPag[c.id];
+              const vencido = sp && !sp.pago && sp.vence && sp.diasV < 0;
+              let pill = null;
+              if (sp && sp.pago) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '3px 9px' }}>pago ✓</span>;
+              else if (vencido) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: '#DC2626', borderRadius: 999, padding: '3px 9px' }}>VENCIDO {-sp.diasV === 1 ? 'há 1 dia' : `há ${-sp.diasV} dias`}</span>;
+              else if (sp && sp.vence && sp.diasV === 0) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: '#E07C1F', borderRadius: 999, padding: '3px 9px' }}>vence hoje</span>;
+              else if (sp && sp.vence) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#7A6234', background: 'rgba(184,147,90,0.16)', borderRadius: 999, padding: '3px 9px' }}>vence {formatDateBR(sp.vence)}</span>;
+              return (
+                <div key={c.id} style={{ ...cartao, display: 'flex', alignItems: 'center', gap: 10, padding: 12, ...(vencido ? { border: '1.5px solid #FCA5A5', background: '#FEF7F7' } : {}) }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{c.paciente}</div>
+                    <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{c.tipoTrabalho}{c.dataSaida ? ` • ${formatDateBR(c.dataSaida)}` : ''}</div>
+                    {pill && <div style={{ marginTop: 5 }}>{pill}</div>}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: vencido ? '#DC2626' : (c.valor > 0 ? '#166B3A' : '#A8A29E'), flexShrink: 0 }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: c.valor > 0 ? '#166B3A' : '#A8A29E' }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
-              </div>
-            ))}
+              );
+            })}
             <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 8, lineHeight: 1.5, textAlign: 'center' }}>
               Valores conforme registrado pelo Laboratório Special. Dúvidas? Fale com o laboratório.
             </div>
@@ -3264,6 +3370,7 @@ function Raiz() {
   const [estado, setEstado] = useState('verificando'); // verificando | ok | negado
   const [nomeDentista, setNomeDentista] = useState('');
   const [prazoPag, setPrazoPag] = useState('');
+  const [diasPag, setDiasPag] = useState(null);
   const [entrando, setEntrando] = useState(false);
   const [abrindo, setAbrindo] = useState(true);
   const [tentativa, setTentativa] = useState(0);
@@ -3284,7 +3391,7 @@ function Raiz() {
     getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
       .then(s => {
         if (!ativo) return;
-        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setEstado('ok'); }
+        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setEstado('ok'); }
         else setEstado('negado');
       })
       .catch(() => { if (ativo) setEstado('negado'); });
@@ -3357,7 +3464,7 @@ function Raiz() {
     );
   }
 
-  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} /></>;
+  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} /></>;
 }
 
 document.title = 'Special Clinic';
