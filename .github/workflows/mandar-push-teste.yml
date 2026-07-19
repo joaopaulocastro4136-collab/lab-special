@@ -3,9 +3,6 @@ name: Rajada de push de teste
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/special-lab-test-mode-9jrxb1]
-    paths: ['mandar-push-teste.mjs', '.github/workflows/mandar-push-teste.yml']
 
 jobs:
   mandar:

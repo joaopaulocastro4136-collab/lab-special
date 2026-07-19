@@ -1,8 +1,9 @@
 // Rajada de notificações de TESTE numeradas para o Special Clinic (e um controle
 // para o Lab). Cada uma vai num formato diferente — o número que aparecer no
 // iPhone diz exatamente qual formato o aparelho aceita mostrar.
+// O envio em si é feito pelo carteiro da nuvem (função aoTestarPush), que tem a
+// chave da Apple: aqui só gravamos os pedidos de teste em testesPush.
 import crypto from 'crypto';
-import http2 from 'http2';
 import { readFileSync } from 'fs';
 
 const sa = JSON.parse(readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'));
@@ -25,102 +26,51 @@ const H = { Authorization: 'Bearer ' + tok.access_token, 'Content-Type': 'applic
 
 const PROJETO = 'laboratorio-special';
 const BASE = `https://firestore.googleapis.com/v1/projects/${PROJETO}/databases/(default)/documents`;
-const valor = (v) => v?.stringValue ?? v;
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 1. Tokens dos aparelhos (clinica e lab)
-const toks = await (await fetch(`${BASE}/labs/principal/pushTokens?pageSize=100`, { headers: H })).json();
-let tokenClinica = null, tokenLab = null;
-for (const d of toks.documents || []) {
-  const f = d.fields || {};
-  if (valor(f.tipo) === 'clinica' && valor(f.plataforma) === 'ios') tokenClinica = valor(f.token);
-  if (valor(f.tipo) === 'lab' && valor(f.plataforma) === 'ios') tokenLab = valor(f.token);
-}
-console.log('Aparelho Clinic:', tokenClinica ? tokenClinica.slice(0, 12) + '…' : 'NÃO ACHADO');
-console.log('Aparelho Lab:   ', tokenLab ? tokenLab.slice(0, 12) + '…' : 'NÃO ACHADO');
-if (!tokenClinica) process.exit(1);
-
-// 2. Chave da Apple (guardada no cofre do projeto — Secret Manager)
-async function segredo(nome) {
-  const r = await fetch(`https://secretmanager.googleapis.com/v1/projects/${PROJETO}/secrets/${nome}/versions/latest:access`, { headers: H });
-  if (!r.ok) { console.log(`  (sem acesso ao segredo ${nome}: ${r.status})`); return null; }
-  const j = await r.json();
-  return Buffer.from(j.payload.data, 'base64').toString('utf8');
-}
-const APNS_P8 = await segredo('APNS_P8');
-const APNS_KEY_ID = await segredo('APNS_KEY_ID');
-const TEAM_ID = 'L5NKZSS3J2';
-
-function apnsJWT() {
-  const s = b64({ alg: 'ES256', kid: APNS_KEY_ID.trim() }) + '.' + b64({ iss: TEAM_ID, iat: Math.floor(Date.now() / 1000) });
-  const a = crypto.sign('sha256', Buffer.from(s), { key: APNS_P8, dsaEncoding: 'ieee-p1363' }).toString('base64url');
-  return s + '.' + a;
+// Converte um objeto JS simples para o formato de campos do Firestore REST
+function campos(o) {
+  const f = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'boolean') f[k] = { booleanValue: v };
+    else if (typeof v === 'number') f[k] = { integerValue: String(v) };
+    else if (v && typeof v === 'object') f[k] = { mapValue: { fields: campos(v) } };
+    else f[k] = { stringValue: String(v) };
+  }
+  return f;
 }
 
-function enviar(token, bundle, payload, cabecalhosExtras) {
-  return new Promise((resolve) => {
-    const c = http2.connect('https://api.push.apple.com');
-    let status = 0, resposta = '', apnsId = '';
-    const req = c.request({
-      ':method': 'POST',
-      ':path': '/3/device/' + token,
-      authorization: 'bearer ' + apnsJWT(),
-      'apns-push-type': 'alert',
-      'apns-priority': '10',
-      'apns-topic': bundle,
-      ...(cabecalhosExtras || {}),
-    });
-    req.setEncoding('utf8');
-    req.on('response', (h) => { status = h[':status']; apnsId = h['apns-id'] || ''; });
-    req.on('data', (x) => { resposta += x; });
-    req.on('end', () => { c.close(); resolve({ status, resposta, apnsId }); });
-    req.on('error', (e) => { c.close(); resolve({ status: 0, resposta: String(e) }); });
-    req.end(JSON.stringify(payload));
-    setTimeout(() => { try { c.close(); } catch (e) { } resolve({ status: 0, resposta: 'timeout' }); }, 10000);
+async function gravarTeste(dados) {
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const r = await fetch(`${BASE}/labs/principal/testesPush?documentId=${id}`, {
+    method: 'POST', headers: H, body: JSON.stringify({ fields: campos(dados) }),
   });
+  return r.status;
 }
 
-const CLINICA = 'com.laboratorio.specialclinic';
-const LAB = 'com.laboratorio.special';
+const testes = [
+  { titulo: 'TESTE 1 · Special Clinic', corpo: 'O mais simples possível. Se apareceu, me diga: teste 1.', dentista: 'Dra Gabriela' },
+  { titulo: 'TESTE 2 · Special Clinic', corpo: 'Formato igual ao aviso de aprovação (com número no ícone). Me diga: teste 2.', dentista: 'Dra Gabriela', badge: true, dados: { casoId: 'teste' } },
+  { titulo: 'TESTE 3 · Special Clinic', corpo: 'Urgente: tenta furar o modo Foco/Não Perturbe. Me diga: teste 3.', dentista: 'Dra Gabriela', urgente: true },
+  { titulo: 'TESTE 4 · Special Clinic', corpo: 'Sem som, só a faixa. Me diga: teste 4.', dentista: 'Dra Gabriela', som: false },
+  { titulo: 'CONTROLE · Lab Special', corpo: 'Se esta apareceu e as do Clinic não, me diga: controle.', destino: 'lab' },
+];
 
-if (APNS_P8 && APNS_KEY_ID) {
-  // Bateria direta: formatos diferentes, 20 s entre cada um
-  const testes = [
-    ['TESTE 1', 'O mais simples possível. Se apareceu, me diga: teste 1.',
-      (t, c) => ({ aps: { alert: { title: t, body: c }, sound: 'default' } }), null],
-    ['TESTE 2', 'Formato igual ao do aviso de aprovação (com número no ícone). Me diga: teste 2.',
-      (t, c) => ({ aps: { alert: { title: t, body: c }, sound: 'default', badge: 1 }, casoId: 'teste' }), null],
-    ['TESTE 3', 'Aviso urgente, fura o modo Foco/Não Perturbe. Me diga: teste 3.',
-      (t, c) => ({ aps: { alert: { title: t, body: c }, sound: 'default', 'interruption-level': 'time-sensitive' } }), null],
-    ['TESTE 4', 'Sem som, guardado por 1 hora se o celular estiver fora do ar. Me diga: teste 4.',
-      (t, c) => ({ aps: { alert: { title: t, body: c } } }), { 'apns-expiration': String(Math.floor(Date.now() / 1000) + 3600) }],
-  ];
-  for (const [titulo, corpo, montar, extras] of testes) {
-    const r = await enviar(tokenClinica, CLINICA, montar(titulo + ' · Special Clinic', corpo), extras);
-    console.log(`${titulo} → Clinic: ${r.status} ${r.resposta || ''} (id ${r.apnsId})`);
-    await espera(20000);
-  }
-  if (tokenLab) {
-    const r = await enviar(tokenLab, LAB, { aps: { alert: { title: 'CONTROLE · Lab Special', body: 'Se esta apareceu e as do Clinic não, me diga: controle.' }, sound: 'default' } });
-    console.log(`CONTROLE → Lab: ${r.status} ${r.resposta || ''} (id ${r.apnsId})`);
-  }
-} else {
-  console.log('Sem a chave da Apple — usando o canal padrão (avisosAprovacao).');
+for (const t of testes) {
+  const st = await gravarTeste(t);
+  console.log(`${t.titulo}: ${st === 200 ? 'pedido gravado ✓ — o carteiro envia agora' : 'ERRO ' + st}`);
+  await espera(20000);
 }
 
-// 3. TESTE 5 — canal padrão de verdade: grava o aviso e a função da nuvem envia
-await espera(20000);
+// TESTE 5 — o canal padrão de verdade (avisosAprovacao → aoPedirAprovacao)
 const avisoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const rAviso = await fetch(`${BASE}/labs/principal/avisosAprovacao?documentId=${avisoId}`, {
   method: 'POST', headers: H,
-  body: JSON.stringify({ fields: {
-    casoId: { stringValue: '' },
-    dentista: { stringValue: 'Dra Gabriela' },
-    paciente: { stringValue: 'TESTE 5 (canal padrão)' },
-    anexoNome: { stringValue: 'TESTE 5 — me diga: teste 5' },
-    em: { stringValue: new Date().toISOString() },
-  } }),
+  body: JSON.stringify({ fields: campos({
+    casoId: '', dentista: 'Dra Gabriela', paciente: 'TESTE 5 (canal padrão)',
+    anexoNome: 'TESTE 5 — me diga: teste 5', em: new Date().toISOString(),
+  }) }),
 });
-console.log('TESTE 5 (canal padrão):', rAviso.status, rAviso.ok ? 'gravado ✓ — a função da nuvem envia agora' : (await rAviso.text()).slice(0, 200));
+console.log('TESTE 5 (canal padrão):', rAviso.status, rAviso.ok ? 'gravado ✓' : (await rAviso.text()).slice(0, 200));
 
 console.log('\nRajada enviada. O número que aparecer no iPhone conta a história toda.');

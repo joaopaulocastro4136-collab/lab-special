@@ -35,7 +35,7 @@ function apnsJWT() {
   return jwtCache.token;
 }
 
-function enviarAPNs(tokenAparelho, bundle, titulo, corpo, dados) {
+function enviarAPNsPayload(tokenAparelho, bundle, payload) {
   return new Promise((resolve) => {
     const cliente = http2.connect('https://api.push.apple.com');
     let status = 0;
@@ -53,9 +53,14 @@ function enviarAPNs(tokenAparelho, bundle, titulo, corpo, dados) {
     req.on('data', (c) => { resposta += c; });
     req.on('close', () => { cliente.close(); resolve({ status, resposta }); });
     req.on('error', (e) => { cliente.close(); resolve({ status: 0, resposta: String(e) }); });
-    req.end(JSON.stringify({ aps: { alert: { title: titulo, body: corpo }, sound: 'default', badge: 1 }, ...(dados || {}) }));
+    req.end(JSON.stringify(payload));
     setTimeout(() => { try { cliente.close(); } catch (e) { } resolve({ status: 0, resposta: 'timeout' }); }, 10000);
   });
+}
+
+function enviarAPNs(tokenAparelho, bundle, titulo, corpo, dados) {
+  return enviarAPNsPayload(tokenAparelho, bundle,
+    { aps: { alert: { title: titulo, body: corpo }, sound: 'default', badge: 1 }, ...(dados || {}) });
 }
 
 // Envia p/ todos os aparelhos do destino: 'lab' (equipe) ou 'clinica' (um dentista).
@@ -144,6 +149,30 @@ exports.aoPedirAprovacao = onDocumentCreated({ ...OPCOES, document: 'labs/princi
   await notificar('clinica', d.dentista, 'Aprovação solicitada 👍',
     `O laboratório pediu sua aprovação: "${d.anexoNome || 'arquivo'}" — ${d.paciente || ''}. Abra para ver e aprovar.`,
     d.casoId ? { casoId: d.casoId } : undefined);
+});
+
+// ─── Bancada de teste do push ───
+// O robô grava um doc em testesPush dizendo o formato; o carteiro envia na hora.
+// Serve pra descobrir qual formato de aviso o iPhone aceita mostrar na barra.
+exports.aoTestarPush = onDocumentCreated({ ...OPCOES, document: 'labs/principal/testesPush/{id}' }, async (event) => {
+  const d = event.data && event.data.data();
+  if (!d) return;
+  const destino = d.destino === 'lab' ? 'lab' : 'clinica';
+  let consulta = admin.firestore().collection('labs/principal/pushTokens').where('tipo', '==', destino);
+  if (destino === 'clinica' && d.dentista) consulta = consulta.where('dentista', '==', d.dentista);
+  const snap = await consulta.get();
+  const aps = { alert: { title: d.titulo || 'TESTE', body: d.corpo || '' } };
+  if (d.som !== false) aps.sound = 'default';
+  if (d.badge) aps.badge = 1;
+  if (d.urgente) aps['interruption-level'] = 'time-sensitive';
+  const payload = { aps, ...(d.dados || {}) };
+  console.log(`teste push "${aps.alert.title}" → ${destino}: ${snap.size} aparelho(s) | payload=${JSON.stringify(payload)}`);
+  for (const doc of snap.docs) {
+    const t = doc.data();
+    if (t.plataforma !== 'ios') continue;
+    const r = await enviarAPNsPayload(t.token, BUNDLES[destino], payload);
+    console.log(`  ios ${t.token.slice(0, 12)}…: ${r.status} ${r.resposta || ''}`);
+  }
 });
 
 // ─── Cobrador: verifica todo dia de manhã se há pagamento vencido ───
