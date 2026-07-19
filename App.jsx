@@ -1501,6 +1501,21 @@ export default function App() {
     updateCaso(casoId, { anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) });
   };
 
+  // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
+  // Se o app estava fechado, o id fica guardado e abre assim que os casos carregarem.
+  useEffect(() => {
+    const abrirDoPush = (id) => {
+      if (id && casos.some(c => c.id === id)) {
+        window.__casoPushPendente = null;
+        goToDetalhe(id);
+      }
+    };
+    const ouvir = (e) => abrirDoPush(e.detail);
+    window.addEventListener('abrir-caso-push', ouvir);
+    if (window.__casoPushPendente) abrirDoPush(window.__casoPushPendente);
+    return () => window.removeEventListener('abrir-caso-push', ouvir);
+  }, [casos]);
+
   const goToDetalhe = (id) => {
     // Guarda de onde veio, para o "Voltar" retornar à mesma tela (Finanças, Equipe, Entregas, Dia...)
     if (view !== 'detalhe') setOrigemDetalhe(view);

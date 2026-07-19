@@ -210,6 +210,15 @@ async function registrarPush(dados) {
         });
       } catch (e) { console.error('Erro ao salvar token push', e); }
     });
+    // Tocar no aviso da barra → abre direto o trabalho (o carteiro manda o casoId junto)
+    await PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+      const d = (ev && ev.notification && ev.notification.data) || {};
+      const casoId = d.casoId || null;
+      if (casoId) {
+        window.__casoPushPendente = casoId;
+        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: casoId }));
+      }
+    });
     await PushNotifications.register();
   } catch (e) { console.error('Push indisponível', e); }
 }

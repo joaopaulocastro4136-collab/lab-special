@@ -34,7 +34,7 @@ function apnsJWT() {
   return jwtCache.token;
 }
 
-function enviarAPNs(tokenAparelho, bundle, titulo, corpo) {
+function enviarAPNs(tokenAparelho, bundle, titulo, corpo, dados) {
   return new Promise((resolve) => {
     const cliente = http2.connect('https://api.push.apple.com');
     let status = 0;
@@ -52,13 +52,14 @@ function enviarAPNs(tokenAparelho, bundle, titulo, corpo) {
     req.on('data', (c) => { resposta += c; });
     req.on('close', () => { cliente.close(); resolve({ status, resposta }); });
     req.on('error', (e) => { cliente.close(); resolve({ status: 0, resposta: String(e) }); });
-    req.end(JSON.stringify({ aps: { alert: { title: titulo, body: corpo }, sound: 'default', badge: 1 } }));
+    req.end(JSON.stringify({ aps: { alert: { title: titulo, body: corpo }, sound: 'default', badge: 1 }, ...(dados || {}) }));
     setTimeout(() => { try { cliente.close(); } catch (e) { } resolve({ status: 0, resposta: 'timeout' }); }, 10000);
   });
 }
 
-// Envia p/ todos os aparelhos do destino: 'lab' (equipe) ou 'clinica' (um dentista)
-async function notificar(destino, dentista, titulo, corpo) {
+// Envia p/ todos os aparelhos do destino: 'lab' (equipe) ou 'clinica' (um dentista).
+// "dados" vai junto no aviso (ex.: casoId) — tocar na notificação abre direto o trabalho.
+async function notificar(destino, dentista, titulo, corpo, dados) {
   const db = admin.firestore();
   let consulta = db.collection('labs/principal/pushTokens').where('tipo', '==', destino);
   if (destino === 'clinica') consulta = consulta.where('dentista', '==', dentista);
@@ -69,11 +70,13 @@ async function notificar(destino, dentista, titulo, corpo) {
     const t = d.data();
     try {
       if (t.plataforma === 'ios') {
-        const r = await enviarAPNs(t.token, BUNDLES[destino], titulo, corpo);
+        const r = await enviarAPNs(t.token, BUNDLES[destino], titulo, corpo, dados);
         console.log(`  ios ${t.token.slice(0, 12)}…: ${r.status} ${r.resposta || ''}`);
         if (r.status === 400 || r.status === 410) invalidos.push(d.ref);
       } else {
-        await admin.messaging().send({ token: t.token, notification: { title: titulo, body: corpo }, android: { priority: 'high' } });
+        const dadosTexto = {};
+        Object.entries(dados || {}).forEach(([k, v]) => { dadosTexto[k] = String(v); });
+        await admin.messaging().send({ token: t.token, notification: { title: titulo, body: corpo }, data: dadosTexto, android: { priority: 'high' } });
         console.log(`  android ${t.token.slice(0, 12)}…: ok`);
       }
     } catch (e) {
@@ -88,10 +91,11 @@ async function notificar(destino, dentista, titulo, corpo) {
 exports.aoCriarCaso = onDocumentCreated({ ...OPCOES, document: 'labs/principal/casos/{id}' }, async (event) => {
   const c = event.data && event.data.data();
   if (!c) return;
+  const casoId = (event.params && event.params.id) || c.id;
   if (c.origem === 'clinica') {
-    await notificar('lab', null, '🆕 Trabalho novo da clínica', `${c.dentista} enviou: ${c.paciente} (${c.tipoTrabalho}) — já está para retirada.`);
+    await notificar('lab', null, '🆕 Trabalho novo da clínica', `${c.dentista} enviou: ${c.paciente} (${c.tipoTrabalho}) — já está para retirada.`, { casoId });
   } else if (c.dentista) {
-    await notificar('clinica', c.dentista, 'Trabalho novo no laboratório', `${c.paciente} (${c.tipoTrabalho}) foi adicionado pelo Laboratório Special.`);
+    await notificar('clinica', c.dentista, 'Trabalho novo no laboratório', `${c.paciente} (${c.tipoTrabalho}) foi adicionado pelo Laboratório Special.`, { casoId });
   }
 });
 
@@ -99,10 +103,11 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
   const antes = event.data && event.data.before.data();
   const depois = event.data && event.data.after.data();
   if (!antes || !depois) return;
+  const casoId = (event.params && event.params.id) || depois.id;
 
   // Ficou pronto → avisa o dentista que sai para entrega
   if (antes.status !== 'Pronto' && depois.status === 'Pronto' && depois.dentista) {
-    await notificar('clinica', depois.dentista, 'Pronto para entrega! 🎉', `${depois.paciente} (${depois.tipoTrabalho}) ficou pronto e sai para entrega.`);
+    await notificar('clinica', depois.dentista, 'Pronto para entrega! 🎉', `${depois.paciente} (${depois.tipoTrabalho}) ficou pronto e sai para entrega.`, { casoId });
   }
 
   // Aprovações de arquivo: compara os anexos de antes e de depois
@@ -112,10 +117,10 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
     const statusNovo = a.aprovacao && a.aprovacao.status;
     const statusVelho = mapaAntes[a.id] && mapaAntes[a.id].aprovacao && mapaAntes[a.id].aprovacao.status;
     if (statusNovo === 'pendente' && statusVelho !== 'pendente' && depois.dentista) {
-      await notificar('clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`);
+      await notificar('clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`, { casoId });
     }
     if (statusNovo === 'aprovado' && statusVelho !== 'aprovado') {
-      await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`);
+      await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
     }
   }
 });

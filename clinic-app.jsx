@@ -293,6 +293,15 @@ async function registrarPush(dados) {
         });
       } catch (e) { console.error('Erro ao salvar token push', e); }
     });
+    // Tocar no aviso da barra → abre direto o trabalho (o carteiro manda o casoId junto)
+    await PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+      const d = (ev && ev.notification && ev.notification.data) || {};
+      const casoId = d.casoId || null;
+      if (casoId) {
+        window.__casoPushPendente = casoId;
+        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: casoId }));
+      }
+    });
     await PushNotifications.register();
   } catch (e) { console.error('Push indisponível', e); }
 }
@@ -1208,6 +1217,24 @@ function App({ dentista, email, prazoPagamento }) {
     registrarPush({ tipo: 'clinica', dentista, email: email || '' });
   }, [dentista]);
 
+  // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
+  // Se o app estava fechado, o id fica guardado e abre assim que os casos carregarem.
+  useEffect(() => {
+    const abrirDoPush = (id) => {
+      const c = id && casos.find(x => x.id === id);
+      if (c) {
+        window.__casoPushPendente = null;
+        setIaAberta(false); setPerguntasAbertas(false); setSinoAberto(false);
+        setAba('trabalhos');
+        setDetalhe(c);
+      }
+    };
+    const ouvir = (e) => abrirDoPush(e.detail);
+    window.addEventListener('abrir-caso-push', ouvir);
+    if (window.__casoPushPendente) abrirDoPush(window.__casoPushPendente);
+    return () => window.removeEventListener('abrir-caso-push', ouvir);
+  }, [casos]);
+
   useEffect(() => {
     const q1 = query(collection(db, 'labs', LAB, 'casos'), where('dentista', '==', dentista));
     const un1 = onSnapshot(q1, snap => {
@@ -1351,6 +1378,56 @@ function App({ dentista, email, prazoPagamento }) {
       if (e && e.name === 'AbortError') return; // usuário fechou a janela de compartilhar
       console.error(e);
       mostrarToast('Não consegui gerar o PDF. Tente de novo.');
+    }
+  };
+
+  // Extrato pro WhatsApp: entregas do mês OU trabalhos em produção (com valores),
+  // pra combinar com o laboratório o que vai ser pago.
+  const compartilharExtrato = async (qual) => {
+    try {
+      const mesAtual = todayISO().slice(0, 7);
+      const ehMes = qual === 'mes';
+      const lista = ehMes
+        ? todasEntregas.filter(c => (c.dataSaida || '').startsWith(mesAtual))
+        : naoEntregues;
+      if (lista.length === 0) {
+        mostrarToast(ehMes ? 'Nenhuma entrega neste mês ainda.' : 'Nenhum trabalho em produção agora.');
+        return;
+      }
+      const total = Math.round(lista.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+      const img = desenharExtrato({
+        dentista,
+        titulo: ehMes ? 'Entregas do mês' : 'Trabalhos em produção',
+        subtitulo: ehMes ? nomeMes(mesAtual) : formatDateBR(todayISO()),
+        linhas: lista.map(c => ({
+          titulo: c.paciente,
+          sub: `${c.tipoTrabalho}${ehMes
+            ? (c.dataSaida ? ` • entregue ${formatDateBR(c.dataSaida)}` : '')
+            : (c.status === 'Pronto' ? ' • pronto para entrega' : (c.prazo ? ` • previsão ${formatDateBR(c.prazo)}` : ''))}`,
+          valor: c.valor || 0,
+        })),
+        total,
+        rodape: ehMes
+          ? '✓ Trabalhos entregues pelo Laboratório Special no mês.'
+          : '⏳ Trabalhos ainda em produção no Laboratório Special.',
+      });
+      const pdf = jpegParaPDF(img);
+      const nomeArq = `${ehMes ? 'entregas-do-mes' : 'em-producao'}-${todayISO()}.pdf`;
+      const file = new File([pdf], nomeArq, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: ehMes ? 'Entregas do mês' : 'Trabalhos em produção' });
+        return;
+      }
+      const u = URL.createObjectURL(pdf);
+      const a = document.createElement('a');
+      a.href = u; a.download = nomeArq;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(u), 5000);
+      mostrarToast('Extrato baixado ✓');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      console.error(e);
+      mostrarToast('Não consegui montar o extrato. Tente de novo.');
     }
   };
 
@@ -1785,6 +1862,28 @@ function App({ dentista, email, prazoPagamento }) {
                 </div>
               </div>
             )}
+
+            {/* Extrato pro WhatsApp: o que entregou no mês e o que está em produção */}
+            <div style={{ ...cartao, position: 'relative', overflow: 'hidden', padding: 15, marginBottom: 12 }}>
+              <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Share2 size={15} color="#7A6234" />
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Enviar extrato</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#78716C', lineHeight: 1.5, marginBottom: 11 }}>
+                Um PDF com os trabalhos e valores — pronto pro WhatsApp, pra combinar o que vai ser pago.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => compartilharExtrato('mes')}
+                  style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                  📦 Entregas do mês
+                </button>
+                <button onClick={() => compartilharExtrato('producao')}
+                  style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: `1.5px solid ${GOLD}`, background: 'rgba(184,147,90,0.08)', color: '#7A6234', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                  ⚙️ Em produção
+                </button>
+              </div>
+            </div>
 
             <GraficoFinanceiro meses={mesesOrdenados} formatReais={formatReais} nomeMes={nomeMes} />
             {/* Relatório mensal: cada mês fechado com o que foi feito e o que foi pago */}
@@ -2680,6 +2779,72 @@ function desenharListaEnvios({ dentista, casos }) {
   cartao(PAD, y, W - PAD * 2, 92, 18); ctx.fill();
   ctx.fillStyle = '#166B3A'; ctx.font = `800 28px ${F}`;
   ctx.fillText('✓ Já estão em produção — material disponível para retirada.', PAD + 28, y + 56);
+  return cv.toDataURL('image/jpeg', 0.92);
+}
+
+// Extrato financeiro (entregas do mês ou trabalhos em produção) — imagem que vira PDF
+// pra mandar no WhatsApp e combinar o pagamento com o laboratório.
+function desenharExtrato({ dentista, titulo, subtitulo, linhas, total, rodape }) {
+  const W = 1080, PAD = 56, LINHA = 132;
+  const H = 300 + linhas.length * LINHA + 8 + 118 + 24 + 92 + 60;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const F = "-apple-system, 'Segoe UI', Roboto, sans-serif";
+  const caber = (txt, max) => { let t = String(txt || ''); while (ctx.measureText(t).width > max && t.length > 3) t = t.slice(0, -2); return t.length === String(txt || '').length ? t : t + '…'; };
+  const reais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
+  const cartao = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+  ctx.fillStyle = '#F5F4F0'; ctx.fillRect(0, 0, W, H);
+  // Cabeçalho preto com a marca
+  ctx.fillStyle = '#1C1B19'; ctx.fillRect(0, 0, W, 216);
+  ctx.fillStyle = '#B8935A'; ctx.font = `800 28px ${F}`;
+  ctx.fillText('✦ LABORATÓRIO SPECIAL', PAD, 74);
+  ctx.fillStyle = '#fff'; ctx.font = `800 46px ${F}`;
+  ctx.fillText(caber(titulo, W - PAD * 2), PAD, 136);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = `600 26px ${F}`;
+  ctx.fillText(caber(`${subtitulo} • ${dentista}`, W - PAD * 2), PAD, 182);
+  // Lista com valores
+  let y = 252;
+  linhas.forEach((l, i) => {
+    ctx.fillStyle = '#fff';
+    cartao(PAD, y, W - PAD * 2, LINHA - 16, 18); ctx.fill();
+    ctx.strokeStyle = '#E7E5E4'; ctx.lineWidth = 2; cartao(PAD, y, W - PAD * 2, LINHA - 16, 18); ctx.stroke();
+    ctx.textAlign = 'right';
+    ctx.fillStyle = l.valor > 0 ? '#166B3A' : '#A8A29E'; ctx.font = `800 32px ${F}`;
+    const vTxt = l.valor > 0 ? reais(l.valor) : 'a combinar';
+    ctx.fillText(vTxt, W - PAD - 28, y + 68);
+    const wValor = ctx.measureText(vTxt).width;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#1C1B19'; ctx.font = `800 32px ${F}`;
+    ctx.fillText(caber(`${i + 1}. ${l.titulo}`, W - PAD * 2 - 56 - wValor - 30), PAD + 28, y + 48);
+    ctx.fillStyle = '#78716C'; ctx.font = `600 26px ${F}`;
+    ctx.fillText(caber(l.sub, W - PAD * 2 - 56 - wValor - 30), PAD + 28, y + 90);
+    y += LINHA;
+  });
+  // Total em destaque (preto + dourado)
+  y += 8;
+  ctx.fillStyle = '#1C1B19';
+  cartao(PAD, y, W - PAD * 2, 118, 18); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `800 26px ${F}`;
+  ctx.fillText(`TOTAL (${linhas.length} ${linhas.length === 1 ? 'trabalho' : 'trabalhos'})`, PAD + 28, y + 70);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#E8C48A'; ctx.font = `800 44px ${F}`;
+  ctx.fillText(reais(total), W - PAD - 28, y + 76);
+  ctx.textAlign = 'left';
+  // Rodapé
+  y += 118 + 24;
+  ctx.fillStyle = '#EFEAE0';
+  cartao(PAD, y, W - PAD * 2, 92, 18); ctx.fill();
+  ctx.fillStyle = '#7A6234'; ctx.font = `700 26px ${F}`;
+  ctx.fillText(caber(rodape, W - PAD * 2 - 56), PAD + 28, y + 56);
   return cv.toDataURL('image/jpeg', 0.92);
 }
 
