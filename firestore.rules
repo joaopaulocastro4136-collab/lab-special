@@ -40,7 +40,7 @@ service cloud.firestore {
         && resource.data.dentista == nomeDentista()
         && (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['paciente', 'observacoes', 'dentes', 'gengiva', 'quantidade', 'valor', 'anexos', 'dataHora'])
+            .hasOnly(['paciente', 'observacoes', 'dentes', 'gengiva', 'quantidade', 'valor', 'anexos', 'dataHora', 'retornoSolicitado', 'retornoEm'])
           ||
           (resource.data.origem == 'clinica'
             && resource.data.status == 'Em Produção'

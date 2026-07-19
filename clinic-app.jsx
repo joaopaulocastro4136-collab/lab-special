@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2 } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2, Inbox, Hammer, Stethoscope, Package, Flag } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -1330,9 +1330,11 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   // Aguardando retirada: enviado pela clínica e o laboratório ainda não pegou
   // (sai daqui quando o Lab toca em "Foi pego" ou inicia a produção)
   const aguardandoRetirada = (c) => c.origem === 'clinica' && c.status === 'Em Produção'
-    && !c.retiradoEm && !(c.etapas || []).some(e => e.concluida || e.inicioExec);
+    && !c.naClinica && !c.retiradoEm && !(c.etapas || []).some(e => e.concluida || e.inicioExec);
   const paraRetirada = emAndamento.filter(aguardandoRetirada);
-  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c));
+  // Na clínica: prova que o laboratório entregou e está com o dentista agora
+  const naClinicaLista = casos.filter(c => c.naClinica && c.status !== 'Entregue');
+  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c) && !c.naClinica);
   const prontos = casos.filter(c => c.status === 'Pronto');
   const todasEntregas = casos.filter(c => c.status === 'Entregue');
   const entregues = todasEntregas.slice(0, 20);
@@ -1521,6 +1523,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const dadosPanorama = [
     { chave: 'retirada', rotulo: 'Aguardando retirada', curto: 'Retirada', n: paraRetirada.length, cor: '#2563EB', corClara: '#60A5FA' },
     { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emProducaoSo.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'clinica', rotulo: 'Na clínica (prova)', curto: 'Na clínica', n: naClinicaLista.length, cor: '#7C3AED', corClara: '#A78BFA' },
     { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
     { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
   ];
@@ -1529,17 +1532,22 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const panorama = (
     <Panorama dentista={dentista} dados={dadosPanorama} total={casos.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
   );
-  // Caixinhas logo abaixo do gráfico: toca e a lista abre numa tela própria (Voltar retorna)
+  // Cartões grandes de situação (estilo do início do Lab): ícone colorido, número
+  // grandão e setinha — toca e a lista abre numa tela própria (Voltar retorna)
+  const ICONES_SITUACAO = { retirada: Inbox, producao: Hammer, clinica: Stethoscope, prontos: Package, entregues: Flag };
   const caixinhasSituacao = (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
       {dadosPanorama.map(d => {
-        const ativa = filtroSecao === d.chave;
+        const Icone = ICONES_SITUACAO[d.chave] || Inbox;
         return (
-          <button key={d.chave} onClick={() => setFiltroSecao(ativa ? null : d.chave)}
-            style={{ textAlign: 'left', background: ativa ? INK : '#fff', border: ativa ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', borderRadius: 16, padding: '12px 12px 11px', cursor: 'pointer', fontFamily: FONTE, boxShadow: ativa ? '0 14px 30px -16px rgba(28,27,25,0.7)' : '0 10px 26px -20px rgba(28,27,25,0.15)', transition: 'background 0.15s, border-color 0.15s' }}>
-            <span style={{ display: 'block', width: 9, height: 9, borderRadius: 5, background: `linear-gradient(135deg, ${d.corClara}, ${d.cor})`, boxShadow: `0 0 6px ${d.cor}55` }} />
-            <span style={{ display: 'block', fontSize: 21, fontWeight: 800, color: ativa ? '#fff' : INK, marginTop: 7, lineHeight: 1 }}>{d.n}</span>
-            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: ativa ? GOLD : '#78716C', marginTop: 4, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.curto}</span>
+          <button key={d.chave} onClick={() => setFiltroSecao(d.chave)}
+            style={{ textAlign: 'left', position: 'relative', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 20, padding: '16px 16px 15px', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 12px 30px -22px rgba(28,27,25,0.28)' }}>
+            <span style={{ position: 'absolute', top: 15, right: 15, color: '#D0C6B4', fontSize: 17, fontWeight: 300, lineHeight: 1 }}>→</span>
+            <span style={{ width: 42, height: 42, borderRadius: 21, background: `${d.cor}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icone size={20} color={d.cor} />
+            </span>
+            <span style={{ display: 'block', fontSize: 28, fontWeight: 800, color: INK, marginTop: 11, lineHeight: 1 }}>{d.n}</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#78716C', marginTop: 5, lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d.rotulo}</span>
           </button>
         );
       })}
@@ -1614,14 +1622,30 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
     || String(c.tipoTrabalho || '').toLowerCase().includes(termoBusca)
     || String(c.id || '').toLowerCase().includes(termoBusca));
 
-  const Secao = ({ titulo, cor, itens, vazio }) => (
+  const Secao = ({ titulo, cor, itens, vazio, rodapeItem }) => (
     <div style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: cor || '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 2px 8px' }}>{titulo}</div>
       {itens.length === 0
         ? <div style={{ fontSize: 12, color: '#A8A29E', padding: '4px 2px' }}>{vazio}</div>
-        : <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>{itens.map(c => <CasoCartao key={c.id} c={c} />)}</div>}
+        : <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>{itens.map(c => (
+            <div key={c.id}>
+              <CasoCartao c={c} />
+              {rodapeItem && rodapeItem(c)}
+            </div>
+          ))}</div>}
     </div>
   );
+  // Dentista avisa que a prova está pronta p/ voltar: o trabalho entra na caixa
+  // "Para retirada" do laboratório e a equipe recebe o aviso no celular
+  const solicitarRetorno = async (c) => {
+    try {
+      await updateDoc(doc(db, 'labs', LAB, 'casos', c.id), { retornoSolicitado: true, retornoEm: new Date().toISOString() });
+      mostrarToast('O laboratório foi avisado para buscar ✓');
+    } catch (e) {
+      console.error('solicitar retorno', e);
+      mostrarToast('Não consegui avisar — confira a internet e tente de novo.');
+    }
+  };
 
   return (
     <div style={{ maxWidth: desktop ? 'none' : 440, margin: '0 auto', minHeight: '100vh', background: '#F5F4F0', fontFamily: FONTE, paddingBottom: desktop ? 40 : 84 }}>
@@ -1764,6 +1788,23 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             )}
             {filtroSecao === 'producao' && (
               <Secao titulo={`Em produção (${emProducaoSo.length})`} cor="#B54708" itens={emProducaoSo} vazio="Nenhum trabalho em produção no momento." />
+            )}
+            {filtroSecao === 'clinica' && (
+              <Secao titulo={`Na clínica — prova (${naClinicaLista.length})`} cor="#6D28D9" itens={naClinicaLista}
+                vazio="Nenhum trabalho em prova na sua clínica agora."
+                rodapeItem={(c) => c.retornoSolicitado
+                  ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#EDE9FE', color: '#5B21B6', fontSize: 12, fontWeight: 800 }}>
+                      ✓ O laboratório foi avisado — aguardando a busca
+                    </div>
+                  )
+                  : (
+                    <button onClick={() => solicitarRetorno(c)}
+                      style={{ width: '100%', margin: '6px 0 12px', padding: 12, borderRadius: 12, border: 'none', background: '#7C3AED', color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 10px 22px -14px rgba(124,58,237,0.8)' }}>
+                      ↩ Devolver ao laboratório — pronto para buscar
+                    </button>
+                  )}
+              />
             )}
             {filtroSecao === 'prontos' && (
               <Secao titulo={`Prontos para entrega (${prontos.length})`} cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />

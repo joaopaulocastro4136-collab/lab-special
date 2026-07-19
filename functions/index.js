@@ -116,6 +116,11 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
     await notificar('clinica', depois.dentista, 'Pronto para entrega! 🎉', `${depois.paciente} (${depois.tipoTrabalho}) ficou pronto e sai para entrega.`, { casoId });
   }
 
+  // Dentista devolveu a prova → avisa o laboratório que tem busca na clínica
+  if (!antes.retornoSolicitado && depois.retornoSolicitado && depois.dentista) {
+    await notificar('lab', null, '🔁 Buscar na clínica', `${depois.dentista} avisou: ${depois.paciente} (${depois.tipoTrabalho}) está pronto para o laboratório buscar.`, { casoId });
+  }
+
   // Aprovações de arquivo: compara os anexos de antes e de depois
   const mapaAntes = {};
   (antes.anexos || []).forEach((a) => { mapaAntes[a.id] = a; });

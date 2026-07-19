@@ -302,7 +302,7 @@ const FILTROS_RAPIDOS = {
   atrasado: { titulo: 'Atrasados', teste: (c) => getUrgencia(c) === 'atrasado' },
   pronto: { titulo: 'Prontos p/ entrega', teste: (c) => c.status === 'Pronto' },
   clinica: { titulo: 'Provas (levar + na clínica)', teste: (c) => (c.naClinica || c.provaPendente) && c.status !== 'Entregue' },
-  retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) },
+  retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado) },
 };
 
 // Converte um dataURL (base64) em Blob binário — usado p/ subir fotos comprimidas ao armazém
@@ -1210,11 +1210,17 @@ export default function App() {
     const base = listaBase || casos;
     return persistCasos(base.map(c => c.id === id ? { ...c, ...patch } : c));
   };
-  // "Foi pego ✓": confirma a retirada na clínica — o trabalho sai da caixa de retirada
+  // "Foi pego ✓": confirma a retirada na clínica — o trabalho sai da caixa de retirada.
+  // Vale para trabalho novo postado pelo dentista E para prova devolvida pela clínica.
   const confirmarRetirada = (id) => {
     const caso = casos.find(c => c.id === id);
-    updateCaso(id, { retiradoEm: agoraISO() });
-    criarNotificacao('novo', `Retirada confirmada: ${caso ? caso.paciente : 'trabalho'} já está com o laboratório. ✓`, id);
+    if (caso && caso.naClinica) {
+      updateCaso(id, { naClinica: false, provaPendente: false, retornoSolicitado: null });
+      criarNotificacao('novo', `Retorno confirmado: ${caso.paciente} voltou da clínica para o laboratório. ✓`, id);
+    } else {
+      updateCaso(id, { retiradoEm: agoraISO() });
+      criarNotificacao('novo', `Retirada confirmada: ${caso ? caso.paciente : 'trabalho'} já está com o laboratório. ✓`, id);
+    }
   };
   // Edita os itens de um trabalho já criado: recalcula rótulo, valor e etapas,
   // SEM perder o progresso das etapas já iniciadas ou concluídas
@@ -1419,7 +1425,7 @@ export default function App() {
     const caso = casos.find(c => c.id === casoId);
     if (!caso) return;
     const indo = !caso.naClinica;
-    updateCaso(casoId, { naClinica: indo, provaPendente: false });
+    updateCaso(casoId, { naClinica: indo, provaPendente: false, retornoSolicitado: null });
     const nome = `${caso.paciente} (${caso.tipoTrabalho})`;
     if (indo) {
       const et = etapaAtual(caso);
@@ -1627,7 +1633,8 @@ export default function App() {
   const trabalhoHoje = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) <= 0)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
-  const paraRetirada = emAndamento.filter(aguardandoRetirada);
+  // Para retirada: trabalho novo postado pelo dentista OU prova que o dentista devolveu
+  const paraRetirada = emAndamento.filter(c => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado));
   const trabalhoAmanha = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) === 1)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
@@ -2267,7 +2274,7 @@ function CasoCard({ caso, onClick, endereco, onConfirmarRetirada }) {
   const concluidas = caso.etapas?.filter(e => e.concluida).length || 0;
   const totalEtapas = caso.etapas?.length || 0;
   const esperandoDentista = aguardandoDentista(caso);
-  const naRetirada = aguardandoRetirada(caso) && onConfirmarRetirada;
+  const naRetirada = (aguardandoRetirada(caso) || (caso.naClinica && caso.retornoSolicitado)) && onConfirmarRetirada;
   return (
     <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0"
       style={{
@@ -4886,6 +4893,11 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
               <Undo2 size={13} /> Retornou
             </button>
           </div>
+          {caso.retornoSolicitado && (
+            <div className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-bold" style={{ background: '#2563EB', color: '#fff' }}>
+              📣 O dentista avisou: está pronto para o laboratório buscar!
+            </div>
+          )}
           {endereco && (
             <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold bg-white" style={{ color: '#1A73E8' }}>
