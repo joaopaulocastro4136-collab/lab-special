@@ -67,6 +67,33 @@ do {
 } while (pagina);
 if (!achou) console.log('  nenhum pedido de aprovação pendente encontrado');
 
+// 3b. Últimos casos (para ver anexos e aprovações como estão no banco)
+console.log('\n══ ÚLTIMOS 6 CASOS (anexos e aprovações) ══');
+const todos = [];
+let pg = null;
+do {
+  const url = `${BASE}/labs/principal/casos?pageSize=300${pg ? `&pageToken=${pg}` : ''}`;
+  const cs = await (await fetch(url, { headers: H })).json();
+  for (const d of cs.documents || []) todos.push(d.fields || {});
+  pg = cs.nextPageToken || null;
+} while (pg);
+todos.sort((a, b) => String(valor(b.id)).localeCompare(String(valor(a.id))));
+for (const f of todos.slice(0, 6)) {
+  console.log(`  caso=${valor(f.id)} | paciente=${valor(f.paciente)} | dentista="${valor(f.dentista)}" | status=${valor(f.status)} | dataHora=${valor(f.dataHora)}`);
+  const anexos = f.anexos?.arrayValue?.values || [];
+  if (!anexos.length) console.log('    (sem anexos)');
+  for (const a of anexos) {
+    const af = a.mapValue?.fields || {};
+    const ap = af.aprovacao?.mapValue?.fields;
+    console.log(`    anexo=${valor(af.nome)} | categoria=${valor(af.categoria)} | aprovacao=${ap ? valor(ap.status) : '—'}`);
+  }
+}
+
+// 3c. E-mails com acesso ao Lab (regras de gravação)
+const acessoKV = await (await fetch(`${BASE}/labs/principal/kv/acesso`, { headers: H })).json();
+const emailsAcesso = (acessoKV.fields?.emails?.arrayValue?.values || []).map(v => v.stringValue);
+console.log('\n══ ACESSO AO LAB (kv/acesso) ══\n  ' + (emailsAcesso.join(', ') || 'vazio'));
+
 // 4. Logs recentes do carteiro (aoMudarCaso e aoCriarCaso)
 console.log('\n══ LOGS DO CARTEIRO (últimas 24h) ══');
 const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
