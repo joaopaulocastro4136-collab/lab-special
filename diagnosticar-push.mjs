@@ -106,7 +106,7 @@ console.log('\n══ TELEMETRIA DO APP (logsApp) ══');
 const lgs = await (await fetch(`${BASE}/labs/principal/logsApp?pageSize=40`, { headers: H })).json();
 const lgList = (lgs.documents || []).map(d => d.fields || {});
 lgList.sort((a, b) => String(valor(b.em)).localeCompare(String(valor(a.em))));
-for (const f of lgList.slice(0, 15)) console.log(`  ${valor(f.em)} | ${valor(f.acao)} | caso=${valor(f.casoId)} | ${valor(f.resultado)}`);
+for (const f of lgList.slice(0, 15)) console.log(`  ${valor(f.em)} | ${valor(f.acao)} | caso=${valor(f.casoId)} | v=${valor(f.versao)} ${valor(f.plataforma) || ''} ${valor(f.email) || ''} | ${valor(f.resultado) || ''}`);
 if (!lgList.length) console.log('  (sem registros ainda)');
 
 // 4. Logs recentes do carteiro (aoMudarCaso e aoCriarCaso)

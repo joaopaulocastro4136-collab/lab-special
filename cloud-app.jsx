@@ -68,6 +68,23 @@ function instalarNuvemCasos() {
   };
 }
 
+// Sinal de vida na abertura: grava qual versão do Lab está rodando neste aparelho.
+// É o que permite diagnosticar de longe "o iPhone está com o app antigo ou novo?".
+let jaLogouAbertura = false;
+function logarAbertura(email) {
+  if (jaLogouAbertura) return;
+  jaLogouAbertura = true;
+  try {
+    window.nuvemCasos.logar({
+      acao: 'abriu-app',
+      app: 'lab',
+      versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev',
+      plataforma: typeof location !== 'undefined' && location.protocol === 'capacitor:' ? 'ios-app' : 'web',
+      email: email || '',
+    });
+  } catch (e) { /* telemetria nunca derruba o app */ }
+}
+
 function instalarArquivos() {
   const st = getStorage();
   window.arquivos = {
@@ -500,12 +517,12 @@ function CloudRoot({ entrarNativo }) {
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
     getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); setAcesso('ok'); } })
+      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } })
       .catch(e => {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
+        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
       });
     return () => { ativo = false; };
   }, [usuario, tentativa]);

@@ -1501,29 +1501,44 @@ export default function App() {
   // Grava DIRETO o caso na nuvem e AVISA se falhar — o pedido de aprovação é o
   // que dispara a notificação no celular do dentista, não pode se perder calado.
   const atualizarAnexoMeta = async (casoId, anexoId, patch) => {
+    const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
+    const ehPedido = patch && patch.aprovacao && patch.aprovacao.status === 'pendente';
+    // Registra o TOQUE antes de qualquer gravação: mesmo que tudo falhe depois,
+    // a nuvem fica sabendo que o botão foi tocado e por qual versão do app
+    if (ehPedido && window.nuvemCasos && window.nuvemCasos.logar) {
+      window.nuvemCasos.logar({ acao: 'toque-pedir-aprovacao', casoId, anexoId, versao: versaoApp });
+    }
     const caso = casos.find(c => c.id === casoId);
-    if (!caso) return false;
+    if (!caso) {
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: caso não encontrado', versao: versaoApp });
+      return false;
+    }
+    const anexoAlvo = (caso.anexos || []).find(a => a.id === anexoId);
+    if (!anexoAlvo) {
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, anexoId, resultado: 'erro: anexo não encontrado no caso', versao: versaoApp });
+      alert('Não encontrei este arquivo no trabalho. Feche e abra o trabalho de novo e tente outra vez.');
+      return false;
+    }
     const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
     const novaLista = casos.map(c => c.id === casoId ? atualizado : c);
     setCasos(novaLista);
     setSaveStatus('saving');
     try {
-      const ehPedido = patch && patch.aprovacao && patch.aprovacao.status === 'pendente';
-      const anexoNome = ((caso.anexos || []).find(a => a.id === anexoId) || {}).nome || '';
+      const anexoNome = anexoAlvo.nome || '';
       if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
       else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
       // Canal RESERVA: o pedido também vira um doc próprio que dispara a notificação na nuvem
       if (ehPedido && window.nuvemCasos && window.nuvemCasos.avisarAprovacao) {
         await window.nuvemCasos.avisarAprovacao({ casoId, dentista: caso.dentista, paciente: caso.paciente, anexoNome });
       }
-      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: ehPedido ? 'pedir-aprovacao' : 'anexo-meta', casoId, anexoNome, resultado: 'ok' });
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: ehPedido ? 'pedir-aprovacao' : 'anexo-meta', casoId, anexoNome, resultado: 'ok', versao: versaoApp });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 1500);
       if (ehPedido) alert('Pedido de aprovação enviado ✓\nO dentista recebe o aviso no celular agora.');
       return true;
     } catch (e) {
       console.error('salvar anexo', e);
-      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: ' + String((e && e.message) || e).slice(0, 180) });
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: ' + String((e && e.message) || e).slice(0, 180), versao: versaoApp });
       setSaveStatus('idle');
       alert('Não consegui salvar na nuvem — confira a internet e toque de novo.');
       return false;
