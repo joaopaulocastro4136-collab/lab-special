@@ -687,7 +687,7 @@ function CloudRoot({ entrarNativo }) {
       if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1) {
         alert(msg.indexOf('operation-not-allowed') !== -1 || msg.indexOf('1000') !== -1
           ? 'O login com Apple está sendo ativado — por enquanto, entre com o Google.'
-          : 'Não foi possível entrar com a Apple. Tente de novo ou use o Google.');
+          : 'Não foi possível entrar com a Apple (' + msg + '). Tente de novo ou use o Google.');
       }
     }
     setEntrando(false);

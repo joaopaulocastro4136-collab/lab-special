@@ -103,7 +103,8 @@ async function entrarNativo(auth) {
 // Login Apple NATIVO (Face ID) — só existe no iPhone; no Android o botão nem aparece
 if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
   window.__entrarNativoApple = async (auth) => {
-    const resultado = await FirebaseAuthentication.signInWithApple({ scopes: ['email', 'name'] });
+    // skipNativeAuth: o token da Apple só vale uma vez — quem entra no Firebase é a camada web
+    const resultado = await FirebaseAuthentication.signInWithApple({ scopes: ['email', 'name'], skipNativeAuth: true });
     const cred = (resultado && resultado.credential) || {};
     if (!cred.idToken) throw new Error('Login cancelado');
     const oauth = new OAuthProvider('apple.com').credential({ idToken: cred.idToken, rawNonce: cred.nonce });
