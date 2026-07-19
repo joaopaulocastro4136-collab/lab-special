@@ -1,9 +1,8 @@
 // Robô que ativa o "Sign In with Apple" direto no Apple Developer:
 // 1. Liga a capacidade APPLE_ID_AUTH nos dois apps (Lab e Clinic)
 // 2. Apaga e recria os dois perfis de distribuição (mesmo nome, mesmo certificado)
-// 3. Salva os novos .mobileprovision no lugar dos antigos, prontos pra commitar
+// 3. Imprime os novos .mobileprovision em base64 no log, pra serem commitados
 import crypto from 'crypto';
-import fs from 'fs';
 
 const KEY_ID = process.env.ASC_KEY_ID.trim();
 const ISSUER = process.env.ASC_ISSUER_ID.trim();
@@ -91,9 +90,12 @@ for (const app of APPS) {
     deuErro = true;
     continue;
   }
-  fs.writeFileSync(app.arquivo, Buffer.from(novo.json.data.attributes.profileContent, 'base64'));
-  console.log(`  ✓ Perfil novo criado (${novo.json.data.id}) e salvo em ${app.arquivo}`);
+  console.log(`  ✓ Perfil novo criado (${novo.json.data.id})`);
+  console.log(`── PERFIL ${app.arquivo} ──`);
+  const conteudo = novo.json.data.attributes.profileContent;
+  for (let i = 0; i < conteudo.length; i += 300) console.log(conteudo.slice(i, i + 300));
+  console.log('── FIM DO PERFIL ──');
 }
 
 if (deuErro) { console.log('\n✗ Alguma etapa falhou — veja acima'); process.exit(1); }
-console.log('\n✓ Tudo pronto: capacidade ligada e perfis novos salvos nos dois apps');
+console.log('\n✓ Tudo pronto: capacidade ligada e perfis novos gerados nos dois apps');
