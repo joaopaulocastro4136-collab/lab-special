@@ -115,7 +115,9 @@ const firebaseConfig = {
 };
 
 const EMAIL_DONO = 'joaopaulocastro41@gmail.com';
-const LAB = 'principal';
+// Cada conta trabalha no SEU laboratório: resolvido no login (mapa usuarios/<email>).
+// 'principal' é o laboratório original; contas novas ganham um laboratório próprio.
+let LAB = (typeof localStorage !== 'undefined' && localStorage.getItem('specialLabId')) || 'principal';
 const TAM_CHUNK = 900000; // Firestore limita documentos a ~1MB
 
 const fbApp = initializeApp(firebaseConfig);
@@ -249,7 +251,20 @@ async function apagarKV(key) {
 async function sincronizarAcesso(configJson) {
   try {
     const cfg = JSON.parse(configJson);
-    const emails = [EMAIL_DONO];
+    // O dono nunca sai da lista: no principal é o e-mail original; nos demais
+    // laboratórios é o primeiro e-mail da lista de acesso (quem criou o lab)
+    let emails;
+    if (LAB === 'principal') {
+      emails = [EMAIL_DONO];
+    } else {
+      let dono = ((auth.currentUser && auth.currentUser.email) || '').toLowerCase();
+      try {
+        const atual = await getDoc(docKV('acesso'));
+        const lista = (atual.exists() && atual.data().emails) || [];
+        if (lista.length) dono = lista[0];
+      } catch (e) { }
+      emails = dono ? [dono] : [];
+    }
     for (const f of cfg.funcionarios || []) {
       if (f.email && !emails.includes(f.email)) emails.push(f.email);
     }
@@ -270,6 +285,14 @@ async function sincronizarAcesso(configJson) {
     atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
       batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null, dataPagamento: d.dataPagamento || null });
+    }
+    // Índice global dentista → laboratório (o Special Clinic usa p/ achar o lab certo).
+    // Fora do lote: se o dentista já pertence a outro laboratório, só essa escrita falha.
+    atuais.forEach(docAtual => {
+      if (!porEmail.has(docAtual.id)) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
+    });
+    for (const [email, d] of porEmail) {
+      setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome }).catch(() => { });
     }
     // Informações que a clínica usa: tipos completos (para criar o caso direto) e dias de trabalho (cálculo do prazo)
     batch.set(doc(db, 'labs', LAB, 'publicoClinica', 'info'), {
@@ -558,6 +581,41 @@ function ehMobile() {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 }
 
+// Descobre (ou cria) o laboratório desta conta.
+// Ordem: mapa salvo → equipe do laboratório principal → conta de dentista? → laboratório novo.
+async function resolverLaboratorio(usuario, forcarNovo) {
+  const email = (usuario.email || '').toLowerCase();
+  if (!email) throw new Error('conta sem e-mail');
+
+  const refMapa = doc(db, 'usuarios', email);
+  const mapa = await getDoc(refMapa); // se falhar (offline), quem chama abre do cache
+  if (mapa.exists() && mapa.data().lab) return { lab: mapa.data().lab };
+
+  // Equipe antiga do laboratório principal entra como sempre — e ganha o mapa
+  try {
+    await getDoc(doc(db, 'labs', 'principal', 'kv', 'acesso'));
+    setDoc(refMapa, { lab: 'principal', em: new Date().toISOString() }).catch(() => { });
+    return { lab: 'principal' };
+  } catch (e) {
+    if (e.code !== 'permission-denied') throw e; // offline/erro transitório — não decide nada agora
+  }
+
+  // E-mail cadastrado como dentista de alguma clínica? Sugere o Special Clinic
+  if (!forcarNovo) {
+    try {
+      const idx = await getDoc(doc(db, 'dentistasIndex', email));
+      if (idx.exists()) return { dentista: true };
+    } catch (e) { /* sem índice — segue o fluxo normal */ }
+  }
+
+  // Conta nova: nasce um laboratório vazio, e esta conta é a dona
+  const novoLab = 'lab-' + String(usuario.uid || novoIdN()).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);
+  await setDoc(doc(db, 'labs', novoLab, 'kv', 'acesso'), { emails: [email] });
+  await setDoc(doc(db, 'labsIndex', novoLab), { dono: email, criadoEm: new Date().toISOString() }).catch(() => { });
+  await setDoc(refMapa, { lab: novoLab, papel: 'dono', em: new Date().toISOString() });
+  return { lab: novoLab, novo: true };
+}
+
 function CloudRoot({ entrarNativo }) {
   const [usuario, setUsuario] = useState(undefined); // undefined = carregando
   const [acesso, setAcesso] = useState('verificando'); // verificando | ok | negado | erro
@@ -590,21 +648,33 @@ function CloudRoot({ entrarNativo }) {
     return onAuthStateChanged(auth, u => setUsuario(u));
   }, []);
 
-  // Verifica se o e-mail logado tem permissão (as regras do banco barram quem não tem)
+  // Descobre o laboratório da conta (criando um novo se for a primeira vez)
+  // e confirma a permissão (as regras do banco barram quem não tem)
   useEffect(() => {
     if (!usuario) return;
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
-    getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } })
-      .catch(e => {
+    const abrir = () => { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); };
+    (async () => {
+      try {
+        const r = await resolverLaboratorio(usuario, forcarLabNovo.current);
+        if (!ativo) return;
+        if (r.dentista) { setAcesso('dentista'); return; }
+        if (LAB !== r.lab) { espelhoCasos = new Map(); espelhoSolic.clear(); } // laboratório mudou — nada de resto da conta anterior
+        LAB = r.lab;
+        try { localStorage.setItem('specialLabId', r.lab); } catch (e) { }
+        await getDoc(docKV('acesso'));
+        if (ativo) abrir();
+      } catch (e) {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
-      });
+        else abrir(); // offline/erro transitório — deixa o app abrir do cache (com o último laboratório salvo)
+      }
+    })();
     return () => { ativo = false; };
   }, [usuario, tentativa]);
+  const forcarLabNovo = useRef(false);
 
   // Sincronização em tempo real: mudanças de outros aparelhos recarregam o app
   useEffect(() => {
@@ -674,6 +744,8 @@ function CloudRoot({ entrarNativo }) {
   };
 
   const entrarApple = async () => {
+    if (window.__appleEmAndamento) return; // toque duplo: o 2º pedido cancelaria o 1º (erro 1001)
+    window.__appleEmAndamento = true;
     setEntrando(true);
     try {
       if (window.__entrarNativoApple) {
@@ -684,12 +756,14 @@ function CloudRoot({ entrarNativo }) {
     } catch (e) {
       console.error('login apple', e);
       const msg = String((e && e.code) || e);
-      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1) {
+      // 1001 = a janelinha da Apple foi fechada sem concluir — cancelamento, não erro
+      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1 && msg.indexOf('1001') === -1) {
         alert(msg.indexOf('operation-not-allowed') !== -1 || msg.indexOf('1000') !== -1
           ? 'O login com Apple está sendo ativado — por enquanto, entre com o Google.'
           : 'Não foi possível entrar com a Apple (' + msg + '). Tente de novo ou use o Google.');
       }
     }
+    window.__appleEmAndamento = false;
     setEntrando(false);
   };
   // Apple aparece no iPhone (nativo) e na web; no Android não existe login Apple nativo
@@ -720,6 +794,27 @@ function CloudRoot({ entrarNativo }) {
 
   if (acesso === 'verificando') {
     return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: '14px' }}>Verificando acesso...</div></TelaBase></>;
+  }
+
+  if (acesso === 'dentista') {
+    return (
+      <TelaBase>
+        <div style={{ color: 'white', fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>Você é dentista? 🦷</div>
+        <div style={{ color: '#A8A29E', fontSize: '13px', lineHeight: 1.6, marginBottom: '20px' }}>
+          A conta <b style={{ color: GOLD }}>{usuario.email}</b> está cadastrada como dentista de um laboratório.
+          Para acompanhar seus trabalhos, use o app <b>Special Clinic</b>.
+        </div>
+        <div style={{ color: '#78716C', fontSize: '12px', lineHeight: 1.6, marginBottom: '18px' }}>
+          Este app (Special Lab) é para quem <b>gerencia um laboratório</b>. Se você também quer o seu, é só continuar:
+        </div>
+        <button onClick={() => { forcarLabNovo.current = true; setTentativa(t => t + 1); }} style={{ display: 'block', width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', marginBottom: '10px' }}>
+          Criar meu laboratório
+        </button>
+        <button onClick={() => signOut(auth)} style={{ background: 'transparent', color: GOLD, border: `1.5px solid ${GOLD}`, borderRadius: '12px', padding: '10px 20px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+          Entrar com outra conta
+        </button>
+      </TelaBase>
+    );
   }
 
   if (acesso === 'negado') {

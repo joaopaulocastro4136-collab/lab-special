@@ -25,7 +25,9 @@ const firebaseConfig = {
   appId: '1:138572658603:web:76e4649e21d8d16aa804ee',
 };
 
-const LAB = 'principal';
+// O laboratório do dentista é descoberto no login (índice dentistasIndex/<e-mail>).
+// 'principal' é o laboratório original, usado como reserva para contas antigas.
+let LAB = (typeof localStorage !== 'undefined' && localStorage.getItem('specialClinicLabId')) || 'principal';
 const TAM_CHUNK = 900000;
 const INK = '#1C1B19';
 const GOLD = '#B8935A';
@@ -3673,13 +3675,22 @@ function Raiz() {
   useEffect(() => {
     if (!usuario || !usuario.email) return;
     let ativo = true;
-    getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
-      .then(s => {
+    const email = usuario.email.toLowerCase();
+    (async () => {
+      try {
+        // Em qual laboratório este dentista está cadastrado? (índice global)
+        try {
+          const idx = await getDoc(doc(db, 'dentistasIndex', email));
+          if (idx.exists() && idx.data().lab) LAB = idx.data().lab;
+        } catch (e) { /* sem índice — segue no laboratório salvo/principal */ }
+        const s = await getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', email));
         if (!ativo) return;
-        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok'); }
-        else setEstado('negado');
-      })
-      .catch(() => { if (ativo) setEstado('negado'); });
+        if (s.exists()) {
+          try { localStorage.setItem('specialClinicLabId', LAB); } catch (e) { }
+          setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok');
+        } else setEstado('negado');
+      } catch (e) { if (ativo) setEstado('negado'); }
+    })();
     return () => { ativo = false; };
   }, [usuario, tentativa]);
 
@@ -3710,6 +3721,8 @@ function Raiz() {
   };
 
   const entrarApple = async () => {
+    if (window.__appleEmAndamento) return; // toque duplo: o 2º pedido cancelaria o 1º (erro 1001)
+    window.__appleEmAndamento = true;
     setEntrando(true);
     try {
       if (window.__entrarNativoApple) {
@@ -3720,12 +3733,14 @@ function Raiz() {
     } catch (e) {
       console.error('login apple', e);
       const msg = String((e && e.code) || e);
-      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1) {
+      // 1001 = a janelinha da Apple foi fechada sem concluir — cancelamento, não erro
+      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1 && msg.indexOf('1001') === -1) {
         alert(msg.indexOf('operation-not-allowed') !== -1 || msg.indexOf('1000') !== -1
           ? 'O login com Apple está sendo ativado — por enquanto, entre com o Google.'
           : 'Não foi possível entrar com a Apple (' + msg + '). Tente de novo ou use o Google.');
       }
     }
+    window.__appleEmAndamento = false;
     setEntrando(false);
   };
 

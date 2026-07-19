@@ -63,11 +63,11 @@ function enviarAPNs(tokenAparelho, bundle, titulo, corpo, dados) {
     { aps: { alert: { title: titulo, body: corpo }, sound: 'default', badge: 1 }, ...(dados || {}) });
 }
 
-// Envia p/ todos os aparelhos do destino: 'lab' (equipe) ou 'clinica' (um dentista).
-// "dados" vai junto no aviso (ex.: casoId) — tocar na notificação abre direto o trabalho.
-async function notificar(destino, dentista, titulo, corpo, dados) {
+// Envia p/ todos os aparelhos do destino: 'lab' (equipe) ou 'clinica' (um dentista),
+// dentro do laboratório indicado. "dados" vai junto no aviso (ex.: casoId).
+async function notificar(lab, destino, dentista, titulo, corpo, dados) {
   const db = admin.firestore();
-  let consulta = db.collection('labs/principal/pushTokens').where('tipo', '==', destino);
+  let consulta = db.collection(`labs/${lab}/pushTokens`).where('tipo', '==', destino);
   if (destino === 'clinica') consulta = consulta.where('dentista', '==', dentista);
   const snap = await consulta.get();
   console.log(`notificar ${destino}${dentista ? ' (' + dentista + ')' : ''}: ${snap.size} aparelho(s) — ${titulo}`);
@@ -94,36 +94,38 @@ async function notificar(destino, dentista, titulo, corpo, dados) {
   await Promise.all(invalidos.map((r) => r.delete().catch(() => { })));
 }
 
-exports.aoCriarCaso = onDocumentCreated({ ...OPCOES, document: 'labs/principal/casos/{id}' }, async (event) => {
+exports.aoCriarCaso = onDocumentCreated({ ...OPCOES, document: 'labs/{lab}/casos/{id}' }, async (event) => {
   const c = event.data && event.data.data();
   if (!c) return;
+  const lab = event.params.lab;
   const casoId = (event.params && event.params.id) || c.id;
   if (c.origem === 'clinica') {
-    await notificar('lab', null, '🆕 Trabalho novo da clínica', `${c.dentista} enviou: ${c.paciente} (${c.tipoTrabalho}) — já está para retirada.`, { casoId });
+    await notificar(lab, 'lab', null, '🆕 Trabalho novo da clínica', `${c.dentista} enviou: ${c.paciente} (${c.tipoTrabalho}) — já está para retirada.`, { casoId });
   } else if (c.dentista) {
-    await notificar('clinica', c.dentista, 'Trabalho novo no laboratório', `${c.paciente} (${c.tipoTrabalho}) foi adicionado pelo Laboratório Special.`, { casoId });
+    await notificar(lab, 'clinica', c.dentista, 'Trabalho novo no laboratório', `${c.paciente} (${c.tipoTrabalho}) foi adicionado pelo laboratório.`, { casoId });
   }
 });
 
-exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/casos/{id}' }, async (event) => {
+exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/{lab}/casos/{id}' }, async (event) => {
   const antes = event.data && event.data.before.data();
   const depois = event.data && event.data.after.data();
   if (!antes || !depois) return;
+  const lab = event.params.lab;
   const casoId = (event.params && event.params.id) || depois.id;
 
   // Ficou pronto → avisa o dentista que sai para entrega
   if (antes.status !== 'Pronto' && depois.status === 'Pronto' && depois.dentista) {
-    await notificar('clinica', depois.dentista, 'Pronto para entrega! 🎉', `${depois.paciente} (${depois.tipoTrabalho}) ficou pronto e sai para entrega.`, { casoId });
+    await notificar(lab, 'clinica', depois.dentista, 'Pronto para entrega! 🎉', `${depois.paciente} (${depois.tipoTrabalho}) ficou pronto e sai para entrega.`, { casoId });
   }
 
   // Dentista devolveu a prova → avisa o laboratório que tem busca na clínica
   if (!antes.retornoSolicitado && depois.retornoSolicitado && depois.dentista) {
-    await notificar('lab', null, '🔁 Buscar na clínica', `${depois.dentista} avisou: ${depois.paciente} (${depois.tipoTrabalho}) está pronto para o laboratório buscar.`, { casoId });
+    await notificar(lab, 'lab', null, '🔁 Buscar na clínica', `${depois.dentista} avisou: ${depois.paciente} (${depois.tipoTrabalho}) está pronto para o laboratório buscar.`, { casoId });
   }
 
   // Prova saiu da bancada rumo à clínica → avisa o dentista que está a caminho
   if (!antes.provaPendente && depois.provaPendente && !depois.naClinica && depois.dentista) {
-    await notificar('clinica', depois.dentista, '🦷 Prova a caminho', `${depois.paciente} (${depois.tipoTrabalho}): a prova saiu do laboratório e está a caminho da sua clínica.`, { casoId });
+    await notificar(lab, 'clinica', depois.dentista, '🦷 Prova a caminho', `${depois.paciente} (${depois.tipoTrabalho}): a prova saiu do laboratório e está a caminho da sua clínica.`, { casoId });
   }
 
   // Aprovações de arquivo: compara os anexos de antes e de depois
@@ -137,15 +139,15 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
       let jaAvisado = false;
       try {
         const corte = new Date(Date.now() - 3 * 60000).toISOString();
-        const avs = await admin.firestore().collection('labs/principal/avisosAprovacao').where('casoId', '==', casoId).get();
+        const avs = await admin.firestore().collection(`labs/${lab}/avisosAprovacao`).where('casoId', '==', casoId).get();
         jaAvisado = avs.docs.some((x) => { const v = x.data(); return v.anexoNome === a.nome && String(v.em) > corte; });
       } catch (e) { console.error('dedupe aviso', e); }
       if (!jaAvisado) {
-        await notificar('clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`, { casoId });
+        await notificar(lab, 'clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`, { casoId });
       }
     }
     if (statusNovo === 'aprovado' && statusVelho !== 'aprovado') {
-      await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
+      await notificar(lab, 'lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
     }
   }
 });
@@ -153,10 +155,10 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
 // ─── Canal reserva do pedido de aprovação ───
 // O Lab grava um doc em avisosAprovacao a cada pedido; aqui a notificação
 // dispara SEMPRE, mesmo se a gravação do caso falhar por qualquer motivo.
-exports.aoPedirAprovacao = onDocumentCreated({ ...OPCOES, document: 'labs/principal/avisosAprovacao/{id}' }, async (event) => {
+exports.aoPedirAprovacao = onDocumentCreated({ ...OPCOES, document: 'labs/{lab}/avisosAprovacao/{id}' }, async (event) => {
   const d = event.data && event.data.data();
   if (!d || !d.dentista) return;
-  await notificar('clinica', d.dentista, 'Aprovação solicitada 👍',
+  await notificar(event.params.lab, 'clinica', d.dentista, 'Aprovação solicitada 👍',
     `O laboratório pediu sua aprovação: "${d.anexoNome || 'arquivo'}" — ${d.paciente || ''}. Abra para ver e aprovar.`,
     d.casoId ? { casoId: d.casoId } : undefined);
 });
@@ -201,7 +203,14 @@ exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZo
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().split('T')[0];
   };
-  const acessos = await db.collection('labs/principal/dentistasAcesso').get();
+  // Percorre todos os laboratórios (o principal + os criados pelo app)
+  const labsConhecidos = new Set(['principal']);
+  try {
+    const idx = await db.collection('labsIndex').get();
+    idx.forEach((d) => labsConhecidos.add(d.id));
+  } catch (e) { console.error('labsIndex', e); }
+  for (const lab of labsConhecidos) {
+  const acessos = await db.collection(`labs/${lab}/dentistasAcesso`).get();
   const vistos = new Set();
   const atrasados = [];
   for (const docAcesso of acessos.docs) {
@@ -212,7 +221,7 @@ exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZo
     const temDias = Number.isFinite(cfg.diasPagamento);
     const temData = typeof cfg.dataPagamento === 'string' && cfg.dataPagamento;
     if (!temDias && !temData) continue; // sem combinado → sem cobrança automática
-    const casosSnap = await db.collection('labs/principal/casos')
+    const casosSnap = await db.collection(`labs/${lab}/casos`)
       .where('dentista', '==', nome).where('status', '==', 'Entregue').get();
     const entregues = [];
     casosSnap.forEach((d) => {
@@ -220,7 +229,7 @@ exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZo
       if ((c.valor || 0) > 0 && c.dataSaida) entregues.push(c);
     });
     entregues.sort((a, b) => String(a.dataSaida).localeCompare(String(b.dataSaida)));
-    const fin = await db.doc('labs/principal/financeiroClinica/' + nome.replace(/\//g, '-')).get();
+    const fin = await db.doc(`labs/${lab}/financeiroClinica/` + nome.replace(/\//g, '-')).get();
     let restante = (fin.exists && fin.data().totalPago) || 0;
     let vencido = 0;
     for (const c of entregues) {
@@ -233,17 +242,18 @@ exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZo
     vencido = Math.round(vencido * 100) / 100;
     if (vencido > 0) {
       atrasados.push({ nome, vencido });
-      await notificar('clinica', nome, '🔴 Pagamento em atraso',
-        `Há ${fmt(vencido)} vencido com o Laboratório Special. Por favor, regularize — toque aqui para abrir o Financeiro e pagar via Pix.`,
+      await notificar(lab, 'clinica', nome, '🔴 Pagamento em atraso',
+        `Há ${fmt(vencido)} vencido com o laboratório. Por favor, regularize — toque aqui para abrir o Financeiro e pagar via Pix.`,
         { abrirAba: 'financeiro' });
     }
   }
   if (atrasados.length > 0) {
     const lista = atrasados.map((a) => `${a.nome} (${fmt(a.vencido)})`).join(', ');
-    await notificar('lab', null, '💰 Pagamentos em atraso',
+    await notificar(lab, 'lab', null, '💰 Pagamentos em atraso',
       `${atrasados.length === 1 ? '1 dentista está' : atrasados.length + ' dentistas estão'} com pagamento vencido: ${lista}.`);
   }
-  console.log(`cobrança: ${atrasados.length} dentista(s) em atraso`);
+  console.log(`cobrança (${lab}): ${atrasados.length} dentista(s) em atraso`);
+  }
 });
 
 // ─── IA Special: transformador de sorriso (Special Clinic) ───

@@ -1,43 +1,70 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Dono original do laboratório principal (reserva de segurança)
     function ehDono() {
       return request.auth != null && request.auth.token.email == 'joaopaulocastro41@gmail.com';
     }
-    function ehMembro() {
+    // Membro da equipe de um laboratório: e-mail na lista labs/<lab>/kv/acesso
+    function ehMembro(lab) {
       return request.auth != null && (
-        ehDono() ||
-        (exists(/databases/$(database)/documents/labs/principal/kv/acesso) &&
-         request.auth.token.email in get(/databases/$(database)/documents/labs/principal/kv/acesso).data.emails)
+        (lab == 'principal' && ehDono()) ||
+        (exists(/databases/$(database)/documents/labs/$(lab)/kv/acesso) &&
+         request.auth.token.email in get(/databases/$(database)/documents/labs/$(lab)/kv/acesso).data.emails)
       );
     }
     // Dentista autorizado: e-mail cadastrado pelo laboratório em Dentistas
-    function ehDentista() {
+    function ehDentista(lab) {
       return request.auth != null &&
-        exists(/databases/$(database)/documents/labs/principal/dentistasAcesso/$(request.auth.token.email));
+        exists(/databases/$(database)/documents/labs/$(lab)/dentistasAcesso/$(request.auth.token.email));
     }
-    function nomeDentista() {
-      return get(/databases/$(database)/documents/labs/principal/dentistasAcesso/$(request.auth.token.email)).data.nome;
+    function nomeDentista(lab) {
+      return get(/databases/$(database)/documents/labs/$(lab)/dentistasAcesso/$(request.auth.token.email)).data.nome;
     }
 
-    // Equipe do laboratório: acesso total
-    match /labs/principal/{document=**} {
-      allow read, write: if ehMembro();
+    // Mapa e-mail → laboratório (só diz ONDE procurar; o acesso em si é
+    // sempre conferido pela lista kv/acesso do laboratório apontado)
+    match /usuarios/{email} {
+      allow read, create, update: if request.auth != null && request.auth.token.email == email;
+    }
+
+    // Mapa dentista → laboratório, mantido pelo laboratório que o cadastrou
+    match /dentistasIndex/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+      allow create, update: if ehMembro(request.resource.data.lab);
+      allow delete: if ehMembro(resource.data.lab);
+    }
+
+    // Lista de laboratórios existentes (p/ rotinas do sistema)
+    match /labsIndex/{lab} {
+      allow read, create, update: if ehMembro(lab);
+    }
+
+    // Nascimento de um laboratório novo: a própria lista de acesso é a certidão.
+    // Só pode criar se ainda não existe e contendo apenas o próprio e-mail.
+    match /labs/{lab}/kv/acesso {
+      allow create: if request.auth != null
+        && request.resource.data.emails == [request.auth.token.email];
+    }
+
+    // Equipe do laboratório: acesso total ao próprio laboratório
+    match /labs/{lab}/{document=**} {
+      allow read, write: if ehMembro(lab);
     }
 
     // Dentista: lê os próprios casos e pode CRIAR trabalho novo (entra direto em produção)
-    match /labs/principal/casos/{id} {
-      allow read: if ehDentista() && resource.data.dentista == nomeDentista();
-      allow create: if ehDentista()
-        && request.resource.data.dentista == nomeDentista()
+    match /labs/{lab}/casos/{id} {
+      allow read: if ehDentista(lab) && resource.data.dentista == nomeDentista(lab);
+      allow create: if ehDentista(lab)
+        && request.resource.data.dentista == nomeDentista(lab)
         && request.resource.data.status == 'Em Produção'
         && request.resource.data.origem == 'clinica';
       // Dentista pode ajustar o próprio trabalho:
       // - dados básicos e anexos: sempre
       // - mudar os ITENS (regenera etapas/prazo/valor): só em trabalho criado pela
       //   clínica e ainda em produção (antes de o laboratório avançar)
-      allow update: if ehDentista()
-        && resource.data.dentista == nomeDentista()
+      allow update: if ehDentista(lab)
+        && resource.data.dentista == nomeDentista(lab)
         && (
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['paciente', 'observacoes', 'dentes', 'gengiva', 'quantidade', 'valor', 'anexos', 'dataHora', 'retornoSolicitado', 'retornoEm'])
@@ -50,51 +77,51 @@ service cloud.firestore {
         );
       // Dentista pode EXCLUIR o próprio trabalho enviado pela clínica,
       // enquanto ainda estiver em produção
-      allow delete: if ehDentista()
-        && resource.data.dentista == nomeDentista()
+      allow delete: if ehDentista(lab)
+        && resource.data.dentista == nomeDentista(lab)
         && resource.data.origem == 'clinica'
         && resource.data.status == 'Em Produção';
     }
 
     // Dentista: lê o próprio resumo financeiro (total pago)
-    match /labs/principal/financeiroClinica/{nome} {
-      allow read: if ehDentista() && nome == nomeDentista().replace('/', '-');
+    match /labs/{lab}/financeiroClinica/{nome} {
+      allow read: if ehDentista(lab) && nome == nomeDentista(lab).replace('/', '-');
     }
 
     // Dentista: registra o próprio aparelho p/ receber avisos push
-    match /labs/principal/pushTokens/{tok} {
-      allow create, update: if ehDentista()
+    match /labs/{lab}/pushTokens/{tok} {
+      allow create, update: if ehDentista(lab)
         && request.resource.data.tipo == 'clinica'
-        && request.resource.data.dentista == nomeDentista();
-      allow delete: if ehDentista() && resource.data.dentista == nomeDentista();
+        && request.resource.data.dentista == nomeDentista(lab);
+      allow delete: if ehDentista(lab) && resource.data.dentista == nomeDentista(lab);
     }
 
     // Dentista: lê anexos (busca por id vindo dos casos dele) e grava anexos dos pedidos
-    match /labs/principal/kv/{k} {
-      allow read, write: if ehDentista() && k.matches('anexo-.*');
+    match /labs/{lab}/kv/{k} {
+      allow read, write: if ehDentista(lab) && k.matches('anexo-.*');
     }
 
     // Dentista: lê o próprio registro de acesso
-    match /labs/principal/dentistasAcesso/{email} {
+    match /labs/{lab}/dentistasAcesso/{email} {
       allow read: if request.auth != null && request.auth.token.email == email;
     }
 
     // Informações que a clínica pode ver (tipos de trabalho etc.)
-    match /labs/principal/publicoClinica/{doc} {
-      allow read: if ehDentista();
+    match /labs/{lab}/publicoClinica/{doc} {
+      allow read: if ehDentista(lab);
     }
 
     // IA Special: histórico de transformações de sorriso do próprio dentista
-    match /labs/principal/iaSimulacoes/{id} {
-      allow read, delete: if ehDentista() && resource.data.dentista == nomeDentista();
-      allow create: if ehDentista() && request.resource.data.dentista == nomeDentista();
+    match /labs/{lab}/iaSimulacoes/{id} {
+      allow read, delete: if ehDentista(lab) && resource.data.dentista == nomeDentista(lab);
+      allow create: if ehDentista(lab) && request.resource.data.dentista == nomeDentista(lab);
     }
 
     // Pedidos feitos pela clínica
-    match /labs/principal/solicitacoes/{id} {
-      allow read: if ehDentista() && resource.data.dentista == nomeDentista();
-      allow create: if ehDentista()
-        && request.resource.data.dentista == nomeDentista()
+    match /labs/{lab}/solicitacoes/{id} {
+      allow read: if ehDentista(lab) && resource.data.dentista == nomeDentista(lab);
+      allow create: if ehDentista(lab)
+        && request.resource.data.dentista == nomeDentista(lab)
         && request.resource.data.status == 'pendente';
     }
   }

@@ -1,0 +1,27 @@
+# Prepara o banco para o modo multi-laboratório (índices do laboratório principal).
+# Idempotente: só cria o que ainda não existe.
+name: Backfill multi-laboratório
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/test-coverage-analysis-rb37qe, claude/special-lab-test-mode-9jrxb1]
+    paths: ['backfill-multilab.mjs', '.github/workflows/backfill-multilab.yml']
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepara a credencial
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Roda o backfill
+        run: node backfill-multilab.mjs
