@@ -22,24 +22,27 @@ const tok = await (await fetch('https://oauth2.googleapis.com/token', {
 if (!tok.access_token) { console.error('ERRO: não consegui o token de acesso', JSON.stringify(tok).slice(0, 200)); process.exit(1); }
 const H = { Authorization: 'Bearer ' + tok.access_token, 'Content-Type': 'application/json' };
 
-let abriu = false;
-// Caminho 1: API do Cloud Functions v2 (sincroniza com o Cloud Run por baixo)
-const nomeFn = 'projects/laboratorio-special/locations/southamerica-east1/functions/transformarSorriso';
-const r1 = await fetch(`https://cloudfunctions.googleapis.com/v2/${nomeFn}:setIamPolicy`, {
-  method: 'POST', headers: H,
-  body: JSON.stringify({ policy: { bindings: [{ role: 'roles/cloudfunctions.invoker', members: ['allUsers'] }] } }),
-});
-console.log('Porta via Cloud Functions:', r1.status, r1.status < 300 ? 'aberta ✓' : (await r1.text()).slice(0, 200));
-if (r1.status < 300) abriu = true;
-
-// Caminho 2: direto no serviço Cloud Run (nome minúsculo)
-const nomeRun = 'projects/laboratorio-special/locations/southamerica-east1/services/transformarsorriso';
-const r2 = await fetch(`https://run.googleapis.com/v2/${nomeRun}:setIamPolicy`, {
-  method: 'POST', headers: H,
-  body: JSON.stringify({ policy: { bindings: [{ role: 'roles/run.invoker', members: ['allUsers'] }] } }),
-});
-console.log('Porta via Cloud Run:', r2.status, r2.status < 300 ? 'aberta ✓' : (await r2.text()).slice(0, 200));
-if (r2.status < 300) abriu = true;
-
-if (!abriu) { console.error('ERRO: nenhum dos caminhos conseguiu abrir a porta.'); process.exit(1); }
-console.log('Função pronta para o app ✓');
+const FUNCOES = ['transformarSorriso', 'perguntarIA'];
+let falhas = 0;
+for (const fn of FUNCOES) {
+  let abriu = false;
+  // Caminho 1: API do Cloud Functions v2 (sincroniza com o Cloud Run por baixo)
+  const nomeFn = `projects/laboratorio-special/locations/southamerica-east1/functions/${fn}`;
+  const r1 = await fetch(`https://cloudfunctions.googleapis.com/v2/${nomeFn}:setIamPolicy`, {
+    method: 'POST', headers: H,
+    body: JSON.stringify({ policy: { bindings: [{ role: 'roles/cloudfunctions.invoker', members: ['allUsers'] }] } }),
+  });
+  console.log(`Porta ${fn} via Cloud Functions:`, r1.status, r1.status < 300 ? 'aberta ✓' : (await r1.text()).slice(0, 160));
+  if (r1.status < 300) abriu = true;
+  // Caminho 2: direto no serviço Cloud Run (nome minúsculo)
+  const nomeRun = `projects/laboratorio-special/locations/southamerica-east1/services/${fn.toLowerCase()}`;
+  const r2 = await fetch(`https://run.googleapis.com/v2/${nomeRun}:setIamPolicy`, {
+    method: 'POST', headers: H,
+    body: JSON.stringify({ policy: { bindings: [{ role: 'roles/run.invoker', members: ['allUsers'] }] } }),
+  });
+  console.log(`Porta ${fn} via Cloud Run:`, r2.status, r2.status < 300 ? 'aberta ✓' : (await r2.text()).slice(0, 160));
+  if (r2.status < 300) abriu = true;
+  if (!abriu) { console.error(`ERRO: não consegui abrir a porta de ${fn}.`); falhas++; }
+}
+if (falhas > 0) process.exit(1);
+console.log('Funções prontas para o app ✓');
