@@ -203,3 +203,74 @@ Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, 
     return { foto: parteImg.data, mime: parteImg.mimeType || parteImg.mime_type || 'image/png' };
   }
 );
+
+// ─── IA Special: perguntas com foto (Special Clinic) ───
+// Chat de dúvidas do dentista: identifica implantes/componentes por foto,
+// responde sobre odontologia e dá passo a passo. Texto é barato (fração de centavo).
+exports.perguntarIA = onCall(
+  { region: 'southamerica-east1', timeoutSeconds: 60, memory: '256MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA Special.');
+    const chave = (process.env.GEMINI_API_KEY || '').trim();
+    if (!chave) throw new HttpsError('failed-precondition', 'A IA Special ainda está sendo ativada pelo laboratório.');
+    const pergunta = String((request.data && request.data.pergunta) || '').slice(0, 4000);
+    const foto = String((request.data && request.data.foto) || '');
+    if (!pergunta.trim() && !foto) throw new HttpsError('invalid-argument', 'Escreva a pergunta (pode anexar foto).');
+    if (foto.length > 4000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
+
+    // Limite diário por pessoa (separado do limite de transformações)
+    const LIMITE_DIA = parseInt(process.env.IA_PERGUNTAS_DIA || '40', 10);
+    const quem = String(request.auth.token.email || request.auth.uid).toLowerCase().replace(/[^\w@.-]/g, '_');
+    const dia = new Date().toISOString().slice(0, 10);
+    const refUso = admin.firestore().doc(`labs/principal/iaUso/perguntas_${dia}_${quem}`);
+    const usoOk = await admin.firestore().runTransaction(async (tx) => {
+      const s = await tx.get(refUso);
+      const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+      if (n > LIMITE_DIA) return false;
+      tx.set(refUso, { n, quem, dia }, { merge: true });
+      return true;
+    });
+    if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário de perguntas. Amanhã tem mais! ✨');
+
+    const INSTRUCAO = `Você é a IA Special, assistente do Laboratório Special (prótese dental, Petrolina/PE) para dentistas parceiros.
+Responda SEMPRE em português do Brasil, com precisão técnica e objetividade, em texto corrido ou listas curtas (sem markdown pesado).
+Você ajuda a: identificar implantes, componentes protéticos e materiais a partir de fotos (indique marca/modelo prováveis e o grau de certeza); responder dúvidas de odontologia e prótese; dar passo a passo clínico/laboratorial quando pedido.
+Se a foto não permitir identificação segura, diga o que daria para afirmar e o que verificar (ex.: radiografia, plataforma, conexão).
+Encerre respostas sobre casos clínicos lembrando, em uma linha, que a conduta final deve ser confirmada com o laboratório/planejamento clínico.`;
+
+    // Histórico curto para dar contexto à conversa
+    const historico = Array.isArray(request.data && request.data.historico) ? request.data.historico.slice(-6) : [];
+    const contents = historico
+      .filter(m => m && m.texto)
+      .map(m => ({ role: m.de === 'ia' ? 'model' : 'user', parts: [{ text: String(m.texto).slice(0, 1500) }] }));
+    const partes = [];
+    if (foto) partes.push({ inline_data: { mime_type: 'image/jpeg', data: foto } });
+    partes.push({ text: pergunta.trim() || 'Analise esta foto.' });
+    contents.push({ role: 'user', parts: partes });
+
+    const MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    for (const modelo of MODELOS) {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=` + chave, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: INSTRUCAO }] },
+          contents,
+          generationConfig: { temperature: 0.4, maxOutputTokens: 1400 },
+        }),
+      });
+      if (!resp.ok) {
+        console.error(`perguntarIA ${modelo}`, resp.status, (await resp.text()).slice(0, 200));
+        if (resp.status === 429) continue;
+        throw new HttpsError('internal', 'A IA não conseguiu responder agora. Tente de novo.');
+      }
+      const dados = await resp.json();
+      const texto = (((dados.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || '').join('').trim();
+      if (texto) {
+        console.log(`perguntarIA ok: ${quem} | ${modelo} | ${texto.length} chars`);
+        return { resposta: texto };
+      }
+    }
+    throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
+  }
+);

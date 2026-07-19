@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -633,6 +633,160 @@ async function compartilharAntesDepois(antesSrc, depoisSrc, paciente, aoAvisar) 
   }
 }
 
+// ─── Perguntas à IA Special: chat de dúvidas com foto ───
+// "Que implante é esse?", componentes, passo a passo, dúvidas de odontologia.
+function comprimirImagemChat(file) {
+  return new Promise((res, rej) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 900;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) { const r = Math.min(MAX / width, MAX / height); width = Math.round(width * r); height = Math.round(height * r); }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); };
+    img.src = url;
+  });
+}
+
+const SUGESTOES_IA = [
+  '📷 Que implante é esse? (anexe a foto)',
+  'Diferença entre pilar reto e angulado?',
+  'Passo a passo: cimentação de coroa de zircônia',
+];
+
+function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
+  const chaveLS = 'sc-perguntas-' + dentista;
+  const [mensagens, setMensagens] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveLS) || '[]'); } catch (e) { return []; } });
+  const [texto, setTexto] = useState('');
+  const [fotoPend, setFotoPend] = useState(null);
+  const [pensando, setPensando] = useState(false);
+  const fimRef = useRef(null);
+  const inputFotoRef = useRef(null);
+  useGestoVoltar(aoFechar);
+  useEffect(() => { if (fimRef.current) fimRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensagens.length, pensando]);
+  const persistir = (lista) => {
+    setMensagens(lista);
+    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-20))); } catch (e) { /* sem espaço: segue só em memória */ }
+  };
+
+  const anexarFoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try { setFotoPend(await comprimirImagemChat(file)); } catch (err) { aoAvisar('Não consegui ler essa foto.'); }
+  };
+
+  const enviar = async (textoLivre) => {
+    const t = String(textoLivre ?? texto).replace('📷 ', '').trim();
+    const fotoEnv = fotoPend;
+    if ((!t && !fotoEnv) || pensando) return;
+    const minha = { de: 'eu', texto: t, foto: fotoEnv || null };
+    const historico = mensagens.slice(-6).filter(m => m.texto).map(m => ({ de: m.de, texto: m.texto }));
+    const base = [...mensagens, minha];
+    persistir(base);
+    setTexto(''); setFotoPend(null);
+    setPensando(true);
+    try {
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 60000 });
+      const r = await chamar({ pergunta: t, foto: fotoEnv ? fotoEnv.split(',')[1] : '', historico });
+      persistir([...base, { de: 'ia', texto: r.data.resposta }]);
+    } catch (e) {
+      console.error('perguntarIA', e);
+      aoAvisar(mensagemErroIA(e));
+    }
+    setPensando(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 8900, background: '#141311', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+      <style>{`@keyframes iaPonto { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }`}</style>
+      {/* topo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(12px + env(safe-area-inset-top)) 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={aoFechar} style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+        <div style={{ width: 36, height: 36, borderRadius: 18, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <MessageCircle size={17} color={INK} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: '#fff' }}>Perguntas</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>IA SPECIAL</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.5)' }}>implantes, componentes, passo a passo — envie foto e pergunte</div>
+        </div>
+      </div>
+
+      {/* conversa */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px' }}>
+        {mensagens.length === 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '14px 14px', fontSize: 12.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+              👋 Olá, {dentista.split(' ').slice(0, 2).join(' ')}! Sou a <b style={{ color: GOLD }}>IA Special</b>. Me pergunte sobre implantes, componentes protéticos, materiais e técnicas — pode <b>anexar foto</b> que eu analiso (ex.: identificar um implante).
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 8px' }}>Experimente</div>
+            {SUGESTOES_IA.map(s => (
+              <button key={s} onClick={() => (s.startsWith('📷') ? (inputFotoRef.current && inputFotoRef.current.click()) : enviar(s))}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'rgba(184,147,90,0.1)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, fontWeight: 700, color: GOLD, cursor: 'pointer', fontFamily: FONTE }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        {mensagens.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.de === 'eu' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+            <div style={{ maxWidth: '84%', borderRadius: m.de === 'eu' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', padding: '10px 13px', background: m.de === 'eu' ? 'linear-gradient(135deg, #E8C48A, #B8935A)' : 'rgba(255,255,255,0.07)', border: m.de === 'eu' ? 'none' : '1px solid rgba(255,255,255,0.09)' }}>
+              {m.de === 'ia' && <div style={{ fontSize: 8.5, fontWeight: 800, color: GOLD, letterSpacing: '0.1em', marginBottom: 4 }}>✨ IA SPECIAL</div>}
+              {m.foto && <img src={m.foto} alt="foto" style={{ width: '100%', maxWidth: 220, borderRadius: 10, marginBottom: m.texto ? 7 : 0, display: 'block' }} />}
+              {m.texto && <div style={{ fontSize: 13.5, lineHeight: 1.55, color: m.de === 'eu' ? INK : 'rgba(255,255,255,0.92)', fontWeight: m.de === 'eu' ? 700 : 500, whiteSpace: 'pre-wrap' }}>{m.texto}</div>}
+            </div>
+          </div>
+        ))}
+        {pensando && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
+            <div style={{ borderRadius: '16px 16px 16px 4px', padding: '13px 16px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', gap: 5 }}>
+              {[0, 1, 2].map(i => <span key={i} style={{ width: 7, height: 7, borderRadius: 4, background: GOLD, animation: `iaPonto 1.2s ease-in-out ${i * 0.18}s infinite` }} />)}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center', margin: '6px 0 4px', lineHeight: 1.5 }}>
+          Respostas geradas por IA — confirme condutas clínicas com o laboratório.
+        </div>
+        <div ref={fimRef} />
+      </div>
+
+      {/* barra de escrever */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 12px calc(12px + env(safe-area-inset-bottom))' }}>
+        {fotoPend && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
+            <img src={fotoPend} alt="anexo" style={{ width: 46, height: 46, borderRadius: 10, objectFit: 'cover', border: `1px solid ${GOLD}` }} />
+            <span style={{ flex: 1, fontSize: 11.5, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>Foto anexada — escreva a pergunta (ou só envie)</span>
+            <button onClick={() => setFotoPend(null)} style={{ width: 26, height: 26, borderRadius: 13, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 800, cursor: 'pointer', lineHeight: '24px', padding: 0 }}>×</button>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          <button onClick={() => inputFotoRef.current && inputFotoRef.current.click()}
+            style={{ width: 42, height: 42, borderRadius: 21, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Camera size={18} color={GOLD} />
+          </button>
+          <input value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') enviar(); }}
+            placeholder="Escreva sua pergunta..."
+            style={{ flex: 1, padding: '12px 14px', borderRadius: 21, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, fontFamily: FONTE, outline: 'none', minWidth: 0 }} />
+          <button onClick={() => enviar()} disabled={pensando || (!texto.trim() && !fotoPend)}
+            style={{ width: 42, height: 42, borderRadius: 21, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: pensando || (!texto.trim() && !fotoPend) ? 0.45 : 1 }}>
+            <Send size={17} color={INK} />
+          </button>
+        </div>
+      </div>
+      <input ref={inputFotoRef} type="file" accept="image/*" onChange={anexarFoto} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
 function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
@@ -943,6 +1097,7 @@ function App({ dentista, email, prazoPagamento }) {
   const [sinoAberto, setSinoAberto] = useState(false);
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
   const [iaAberta, setIaAberta] = useState(false);
+  const [perguntasAbertas, setPerguntasAbertas] = useState(false);
   // Avisos já vistos (fica só neste aparelho)
   const [avisosVistos, setAvisosVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
@@ -1169,6 +1324,23 @@ function App({ dentista, email, prazoPagamento }) {
       </div>
     </button>
   );
+  // Chat de perguntas à IA (implantes, componentes, passo a passo)
+  const bannerPerguntas = (
+    <button onClick={() => setPerguntasAbertas(true)}
+      style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, borderRadius: 16, marginTop: -8, marginBottom: 18, padding: '12px 14px', background: '#fff', border: '1px solid #E7E5E4', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+      <span style={{ width: 38, height: 38, borderRadius: 19, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <MessageCircle size={18} color="#7A6234" />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>Perguntas</span>
+          <span style={{ fontSize: 8, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 999, padding: '2px 6px', letterSpacing: '0.06em' }}>IA</span>
+        </span>
+        <span style={{ display: 'block', fontSize: 11, color: '#78716C', marginTop: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Que implante é esse? Envie a foto e tire dúvidas</span>
+      </span>
+      <span style={{ color: '#A8A29E', fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
+    </button>
+  );
 
   const CasoCartao = ({ c }) => {
     const info = STATUS_INFO[c.status] || STATUS_INFO['Em Produção'];
@@ -1355,6 +1527,7 @@ function App({ dentista, email, prazoPagamento }) {
             {panorama}
             {caixinhasSituacao}
             {bannerIA}
+            {bannerPerguntas}
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button onClick={() => compartilharEnviados(false)}
@@ -1610,6 +1783,7 @@ function App({ dentista, email, prazoPagamento }) {
 
       <PuxarAtualizar aoAtualizar={recarregarInfo} />
       {iaAberta && <IASpecial dentista={dentista} aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
+      {perguntasAbertas && <PerguntasIA dentista={dentista} aoFechar={() => setPerguntasAbertas(false)} aoAvisar={mostrarToast} />}
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
 
       {toast && (
