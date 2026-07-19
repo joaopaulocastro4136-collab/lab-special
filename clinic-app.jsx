@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2 } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -796,8 +796,10 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null); // null = carregando
   const [verSim, setVerSim] = useState(null); // simulação salva aberta do histórico
+  const [fotoCheia, setFotoCheia] = useState(null); // antes ou depois aberto em tela cheia (zoom)
   const inputRef = useRef(null);
   useGestoVoltar(() => {
+    if (fotoCheia) { setFotoCheia(null); return; }
     if (verSim) { setVerSim(null); return; }
     if (foto) { setFoto(null); setResultado(null); return; }
     aoFechar();
@@ -960,6 +962,16 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
               <ComparadorImagens antes={verSim.antesUrl} depois={verSim.depoisUrl} corte={corte} setCorte={setCorte} />
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => setFotoCheia({ nome: 'Antes — ' + verSim.paciente, src: verSim.antesUrl })}
+                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                <Maximize2 size={14} color="#fff" /> Antes em tela cheia
+              </button>
+              <button onClick={() => setFotoCheia({ nome: 'Depois ✨ — ' + verSim.paciente, src: verSim.depoisUrl })}
+                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                <Maximize2 size={14} color={GOLD} /> Depois em tela cheia
+              </button>
+            </div>
             <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar)}
               style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Share2 size={16} /> Compartilhar antes e depois
@@ -983,7 +995,19 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
             </div>
 
             {resultado && !processando && (
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+              <>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => setFotoCheia({ nome: 'Antes — ' + (paciente.trim() || 'Paciente'), src: foto })}
+                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                <Maximize2 size={14} color="#fff" /> Antes em tela cheia
+              </button>
+              <button onClick={() => setFotoCheia({ nome: 'Depois ✨ — ' + (paciente.trim() || 'Paciente'), src: resultado })}
+                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                <Maximize2 size={14} color={GOLD} /> Depois em tela cheia
+              </button>
+            </div>
+              </>
             )}
 
             <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Cor dos dentes</div>
@@ -1034,6 +1058,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
           O resultado é ilustrativo — o tratamento real depende do planejamento clínico com o Laboratório Special.
         </div>
       </div>
+      {fotoCheia && <VisorImagem nome={fotoCheia.nome} src={fotoCheia.src} aoFechar={() => setFotoCheia(null)} aoAvisar={aoAvisar} />}
       <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
     </div>
   );
