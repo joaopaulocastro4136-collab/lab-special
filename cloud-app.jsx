@@ -141,37 +141,51 @@ function ordenarCasos(lista) {
 
 async function lerCasos() {
   const snap = await getDocs(colCasos());
-  const lista = [];
   espelhoCasos = new Map();
+  const porId = new Map();
   snap.forEach(d => {
-    const c = d.data();
-    lista.push(c);
-    espelhoCasos.set(d.id, JSON.stringify(c));
+    const bruto = d.data();
+    // O espelho guarda o dado COMO ESTÁ no banco (chave = nome do documento):
+    // qualquer conserto abaixo vira diferença e é gravado de volta no próximo salvar
+    espelhoCasos.set(d.id, JSON.stringify(bruto));
+    // Caso antigo sem "id" dentro do dado: usa o nome do documento como id
+    const c = bruto.id ? bruto : { ...bruto, id: d.id };
+    // Documento duplicado do mesmo caso (migração antiga): vale o canônico
+    // (nome do documento == id); o repetido some no próximo salvar
+    const jaTem = porId.get(c.id);
+    if (!jaTem || d.id === c.id) porId.set(c.id, c);
   });
-  return ordenarCasos(lista);
+  return ordenarCasos([...porId.values()]);
 }
 
 async function gravarCasos(lista) {
-  const batch = writeBatch(db);
   const idsNovos = new Set();
-  let mudou = false;
+  const ops = [];
   for (const c of lista) {
+    if (!c || !c.id) continue; // um caso malformado não pode derrubar a gravação dos outros
     idsNovos.add(c.id);
     const json = JSON.stringify(c);
-    if (espelhoCasos.get(c.id) !== json) {
-      batch.set(docCaso(c.id), c);
-      espelhoCasos.set(c.id, json);
-      mudou = true;
-    }
+    if (espelhoCasos.get(c.id) !== json) ops.push({ tipo: 'set', id: c.id, c, json });
   }
   for (const id of [...espelhoCasos.keys()]) {
-    if (!idsNovos.has(id)) {
-      batch.delete(docCaso(id));
-      espelhoCasos.delete(id);
-      mudou = true;
+    if (!idsNovos.has(id)) ops.push({ tipo: 'del', id });
+  }
+  // O Firestore aceita no máximo 500 operações por lote — divide em lotes menores.
+  // O espelho só é atualizado DEPOIS que o banco confirmou: se a gravação falhar,
+  // a próxima tentativa grava de novo (antes, a falha deixava o espelho mentindo).
+  for (let i = 0; i < ops.length; i += 400) {
+    const parte = ops.slice(i, i + 400);
+    const batch = writeBatch(db);
+    for (const op of parte) {
+      if (op.tipo === 'set') batch.set(docCaso(op.id), op.c);
+      else batch.delete(docCaso(op.id));
+    }
+    await batch.commit();
+    for (const op of parte) {
+      if (op.tipo === 'set') espelhoCasos.set(op.id, op.json);
+      else espelhoCasos.delete(op.id);
     }
   }
-  if (mudou) await batch.commit();
 }
 
 async function lerKV(key) {

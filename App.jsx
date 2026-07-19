@@ -1455,13 +1455,23 @@ export default function App() {
     criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi movido para ${formatDateBR(novoPrazo)}.`, id);
   };
   const deleteCaso = async (id) => {
+    const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
     const caso = casos.find(c => c.id === id);
     if (caso?.anexos?.length) {
       for (const a of caso.anexos) {
         try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ }
       }
     }
-    persistCasos(casos.filter(c => c.id !== id));
+    const ok = await persistCasos(casos.filter(c => c.id !== id));
+    if (window.nuvemCasos && window.nuvemCasos.logar) {
+      window.nuvemCasos.logar({ acao: 'excluir-caso', casoId: id, paciente: (caso && caso.paciente) || '', resultado: ok ? 'ok' : 'erro ao gravar', versao: versaoApp });
+    }
+    if (!ok) {
+      // Antes a falha era muda: o trabalho sumia da tela e voltava depois. Agora avisa.
+      alert('Não consegui excluir na nuvem — confira a internet e tente de novo.');
+      carregarDados();
+      return;
+    }
     setSelectedId(null);
     setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista');
     setConfirmandoExclusao(false);

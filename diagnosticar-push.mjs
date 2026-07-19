@@ -69,14 +69,15 @@ if (!achou) console.log('  nenhum pedido de aprovação pendente encontrado');
 
 // 3b. Últimos casos (para ver anexos e aprovações como estão no banco)
 console.log('\n══ ÚLTIMOS 6 CASOS (anexos e aprovações) ══');
-const todos = [];
+const todosDocs = [];
 let pg = null;
 do {
   const url = `${BASE}/labs/principal/casos?pageSize=300${pg ? `&pageToken=${pg}` : ''}`;
   const cs = await (await fetch(url, { headers: H })).json();
-  for (const d of cs.documents || []) todos.push(d.fields || {});
+  for (const d of cs.documents || []) todosDocs.push({ nomeDoc: d.name.split('/').pop(), f: d.fields || {} });
   pg = cs.nextPageToken || null;
 } while (pg);
+const todos = todosDocs.map(d => d.f);
 todos.sort((a, b) => String(valor(b.id)).localeCompare(String(valor(a.id))));
 for (const f of todos.slice(0, 6)) {
   console.log(`  caso=${valor(f.id)} | paciente=${valor(f.paciente)} | dentista="${valor(f.dentista)}" | status=${valor(f.status)} | dataHora=${valor(f.dataHora)}`);
@@ -86,6 +87,30 @@ for (const f of todos.slice(0, 6)) {
     const af = a.mapValue?.fields || {};
     const ap = af.aprovacao?.mapValue?.fields;
     console.log(`    anexo=${valor(af.nome)} | categoria=${valor(af.categoria)} | aprovacao=${ap ? valor(ap.status) : '—'}`);
+  }
+}
+
+// 3b2. Saúde dos documentos de caso: id faltando, nome do doc diferente do id, duplicados
+console.log('\n══ SAÚDE DOS CASOS NO BANCO ══');
+console.log(`  total de documentos: ${todosDocs.length}`);
+const contagemIds = {};
+let problemas = 0;
+for (const d of todosDocs) {
+  const id = valor(d.f.id);
+  const paciente = valor(d.f.paciente);
+  if (!id) { problemas++; console.log(`  ⚠ SEM CAMPO id: doc=${d.nomeDoc} | paciente=${paciente}`); continue; }
+  if (id !== d.nomeDoc) { problemas++; console.log(`  ⚠ NOME ≠ id: doc=${d.nomeDoc} | id=${id} | paciente=${paciente}`); }
+  contagemIds[id] = (contagemIds[id] || 0) + 1;
+}
+for (const id in contagemIds) {
+  if (contagemIds[id] > 1) { problemas++; console.log(`  ⚠ id DUPLICADO em ${contagemIds[id]} docs: ${id}`); }
+}
+if (!problemas) console.log('  todos os documentos saudáveis ✓');
+// Caso "pary" (o que o usuário não consegue excluir): mostra como está no banco
+for (const d of todosDocs) {
+  const paciente = String(valor(d.f.paciente) || '');
+  if (/par/i.test(paciente)) {
+    console.log(`  🔎 possível "pary": doc=${d.nomeDoc} | id=${valor(d.f.id)} | paciente="${paciente}" | status=${valor(d.f.status)} | dentista=${valor(d.f.dentista)} | dataEntrada=${valor(d.f.dataEntrada)}`);
   }
 }
 
