@@ -787,6 +787,72 @@ function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
   );
 }
 
+// ─── Comparador em TELA CHEIA: antes/depois grandão, arrasta pra alternar,
+// botões Antes | ⇄ | Depois pra ir e voltar, e pinça pra dar zoom nos detalhes ───
+function ComparadorTelaCheia({ antes, depois, nome, aoFechar }) {
+  const [corte, setCorte] = useState(50);
+  const [escala, setEscala] = useState(1);
+  const [arrastando, setArrastando] = useState(false);
+  const gesto = useRef({});
+  useGestoVoltar(aoFechar);
+  const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const mover = (clientX, el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0) setCorte(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)));
+  };
+  const aoIniciar = (e) => {
+    setArrastando(true);
+    if (e.touches.length === 2) gesto.current = { modo: 'pinca', d0: dist(e.touches), esc0: escala };
+    else { gesto.current = { modo: 'corte' }; mover(e.touches[0].clientX, e.currentTarget); }
+  };
+  const aoMover = (e) => {
+    if (gesto.current.modo === 'pinca' && e.touches.length === 2) {
+      setEscala(Math.max(1, Math.min(4, gesto.current.esc0 * (dist(e.touches) / gesto.current.d0))));
+    } else if (gesto.current.modo === 'corte' && e.touches.length === 1) {
+      mover(e.touches[0].clientX, e.currentTarget);
+    }
+  };
+  const btnRodape = (ativo) => ({ flex: 1, maxWidth: 150, padding: '12px 0', borderRadius: 13, fontFamily: FONTE, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: ativo ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.18)', background: ativo ? 'rgba(184,147,90,0.2)' : 'rgba(255,255,255,0.07)', color: ativo ? GOLD : 'rgba(255,255,255,0.85)' });
+  const trans = arrastando ? 'none' : 'clip-path 0.3s ease, left 0.3s ease';
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9600, background: '#0D0C0B', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+      {/* topo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(10px + env(safe-area-inset-top)) 12px 10px' }}>
+        <Estrela size={11} color={GOLD} />
+        <span style={{ flex: 1, minWidth: 0, color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+        <button onClick={aoFechar} style={{ width: 38, height: 38, borderRadius: 19, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(30,28,25,0.85)', color: '#fff', fontSize: 17, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>×</button>
+      </div>
+      {/* palco */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', touchAction: 'none', cursor: 'ew-resize' }}
+        onTouchStart={aoIniciar} onTouchMove={aoMover} onTouchEnd={() => { setArrastando(false); gesto.current = {}; }}
+        onMouseDown={e => { setArrastando(true); mover(e.clientX, e.currentTarget); }}
+        onMouseMove={e => { if (e.buttons === 1) mover(e.clientX, e.currentTarget); }}
+        onMouseUp={() => setArrastando(false)}
+        onWheel={e => setEscala(v => Math.max(1, Math.min(4, v - e.deltaY / 400)))}
+        onDoubleClick={() => setEscala(1)}>
+        <div style={{ position: 'relative', transform: `scale(${escala})`, transition: arrastando ? 'none' : 'transform 0.18s ease' }}>
+          <img src={depois} alt="Depois" draggable={false} style={{ display: 'block', maxWidth: '100vw', maxHeight: 'calc(100vh - 190px)', pointerEvents: 'none', userSelect: 'none' }} />
+          <img src={antes} alt="Antes" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)`, transition: trans, pointerEvents: 'none', userSelect: 'none' }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.7)', transform: 'translateX(-50%)', transition: trans, pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.5)' }}>⇄</div>
+          </div>
+          <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>ANTES</span>
+          <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>DEPOIS ✨</span>
+        </div>
+      </div>
+      {/* rodapé: ir e voltar entre antes e depois */}
+      <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))' }}>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 9 }}>arraste sobre a foto • pinça para zoom • toque duplo volta o zoom</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button onClick={() => setCorte(100)} style={btnRodape(corte > 85)}>Antes</button>
+          <button onClick={() => setCorte(50)} style={{ ...btnRodape(corte >= 15 && corte <= 85), maxWidth: 70 }}>⇄</button>
+          <button onClick={() => setCorte(0)} style={btnRodape(corte < 15)}>Depois ✨</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
@@ -796,10 +862,10 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null); // null = carregando
   const [verSim, setVerSim] = useState(null); // simulação salva aberta do histórico
-  const [fotoCheia, setFotoCheia] = useState(null); // antes ou depois aberto em tela cheia (zoom)
+  const [compararCheia, setCompararCheia] = useState(null); // comparador antes/depois em tela cheia
   const inputRef = useRef(null);
   useGestoVoltar(() => {
-    if (fotoCheia) { setFotoCheia(null); return; }
+    if (compararCheia) { setCompararCheia(null); return; }
     if (verSim) { setVerSim(null); return; }
     if (foto) { setFoto(null); setResultado(null); return; }
     aoFechar();
@@ -962,16 +1028,10 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
               <ComparadorImagens antes={verSim.antesUrl} depois={verSim.depoisUrl} corte={corte} setCorte={setCorte} />
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button onClick={() => setFotoCheia({ nome: 'Antes — ' + verSim.paciente, src: verSim.antesUrl })}
-                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                <Maximize2 size={14} color="#fff" /> Antes em tela cheia
-              </button>
-              <button onClick={() => setFotoCheia({ nome: 'Depois ✨ — ' + verSim.paciente, src: verSim.depoisUrl })}
-                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                <Maximize2 size={14} color={GOLD} /> Depois em tela cheia
-              </button>
-            </div>
+            <button onClick={() => setCompararCheia({ antes: verSim.antesUrl, depois: verSim.depoisUrl, nome: verSim.paciente })}
+              style={{ width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Maximize2 size={14} color={GOLD} /> Ver em tela cheia
+            </button>
             <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar)}
               style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Share2 size={16} /> Compartilhar antes e depois
@@ -997,16 +1057,10 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
             {resultado && !processando && (
               <>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button onClick={() => setFotoCheia({ nome: 'Antes — ' + (paciente.trim() || 'Paciente'), src: foto })}
-                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                <Maximize2 size={14} color="#fff" /> Antes em tela cheia
-              </button>
-              <button onClick={() => setFotoCheia({ nome: 'Depois ✨ — ' + (paciente.trim() || 'Paciente'), src: resultado })}
-                style={{ flex: 1, padding: 11, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                <Maximize2 size={14} color={GOLD} /> Depois em tela cheia
-              </button>
-            </div>
+                <button onClick={() => setCompararCheia({ antes: foto, depois: resultado, nome: paciente.trim() || 'Paciente' })}
+                  style={{ width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Maximize2 size={14} color={GOLD} /> Ver em tela cheia
+                </button>
               </>
             )}
 
@@ -1058,7 +1112,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
           O resultado é ilustrativo — o tratamento real depende do planejamento clínico com o Laboratório Special.
         </div>
       </div>
-      {fotoCheia && <VisorImagem nome={fotoCheia.nome} src={fotoCheia.src} aoFechar={() => setFotoCheia(null)} aoAvisar={aoAvisar} />}
+      {compararCheia && <ComparadorTelaCheia antes={compararCheia.antes} depois={compararCheia.depois} nome={compararCheia.nome} aoFechar={() => setCompararCheia(null)} />}
       <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
     </div>
   );
