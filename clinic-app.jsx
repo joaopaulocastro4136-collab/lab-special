@@ -1461,8 +1461,8 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
         })),
         total,
         rodape: ehMes
-          ? '✓ Trabalhos entregues pelo Laboratório Special no mês.'
-          : '⏳ Trabalhos ainda em produção no Laboratório Special.',
+          ? 'Trabalhos entregues pelo Laboratório Special no mês.'
+          : 'Trabalhos ainda em produção no Laboratório Special.',
       });
       setExtratoVer({ img, titulo, nomeArq: `${ehMes ? 'entregas-do-mes' : 'em-producao'}-${todayISO()}.pdf` });
     } catch (e) {
@@ -2085,11 +2085,11 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => abrirExtrato('mes')}
                   style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  📦 Ver entregas do mês
+                  <Estrela size={12} color={GOLD} /> Entregas do mês
                 </button>
                 <button onClick={() => abrirExtrato('producao')}
                   style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: `1.5px solid ${GOLD}`, background: 'rgba(184,147,90,0.08)', color: '#7A6234', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                  ⚙️ Ver em produção
+                  <Estrela size={12} color="#7A6234" /> Em produção
                 </button>
               </div>
             </div>
@@ -3027,15 +3027,17 @@ function desenharListaEnvios({ dentista, casos }) {
 
 // Extrato financeiro (entregas do mês ou trabalhos em produção) — imagem que vira PDF
 // pra mandar no WhatsApp e combinar o pagamento com o laboratório.
+// Visual da marca: preto + dourado, estrela desenhada, linhas finas — sem caixinhas.
 function desenharExtrato({ dentista, titulo, subtitulo, linhas, total, rodape }) {
-  const W = 1080, PAD = 56, LINHA = 132;
-  const H = 300 + linhas.length * LINHA + 8 + 118 + 24 + 92 + 60;
+  const W = 1080, PAD = 72, LINHA = 124, CAB = 268;
+  const H = CAB + 46 + linhas.length * LINHA + 40 + 128 + 96;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
   const F = "-apple-system, 'Segoe UI', Roboto, sans-serif";
   const caber = (txt, max) => { let t = String(txt || ''); while (ctx.measureText(t).width > max && t.length > 3) t = t.slice(0, -2); return t.length === String(txt || '').length ? t : t + '…'; };
   const reais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
+  const estrela = new Path2D('M0,-55 C4,-17 17,-4 46,0 C17,4 4,17 0,55 C-4,17 -17,4 -46,0 C-17,-4 -4,-17 0,-55 Z');
   const cartao = (x, y, w, h, r) => {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -3045,49 +3047,83 @@ function desenharExtrato({ dentista, titulo, subtitulo, linhas, total, rodape })
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   };
-  ctx.fillStyle = '#F5F4F0'; ctx.fillRect(0, 0, W, H);
-  // Cabeçalho preto com a marca
-  ctx.fillStyle = '#1C1B19'; ctx.fillRect(0, 0, W, 216);
-  ctx.fillStyle = '#B8935A'; ctx.font = `800 28px ${F}`;
-  ctx.fillText('✦ LABORATÓRIO SPECIAL', PAD, 74);
-  ctx.fillStyle = '#fff'; ctx.font = `800 46px ${F}`;
-  ctx.fillText(caber(titulo, W - PAD * 2), PAD, 136);
-  ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = `600 26px ${F}`;
-  ctx.fillText(caber(`${subtitulo} • ${dentista}`, W - PAD * 2), PAD, 182);
-  // Lista com valores
-  let y = 252;
+  // Fundo creme suave
+  ctx.fillStyle = '#F7F5F1'; ctx.fillRect(0, 0, W, H);
+  // Cabeçalho preto com a estrela da marca em marca d'água
+  const grad = ctx.createLinearGradient(0, 0, W, CAB);
+  grad.addColorStop(0, '#24221E'); grad.addColorStop(0.55, '#1C1B19'); grad.addColorStop(1, '#2B2620');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, CAB);
+  ctx.save();
+  ctx.translate(W - 130, CAB - 30);
+  ctx.scale(1.9, 1.9);
+  ctx.globalAlpha = 0.09;
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  // Estrela pequena + nome da marca espaçadinho
+  ctx.save();
+  ctx.translate(PAD + 12, 78);
+  ctx.scale(0.30, 0.30);
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#B8935A'; ctx.font = `800 24px ${F}`;
+  ctx.fillText('L A B O R A T Ó R I O   S P E C I A L', PAD + 44, 80);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#FFFFFF'; ctx.font = `300 56px ${F}`;
+  ctx.fillText(caber(titulo, W - PAD * 2), PAD, 164);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `600 26px ${F}`;
+  ctx.fillText(caber(`${subtitulo}  •  ${dentista}`, W - PAD * 2), PAD, 212);
+  // Fio dourado separando o cabeçalho
+  const fio = ctx.createLinearGradient(0, 0, W, 0);
+  fio.addColorStop(0, 'rgba(184,147,90,0)'); fio.addColorStop(0.5, '#B8935A'); fio.addColorStop(1, 'rgba(184,147,90,0)');
+  ctx.fillStyle = fio; ctx.fillRect(0, CAB - 3, W, 3);
+  // Lista: linhas finas, número dourado, valor à direita
+  let y = CAB + 46;
   linhas.forEach((l, i) => {
-    ctx.fillStyle = '#fff';
-    cartao(PAD, y, W - PAD * 2, LINHA - 16, 18); ctx.fill();
-    ctx.strokeStyle = '#E7E5E4'; ctx.lineWidth = 2; cartao(PAD, y, W - PAD * 2, LINHA - 16, 18); ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#B8935A'; ctx.font = `800 22px ${F}`;
+    ctx.fillText(String(i + 1).padStart(2, '0'), PAD, y + 44);
     ctx.textAlign = 'right';
-    ctx.fillStyle = l.valor > 0 ? '#166B3A' : '#A8A29E'; ctx.font = `800 32px ${F}`;
+    ctx.fillStyle = '#1C1B19'; ctx.font = `800 31px ${F}`;
     const vTxt = l.valor > 0 ? reais(l.valor) : 'a combinar';
-    ctx.fillText(vTxt, W - PAD - 28, y + 68);
+    if (l.valor > 0) ctx.fillText(vTxt, W - PAD, y + 48);
+    else { ctx.fillStyle = '#A8A29E'; ctx.font = `600 25px ${F}`; ctx.fillText(vTxt, W - PAD, y + 46); }
     const wValor = ctx.measureText(vTxt).width;
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#1C1B19'; ctx.font = `800 32px ${F}`;
-    ctx.fillText(caber(`${i + 1}. ${l.titulo}`, W - PAD * 2 - 56 - wValor - 30), PAD + 28, y + 48);
-    ctx.fillStyle = '#78716C'; ctx.font = `600 26px ${F}`;
-    ctx.fillText(caber(l.sub, W - PAD * 2 - 56 - wValor - 30), PAD + 28, y + 90);
+    ctx.fillStyle = '#1C1B19'; ctx.font = `700 32px ${F}`;
+    ctx.fillText(caber(l.titulo, W - PAD * 2 - 66 - wValor - 34), PAD + 66, y + 46);
+    ctx.fillStyle = '#8A8580'; ctx.font = `500 24px ${F}`;
+    ctx.fillText(caber(l.sub, W - PAD * 2 - 66 - wValor - 34), PAD + 66, y + 84);
+    if (i < linhas.length - 1) { ctx.fillStyle = '#E7E2D8'; ctx.fillRect(PAD, y + LINHA - 18, W - PAD * 2, 1.5); }
     y += LINHA;
   });
-  // Total em destaque (preto + dourado)
-  y += 8;
-  ctx.fillStyle = '#1C1B19';
-  cartao(PAD, y, W - PAD * 2, 118, 18); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `800 26px ${F}`;
-  ctx.fillText(`TOTAL (${linhas.length} ${linhas.length === 1 ? 'trabalho' : 'trabalhos'})`, PAD + 28, y + 70);
+  // Total: faixa preta com fio dourado e valor em destaque
+  y += 22;
+  cartao(PAD - 16, y, W - (PAD - 16) * 2, 128, 20);
+  ctx.fillStyle = '#1C1B19'; ctx.fill();
+  ctx.strokeStyle = 'rgba(184,147,90,0.55)'; ctx.lineWidth = 2;
+  cartao(PAD - 16, y, W - (PAD - 16) * 2, 128, 20); ctx.stroke();
+  ctx.save();
+  ctx.translate(PAD + 16, y + 64);
+  ctx.scale(0.22, 0.22);
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `800 23px ${F}`;
+  ctx.fillText(`TOTAL  •  ${linhas.length} ${linhas.length === 1 ? 'TRABALHO' : 'TRABALHOS'}`, PAD + 46, y + 64);
   ctx.textAlign = 'right';
-  ctx.fillStyle = '#E8C48A'; ctx.font = `800 44px ${F}`;
-  ctx.fillText(reais(total), W - PAD - 28, y + 76);
+  ctx.fillStyle = '#E8C48A'; ctx.font = `800 52px ${F}`;
+  ctx.fillText(reais(total), W - PAD - 12, y + 66);
   ctx.textAlign = 'left';
-  // Rodapé
-  y += 118 + 24;
-  ctx.fillStyle = '#EFEAE0';
-  cartao(PAD, y, W - PAD * 2, 92, 18); ctx.fill();
-  ctx.fillStyle = '#7A6234'; ctx.font = `700 26px ${F}`;
-  ctx.fillText(caber(rodape, W - PAD * 2 - 56), PAD + 28, y + 56);
+  ctx.textBaseline = 'alphabetic';
+  // Rodapé discreto, centralizado
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8A8580'; ctx.font = `600 22px ${F}`;
+  ctx.fillText(caber(rodape, W - PAD * 2), W / 2, y + 128 + 58);
+  ctx.textAlign = 'left';
   return cv.toDataURL('image/jpeg', 0.92);
 }
 
