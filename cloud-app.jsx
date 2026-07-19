@@ -28,9 +28,12 @@ function instalarIA() {
       return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
     },
     async perguntar({ pergunta, foto, historico }) {
-      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 60000 });
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 120000 });
       const r = await chamar({ pergunta, foto, historico });
-      return r.data.resposta;
+      return {
+        resposta: r.data.resposta,
+        ilustracao: r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null,
+      };
     },
     async listarSimulacoes() {
       const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', 'Laboratório Special')));

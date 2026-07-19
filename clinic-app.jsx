@@ -668,7 +668,7 @@ function comprimirImagemChat(file) {
 const SUGESTOES_IA = [
   '📷 Que implante é esse? (anexe a foto)',
   'Diferença entre pilar reto e angulado?',
-  'Passo a passo: cimentação de coroa de zircônia',
+  'Desenhe um esquema: conexão hexágono externo vs cone morse',
 ];
 
 function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
@@ -683,7 +683,7 @@ function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
   useEffect(() => { if (fimRef.current) fimRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensagens.length, pensando]);
   const persistir = (lista) => {
     setMensagens(lista);
-    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-20))); } catch (e) { /* sem espaço: segue só em memória */ }
+    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-20).map(m => ({ ...m, ilustracao: null })))); } catch (e) { /* sem espaço: segue só em memória */ }
   };
 
   const anexarFoto = async (e) => {
@@ -704,9 +704,10 @@ function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
     setTexto(''); setFotoPend(null);
     setPensando(true);
     try {
-      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 60000 });
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 120000 });
       const r = await chamar({ pergunta: t, foto: fotoEnv ? fotoEnv.split(',')[1] : '', historico });
-      persistir([...base, { de: 'ia', texto: r.data.resposta }]);
+      const ilustracao = r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null;
+      persistir([...base, { de: 'ia', texto: r.data.resposta, ilustracao }]);
     } catch (e) {
       console.error('perguntarIA', e);
       aoAvisar(mensagemErroIA(e));
@@ -752,6 +753,7 @@ function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
           <div key={i} style={{ display: 'flex', justifyContent: m.de === 'eu' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
             <div style={{ maxWidth: '84%', borderRadius: m.de === 'eu' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', padding: '10px 13px', background: m.de === 'eu' ? 'linear-gradient(135deg, #E8C48A, #B8935A)' : 'rgba(255,255,255,0.07)', border: m.de === 'eu' ? 'none' : '1px solid rgba(255,255,255,0.09)' }}>
               {m.de === 'ia' && <div style={{ fontSize: 8.5, fontWeight: 800, color: GOLD, letterSpacing: '0.1em', marginBottom: 4 }}>✨ IA SPECIAL</div>}
+              {m.ilustracao && <img src={m.ilustracao} alt="ilustração" style={{ width: '100%', maxWidth: 280, borderRadius: 12, marginBottom: m.texto ? 8 : 0, display: 'block', border: '1px solid rgba(184,147,90,0.45)' }} />}
               {m.foto && <img src={m.foto} alt="foto" style={{ width: '100%', maxWidth: 220, borderRadius: 10, marginBottom: m.texto ? 7 : 0, display: 'block' }} />}
               {m.texto && <div style={{ fontSize: 13.5, lineHeight: 1.55, color: m.de === 'eu' ? INK : 'rgba(255,255,255,0.92)', fontWeight: m.de === 'eu' ? 700 : 500, whiteSpace: 'pre-wrap' }}>{m.texto}</div>}
             </div>

@@ -2202,7 +2202,12 @@ function CasoCard({ caso, onClick, endereco }) {
   const totalEtapas = caso.etapas?.length || 0;
   const esperandoDentista = aguardandoDentista(caso);
   return (
-    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0" style={{ border: esperandoDentista ? '1.5px solid #DC2626' : (caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4')) }}>
+    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0"
+      style={{
+        border: esperandoDentista ? '1.5px solid #DC2626' : (caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4')),
+        borderLeft: `4px solid ${esperandoDentista ? '#DC2626' : caso.naClinica ? ROXO : caso.status === 'Pronto' ? VERDE : producao ? GOLD : '#D6D3D1'}`,
+        boxShadow: '0 12px 28px -22px rgba(28,27,25,0.35)',
+      }}>
       <div className="flex items-center justify-between gap-3 w-full">
         <div className="min-w-0 flex-1">
           <div className="font-bold truncate" style={{ color: INK }}>{caso.paciente}</div>
@@ -2414,18 +2419,18 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         <OverlayImagem />
         <SeletorDia dia={dia} setDia={setDia} />
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => { setMesOffset(mesOffset - 1); setDataSelecionada(null); }} className="p-2 rounded-xl bg-white border border-stone-200"><ChevronLeft size={16} className="text-stone-500" /></button>
+          <button onClick={() => { setMesOffset(mesOffset - 1); setDataSelecionada(null); }} className="p-2 rounded-full bg-white" style={{ border: '1px solid #E8D5B0', color: '#7A6234', boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}><ChevronLeft size={16} /></button>
           <div className="text-center">
-            <div className="text-sm font-extrabold capitalize" style={{ color: INK }}>{MESES[mesIdx]} de {ano}</div>
-            <div className="text-xs text-stone-400">{doMes.length} {doMes.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(totalMesHoras)} restantes</div>
+            <div className="capitalize" style={{ color: INK, fontSize: 15, fontWeight: 800 }}>{MESES[mesIdx]} <span style={{ color: '#A8A29E', fontSize: 12, fontWeight: 700 }}>{ano}</span></div>
+            <div className="text-xs" style={{ color: '#A8A29E' }}>{doMes.length} {doMes.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(totalMesHoras)} restantes</div>
           </div>
-          <button onClick={() => { setMesOffset(mesOffset + 1); setDataSelecionada(null); }} className="p-2 rounded-xl bg-white border border-stone-200" style={{ transform: 'rotate(180deg)' }}><ChevronLeft size={16} className="text-stone-500" /></button>
+          <button onClick={() => { setMesOffset(mesOffset + 1); setDataSelecionada(null); }} className="p-2 rounded-full bg-white" style={{ border: '1px solid #E8D5B0', color: '#7A6234', transform: 'rotate(180deg)', boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}><ChevronLeft size={16} /></button>
         </div>
 
         {/* Cabeçalho da semana completa */}
         <div className="grid grid-cols-7 gap-1 mb-1.5">
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, idx) => (
-            <div key={d} className="text-center text-xs font-bold" style={{ color: diasAtivos.includes(idx) ? '#78716C' : '#D6D3D1' }}>{d}</div>
+            <div key={d} className="text-center font-bold" style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: diasAtivos.includes(idx) ? '#B8935A' : '#D6D3D1' }}>{d}</div>
           ))}
         </div>
 
@@ -2716,7 +2721,8 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
         <div className="absolute left-3 top-0 bottom-0 flex items-center pointer-events-none">
           <Search size={16} className="text-stone-400" />
         </div>
-        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" />
+        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-3 rounded-xl text-sm outline-none bg-white"
+          style={{ border: busca ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)', fontWeight: 600 }} />
       </div>
       {dentistas && dentistas.length > 0 && (
         <div className="relative mb-3">
@@ -2734,7 +2740,10 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
       {!filtroRapido && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {filtros.map(f => (
-            <button key={f} onClick={() => setFiltroStatus(f)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={filtroStatus === f ? { background: INK, color: 'white' } : { background: '#F0EFEC', color: '#78716C' }}>
+            <button key={f} onClick={() => setFiltroStatus(f)} className="px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0"
+              style={filtroStatus === f
+                ? { background: 'linear-gradient(135deg, #24221E, #1C1B19)', color: GOLD, border: '1px solid rgba(184,147,90,0.5)', boxShadow: '0 8px 18px -12px rgba(28,27,25,0.8)' }
+                : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
               {f}
             </button>
           ))}
@@ -3291,7 +3300,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
     <div className="rounded-2xl p-4 bg-white border border-stone-200">
       <div className="flex items-center gap-2 mb-1">
         <Download size={16} color={GOLD} />
-        <h2 className="text-sm font-bold" style={{ color: INK }}>Instalar o aplicativo</h2>
+        <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Instalar o aplicativo</h2>
       </div>
       <p className="text-xs text-stone-400 mb-3">Instale o Lab Special neste aparelho: no Android dá para baixar o app, e no iPhone ele vai para a Tela de Início.</p>
       <a href="/instalar.html" className="block text-center py-3 rounded-xl font-bold text-sm" style={{ background: INK, color: GOLD, textDecoration: 'none' }}>
@@ -3327,7 +3336,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         <div className="flex items-center gap-2">
           <TrendingUp size={16} color={autoAjuste ? VERDE : '#A8A29E'} />
           <div className="flex-1">
-            <h2 className="text-sm font-bold" style={{ color: INK }}>Autorregulação de tempos</h2>
+            <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Autorregulação de tempos</h2>
             <p className="text-xs text-stone-400">Com 3+ tempos cronometrados numa etapa, a estimativa passa a seguir a média real automaticamente.</p>
           </div>
           <button onClick={() => onSetAutoAjuste(!autoAjuste)} className="flex-shrink-0 rounded-full p-0.5" style={{ width: '46px', height: '26px', background: autoAjuste ? VERDE : '#D6D3D1', transition: 'background 0.2s' }}>
@@ -3345,7 +3354,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       <div className="rounded-2xl p-4 bg-white border border-stone-200">
         <div className="flex items-center gap-2 mb-1">
           <Users size={16} color={GOLD} />
-          <h2 className="text-sm font-bold flex-1" style={{ color: INK }}>Equipe</h2>
+          <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Equipe</h2>
           {ehGestor && funcionarios.length > 0 && (
             <button onClick={onAbrirEquipe} className="flex items-center gap-1 text-xs font-bold" style={{ color: GOLD }}>
               <BarChart3 size={13} /> Relatório
@@ -3397,7 +3406,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       <div className="rounded-2xl p-4 bg-white border border-stone-200">
         <div className="flex items-center gap-2 mb-1">
           <Hourglass size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Dias e horários de trabalho</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dias e horários de trabalho</h2>
         </div>
         <p className="text-xs text-stone-400 mb-3">Marque os dias em que o laboratório funciona e defina as horas de bancada de cada um (ex.: sábado só até meio-dia = 4h). Prazos que caírem em dia de folga pulam para o próximo dia de trabalho, e a carga de cada dia usa a capacidade dele.</p>
 
@@ -3449,7 +3458,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="flex items-center gap-3">
             <Users size={16} color={GOLD} className="flex-shrink-0" />
             <div className="flex-1">
-              <div className="text-sm font-bold" style={{ color: INK }}>Pessoas na produção</div>
+              <div className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Pessoas na produção</div>
               <div className="text-xs text-stone-400">Multiplica as horas de cada dia (ex.: 8h × {pessoas >= 1 ? pessoas : 1} {pessoas === 1 ? 'pessoa' : 'pessoas'} = {(pessoas >= 1 ? pessoas : 1) * 8}h disponíveis)</div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -3466,7 +3475,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       <div className="rounded-2xl p-4 bg-white border border-stone-200">
         <div className="flex items-center gap-2 mb-3">
           <UserPlus size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Dentistas / Clínicas</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
         </div>
 
         <div className="flex flex-col gap-2 mb-1">
@@ -3512,7 +3521,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       <div className="rounded-2xl p-4 bg-white border border-stone-200">
         <div className="flex items-center gap-2 mb-1">
           <Timer size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Tipos de trabalho, etapas e comissões</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Tipos de trabalho, etapas e comissões</h2>
         </div>
         <p className="text-xs text-stone-400 mb-3">Toque no tipo para editar etapas, horas, provas e a comissão. As médias reais cronometradas aparecem embaixo de cada etapa.</p>
 
@@ -3841,7 +3850,7 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
     <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-5">
       <div className="flex items-center gap-2 mb-1">
         <ListChecks size={16} color={GOLD} />
-        <h2 className="text-sm font-bold flex-1" style={{ color: INK }}>Etapas de produção</h2>
+        <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Etapas de produção</h2>
         <span className="text-xs font-semibold" style={{ color: pct === 100 ? VERDE : GOLD }}>{concluidas}/{total}</span>
       </div>
       <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2">

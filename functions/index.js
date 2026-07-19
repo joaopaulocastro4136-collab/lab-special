@@ -275,7 +275,7 @@ Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, 
 // Chat de dúvidas do dentista: identifica implantes/componentes por foto,
 // responde sobre odontologia e dá passo a passo. Texto é barato (fração de centavo).
 exports.perguntarIA = onCall(
-  { region: 'southamerica-east1', timeoutSeconds: 60, memory: '256MiB' },
+  { region: 'southamerica-east1', timeoutSeconds: 120, memory: '512MiB' },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA Special.');
     const chave = (process.env.GEMINI_API_KEY || '').trim();
@@ -303,6 +303,7 @@ exports.perguntarIA = onCall(
 Responda SEMPRE em português do Brasil, com precisão técnica e objetividade, em texto corrido ou listas curtas (sem markdown pesado).
 Você ajuda a: identificar implantes, componentes protéticos e materiais a partir de fotos (indique marca/modelo prováveis e o grau de certeza); responder dúvidas de odontologia e prótese; dar passo a passo clínico/laboratorial quando pedido.
 Se a foto não permitir identificação segura, diga o que daria para afirmar e o que verificar (ex.: radiografia, plataforma, conexão).
+Você também pode ILUSTRAR: se um desenho/esquema ajudar muito a entender (anatomia, componente protético, conexão de implante, passo técnico), ou se o usuário pedir uma imagem/desenho/esquema/exemplo visual, termine a resposta com UMA linha exatamente neste formato: [ILUSTRAR: detailed English description of a clean professional dental illustration]. Use no máximo uma ilustração por resposta e apenas quando agregar de verdade.
 Encerre respostas sobre casos clínicos lembrando, em uma linha, que a conduta final deve ser confirmada com o laboratório/planejamento clínico.`;
 
     // Histórico curto para dar contexto à conversa
@@ -335,7 +336,42 @@ Encerre respostas sobre casos clínicos lembrando, em uma linha, que a conduta f
       const texto = (((dados.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || '').join('').trim();
       if (texto) {
         console.log(`perguntarIA ok: ${quem} | ${modelo} | ${texto.length} chars`);
-        return { resposta: texto };
+        // A resposta pediu uma ilustração? Gera a imagem (com limite diário próprio, pra segurar custo)
+        const m = texto.match(/\[ILUSTRAR:\s*([^\]]+)\]/i);
+        const resposta = texto.replace(/\[ILUSTRAR:[^\]]*\]/gi, '').trim();
+        if (m) {
+          const LIMITE_ILUSTRA = parseInt(process.env.IA_ILUSTRA_DIA || '12', 10);
+          const refIlustra = admin.firestore().doc(`labs/principal/iaUso/ilustra_${dia}_${quem}`);
+          const podeIlustrar = await admin.firestore().runTransaction(async (tx) => {
+            const s = await tx.get(refIlustra);
+            const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+            if (n > LIMITE_ILUSTRA) return false;
+            tx.set(refIlustra, { n, quem, dia }, { merge: true });
+            return true;
+          });
+          if (podeIlustrar) {
+            const promptImg = `Clean, professional dental/prosthodontic educational illustration, neutral light background, no watermark, no text labels unless essential: ${m[1].trim()}`;
+            const MODELOS_IMG = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+            for (const mImg of MODELOS_IMG) {
+              try {
+                const ri = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mImg}:generateContent?key=` + chave, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: promptImg }] }] }),
+                });
+                if (!ri.ok) { console.error(`ilustrar ${mImg}`, ri.status, (await ri.text()).slice(0, 160)); continue; }
+                const di = await ri.json();
+                const parteImg = ((((di.candidates || [])[0] || {}).content || {}).parts || []).find(p => p.inline_data || p.inlineData);
+                const inl = parteImg && (parteImg.inline_data || parteImg.inlineData);
+                if (inl && inl.data) {
+                  console.log(`ilustrar ok: ${quem} | ${mImg}`);
+                  return { resposta, imagem: inl.data, imagemMime: inl.mime_type || inl.mimeType || 'image/png' };
+                }
+              } catch (e) { console.error(`ilustrar ${mImg}`, String(e).slice(0, 160)); }
+            }
+          }
+        }
+        return { resposta };
       }
     }
     throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
