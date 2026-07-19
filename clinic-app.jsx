@@ -1186,6 +1186,7 @@ function App({ dentista, email, prazoPagamento }) {
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
   const [iaAberta, setIaAberta] = useState(false);
   const [perguntasAbertas, setPerguntasAbertas] = useState(false);
+  const [previsaoModo, setPrevisaoModo] = useState('lista'); // previsão: 'lista' (urgência) ou 'datas' (agenda por dia)
   // Avisos já vistos (fica só neste aparelho)
   const [avisosVistos, setAvisosVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
@@ -1760,6 +1761,84 @@ function App({ dentista, email, prazoPagamento }) {
                 <div style={{ fontSize: 12.5, color: '#A8A29E', marginTop: 4 }}>Tudo entregue. Envie um novo trabalho quando precisar.</div>
               </div>
             )}
+            {/* Como ver a fila: por urgência (lista) ou agrupada por data de entrega (agenda) */}
+            {naoEntregues.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                {[['lista', '☰ Lista'], ['datas', '📅 Por data']].map(([m, rot]) => (
+                  <button key={m} onClick={() => setPrevisaoModo(m)}
+                    style={{ flex: 1, padding: '10px 6px', borderRadius: 12, fontFamily: FONTE, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', border: previsaoModo === m ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: previsaoModo === m ? 'rgba(184,147,90,0.12)' : '#fff', color: previsaoModo === m ? '#7A6234' : '#78716C' }}>
+                    {rot}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Agenda por data: cada dia de entrega com os trabalhos daquele dia */}
+            {previsaoModo === 'datas' && naoEntregues.length > 0 && (() => {
+              const DIAS_SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+              const grupos = {};
+              naoEntregues.forEach(c => {
+                const k = c.prazo || 'sem-prazo';
+                (grupos[k] = grupos[k] || []).push(c);
+              });
+              const chaves = Object.keys(grupos).sort((a, b) => (a === 'sem-prazo' ? 1 : b === 'sem-prazo' ? -1 : a.localeCompare(b)));
+              return chaves.map(k => {
+                const semPrazo = k === 'sem-prazo';
+                const dias = semPrazo ? null : diasRestantes(k);
+                const d = semPrazo ? null : new Date(k + 'T00:00:00');
+                let pill, corP;
+                if (semPrazo) { pill = 'A combinar'; corP = '#78716C'; }
+                else if (dias < 0) { pill = `Atrasado ${-dias}d`; corP = '#B42318'; }
+                else if (dias === 0) { pill = 'Hoje'; corP = '#E07C1F'; }
+                else if (dias === 1) { pill = 'Amanhã'; corP = '#E07C1F'; }
+                else { pill = `Em ${dias} dias`; corP = '#16A34A'; }
+                return (
+                  <div key={k} style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <div style={{ width: 46, height: 50, borderRadius: 13, background: dias !== null && dias < 0 ? '#FCE4E4' : 'linear-gradient(135deg, #24221E, #1C1B19)', border: dias !== null && dias < 0 ? '1px solid #F5B5B5' : '1px solid rgba(184,147,90,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: 17, fontWeight: 800, color: dias !== null && dias < 0 ? '#B42318' : GOLD, lineHeight: 1 }}>{semPrazo ? '?' : d.getDate()}</span>
+                        <span style={{ fontSize: 7.5, fontWeight: 800, color: dias !== null && dias < 0 ? '#B42318' : 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>{semPrazo ? 'S/ data' : NOMES_MESES[d.getMonth()].slice(0, 3)}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>{semPrazo ? 'Sem prazo definido' : DIAS_SEMANA[d.getDay()]}</div>
+                        <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{semPrazo ? 'combinar com o laboratório' : formatDateBR(k)} • {grupos[k].length} {grupos[k].length === 1 ? 'trabalho' : 'trabalhos'}</div>
+                      </div>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '5px 11px', borderRadius: 999, background: '#fff', color: corP, border: '1px solid #EDEAE4', flexShrink: 0 }}>{pill}</span>
+                    </div>
+                    <div style={{ borderLeft: '2px solid #EDEAE4', marginLeft: 22, paddingLeft: 16 }}>
+                      {grupos[k].map(c => {
+                        const feitas = (c.etapas || []).filter(e => e.concluida).length;
+                        const total = (c.etapas || []).length;
+                        const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
+                        return (
+                          <div key={c.id} onClick={() => setDetalhe(c)}
+                            style={{ ...cartao, cursor: 'pointer', padding: 12, marginBottom: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.paciente}</div>
+                                <div style={{ fontSize: 11.5, color: '#78716C', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.tipoTrabalho}</div>
+                              </div>
+                              {c.status === 'Pronto' ? (
+                                <span style={{ fontSize: 10, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '4px 10px', flexShrink: 0 }}>Pronto ✓</span>
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                  <div style={{ width: 44, height: 4.5, borderRadius: 3, background: '#F0EFEC', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${pct}%`, background: GOLD }} />
+                                  </div>
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E' }}>{pct}%</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+
+            {previsaoModo === 'lista' && (
             <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>
             {[...naoEntregues].sort((a, b) => String(a.prazo).localeCompare(String(b.prazo))).map(c => {
               const dias = c.prazo ? diasRestantes(c.prazo) : null;
@@ -1797,6 +1876,7 @@ function App({ dentista, email, prazoPagamento }) {
               );
             })}
             </div>
+            )}
           </>
         )}
         {aba === 'financeiro' && (
