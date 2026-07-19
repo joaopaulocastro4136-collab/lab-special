@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/special-lab-test-mode-9jrxb1]
-    paths: ['functions/**', '.github/workflows/functions.yml']
+    paths: ['functions/**', '.github/workflows/functions.yml', 'abrir-porta-funcao.mjs', 'firestore.rules']
 
 jobs:
   deploy:
@@ -38,17 +38,24 @@ jobs:
       - name: Instala dependências das funções
         run: cd functions && npm ci
 
-      - name: Grava a chave da IA (Gemini) no cofre do projeto
+      - name: Entrega a chave da IA (Gemini) para as funções
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -n "$GEMINI_API_KEY" ]; then
-            printf '%s' "$GEMINI_API_KEY" | npx firebase-tools functions:secrets:set GEMINI_API_KEY \
-              --project laboratorio-special --data-file=- --non-interactive --force
-            echo "Chave da IA gravada ✓"
-          else
-            echo "Sem GEMINI_API_KEY no GitHub — mantendo a chave já gravada no projeto."
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::Falta o segredo GEMINI_API_KEY no GitHub (Settings → Secrets → Actions)."
+            exit 1
           fi
+          # A chave do Gemini é UMA linha sem espaços (formatos AIza... ou AQ....) — barra colagens erradas (ex.: o .json do Firebase)
+          if ! printf '%s' "$GEMINI_API_KEY" | tr -d '\r' | grep -qE '^(AIza|AQ\.)[0-9A-Za-z_.-]{20,}$'; then
+            echo "::error::O segredo GEMINI_API_KEY não parece uma chave do Gemini (deve ser UMA linha, começando com AIza ou AQ.). Atualize o segredo no GitHub colando a chave de aistudio.google.com/apikey."
+            exit 1
+          fi
+          printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" | tr -d '\r' > functions/.env
+          echo "Chave entregue via functions/.env (não vai para o git) ✓"
 
-      - name: Publica as funções
-        run: npx firebase-tools deploy --only functions --project laboratorio-special --non-interactive --force
+      - name: Publica as funções e as regras do banco
+        run: npx firebase-tools deploy --only functions,firestore:rules --project laboratorio-special --non-interactive --force
+
+      - name: Abre a porta da IA (invocação pública, com login checado dentro da função)
+        run: node abrir-porta-funcao.mjs

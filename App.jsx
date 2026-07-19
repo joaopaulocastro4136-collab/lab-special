@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import VisorSTL from './visor-stl.jsx';
-import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle } from 'lucide-react';
+import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
 
 const INK = '#1C1B19';
 const GOLD = '#B8935A';
@@ -922,6 +923,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
+  const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
+  const [perguntasAbertas, setPerguntasAbertas] = useState(false); // chat de perguntas à IA
   const [origemDetalhe, setOrigemDetalhe] = useState('lista');
 
   const usuarioAtivo = funcionarios.find(f => f.id === usuarioAtivoId) || null;
@@ -1197,7 +1200,7 @@ export default function App() {
   const addCaso = (dados) => {
     const nomesItens = (dados.itens && dados.itens.length) ? dados.itens.map(i => i.nome) : [dados.tipoTrabalho];
     const etapas = etapasDeItens(tiposTrabalho, nomesItens).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
-    const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: [], etapas, naClinica: false, provaPendente: false };
+    const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: dados.anexos || [], etapas, naClinica: false, provaPendente: false };
     persistCasos([novo, ...casos]);
     setView('lista');
   };
@@ -1452,13 +1455,23 @@ export default function App() {
     criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi movido para ${formatDateBR(novoPrazo)}.`, id);
   };
   const deleteCaso = async (id) => {
+    const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
     const caso = casos.find(c => c.id === id);
     if (caso?.anexos?.length) {
       for (const a of caso.anexos) {
         try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ }
       }
     }
-    persistCasos(casos.filter(c => c.id !== id));
+    const ok = await persistCasos(casos.filter(c => c.id !== id));
+    if (window.nuvemCasos && window.nuvemCasos.logar) {
+      window.nuvemCasos.logar({ acao: 'excluir-caso', casoId: id, paciente: (caso && caso.paciente) || '', resultado: ok ? 'ok' : 'erro ao gravar', versao: versaoApp });
+    }
+    if (!ok) {
+      // Antes a falha era muda: o trabalho sumia da tela e voltava depois. Agora avisa.
+      alert('Não consegui excluir na nuvem — confira a internet e tente de novo.');
+      carregarDados();
+      return;
+    }
     setSelectedId(null);
     setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista');
     setConfirmandoExclusao(false);
@@ -1494,12 +1507,68 @@ export default function App() {
     else { try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ } }
     updateCaso(casoId, { anexos: (caso.anexos || []).filter(a => a.id !== anexoId) });
   };
-  // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista)
-  const atualizarAnexoMeta = (casoId, anexoId, patch) => {
+  // Atualiza dados de um anexo (ex.: pedido/situação de aprovação do dentista).
+  // Grava DIRETO o caso na nuvem e AVISA se falhar — o pedido de aprovação é o
+  // que dispara a notificação no celular do dentista, não pode se perder calado.
+  const atualizarAnexoMeta = async (casoId, anexoId, patch) => {
+    const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
+    const ehPedido = patch && patch.aprovacao && patch.aprovacao.status === 'pendente';
+    // Registra o TOQUE antes de qualquer gravação: mesmo que tudo falhe depois,
+    // a nuvem fica sabendo que o botão foi tocado e por qual versão do app
+    if (ehPedido && window.nuvemCasos && window.nuvemCasos.logar) {
+      window.nuvemCasos.logar({ acao: 'toque-pedir-aprovacao', casoId, anexoId, versao: versaoApp });
+    }
     const caso = casos.find(c => c.id === casoId);
-    if (!caso) return;
-    updateCaso(casoId, { anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) });
+    if (!caso) {
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: caso não encontrado', versao: versaoApp });
+      return false;
+    }
+    const anexoAlvo = (caso.anexos || []).find(a => a.id === anexoId);
+    if (!anexoAlvo) {
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, anexoId, resultado: 'erro: anexo não encontrado no caso', versao: versaoApp });
+      alert('Não encontrei este arquivo no trabalho. Feche e abra o trabalho de novo e tente outra vez.');
+      return false;
+    }
+    const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
+    const novaLista = casos.map(c => c.id === casoId ? atualizado : c);
+    setCasos(novaLista);
+    setSaveStatus('saving');
+    try {
+      const anexoNome = anexoAlvo.nome || '';
+      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
+      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
+      // Canal RESERVA: o pedido também vira um doc próprio que dispara a notificação na nuvem
+      if (ehPedido && window.nuvemCasos && window.nuvemCasos.avisarAprovacao) {
+        await window.nuvemCasos.avisarAprovacao({ casoId, dentista: caso.dentista, paciente: caso.paciente, anexoNome });
+      }
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: ehPedido ? 'pedir-aprovacao' : 'anexo-meta', casoId, anexoNome, resultado: 'ok', versao: versaoApp });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 1500);
+      if (ehPedido) alert('Pedido de aprovação enviado ✓\nO dentista recebe o aviso no celular agora.');
+      return true;
+    } catch (e) {
+      console.error('salvar anexo', e);
+      if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: ' + String((e && e.message) || e).slice(0, 180), versao: versaoApp });
+      setSaveStatus('idle');
+      alert('Não consegui salvar na nuvem — confira a internet e toque de novo.');
+      return false;
+    }
   };
+
+  // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
+  // Se o app estava fechado, o id fica guardado e abre assim que os casos carregarem.
+  useEffect(() => {
+    const abrirDoPush = (id) => {
+      if (id && casos.some(c => c.id === id)) {
+        window.__casoPushPendente = null;
+        goToDetalhe(id);
+      }
+    };
+    const ouvir = (e) => abrirDoPush(e.detail);
+    window.addEventListener('abrir-caso-push', ouvir);
+    if (window.__casoPushPendente) abrirDoPush(window.__casoPushPendente);
+    return () => window.removeEventListener('abrir-caso-push', ouvir);
+  }, [casos]);
 
   const goToDetalhe = (id) => {
     // Guarda de onde veio, para o "Voltar" retornar à mesma tela (Finanças, Equipe, Entregas, Dia...)
@@ -1521,6 +1590,8 @@ export default function App() {
 
   // Deslizar da borda esquerda: fecha o que estiver por cima ou volta uma tela
   useGestoVoltar(() => {
+    if (iaAberta) { setIaAberta(false); return; }
+    if (perguntasAbertas) { setPerguntasAbertas(false); return; }
     if (imprimindoCasoId) { setImprimindoCasoId(null); return; }
     if (seletorUsuarioAberto) { setSeletorUsuarioAberto(false); return; }
     if (view === 'detalhe') { setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista'); setConfirmandoExclusao(false); return; }
@@ -1531,11 +1602,14 @@ export default function App() {
 
   const selectedCaso = casos.find(c => c.id === selectedId);
   const casosFiltrados = casos
-    .filter(c => (busca === '' || c.paciente.toLowerCase().includes(busca.toLowerCase()) || c.dentista.toLowerCase().includes(busca.toLowerCase())))
+    .filter(c => (busca === '' || c.paciente.toLowerCase().includes(busca.toLowerCase()) || c.dentista.toLowerCase().includes(busca.toLowerCase()) || String(c.id).toLowerCase().includes(busca.trim().toLowerCase())))
     .filter(c => filtroStatus === 'Todos' || c.status === filtroStatus)
     .filter(c => filtroDentista === 'Todos' || c.dentista === filtroDentista)
     .filter(c => !filtroRapido || FILTROS_RAPIDOS[filtroRapido].teste(c))
-    .sort((a, b) => a.prazo.localeCompare(b.prazo));
+    // Para retirada: ordem de CHEGADA (o que acabou de entrar vem primeiro); demais listas por prazo
+    .sort((a, b) => filtroRapido === 'retirada'
+      ? String(b.id).localeCompare(String(a.id))
+      : a.prazo.localeCompare(b.prazo));
 
   const emAndamento = casos.filter(c => c.status !== 'Entregue');
   const producaoAtiva = emAndamento.filter(emProducao);
@@ -1695,6 +1769,8 @@ export default function App() {
         </div>
       )}
 
+      {iaAberta && <IASpecialLab aoFechar={() => setIaAberta(false)} />}
+      {perguntasAbertas && <PerguntasIALab aoFechar={() => setPerguntasAbertas(false)} nomeUsuario={typeof usuarioAtivo === 'string' ? usuarioAtivo : (usuarioAtivo && usuarioAtivo.nome) || ''} />}
       {seletorUsuarioAberto && (
         <SeletorUsuario funcionarios={funcionarios} usuarioAtivoId={usuarioAtivoId}
           onTrocar={trocarUsuario} onFechar={() => setSeletorUsuarioAberto(false)}
@@ -1709,6 +1785,8 @@ export default function App() {
           <>
           <PedidosClinica solicitacoes={solicitacoes} onAceitar={aceitarSolicitacao} onRecusar={recusarSolicitacao} />
           <DashboardView
+            onAbrirIA={() => setIaAberta(true)}
+            onAbrirPerguntas={() => setPerguntasAbertas(true)}
             producaoAtiva={producaoAtiva.length} prontos={prontos.length}
             naClinica={naClinicaLista.length} provasLevar={provasPendentes.length}
             atrasados={atrasados.length}
@@ -1827,6 +1905,8 @@ export default function App() {
             pagamentos={pagamentos}
             dentistas={dentistas}
             onSetPrazoPagamento={(nome, texto) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, prazoPagamento: texto || null } : d) })}
+            onSetDiasPagamento={(nome, dias) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, diasPagamento: dias ?? null, dataPagamento: null } : d) })}
+            onSetDataPagamento={(nome, data) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) } : d) })}
             onRegistrarPagamento={registrarPagamento}
             onRemoverPagamento={removerPagamento}
             onSelect={goToDetalhe}
@@ -1932,7 +2012,7 @@ function SeletorUsuario({ funcionarios, usuarioAtivoId, onTrocar, onFechar, onIr
                   <button key={f.id} onClick={() => tentar(f)}
                     className="flex items-center gap-3 p-3 rounded-2xl text-left"
                     style={{ border: f.id === usuarioAtivoId ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: f.id === usuarioAtivoId ? GOLD_SOFT : 'white' }}>
-                    <span className="w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>
+                    <span className="w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                       {f.nome.charAt(0).toUpperCase()}
                     </span>
                     <div className="flex-1 min-w-0">
@@ -1974,14 +2054,17 @@ function SeletorUsuario({ funcionarios, usuarioAtivoId, onTrocar, onFechar, onIr
 
 function StatCard({ label, value, color, icon: Icon, onClick, sub, destaque }) {
   return (
-    <button onClick={onClick} className="rounded-2xl p-4 text-left active:bg-stone-50" style={{ background: destaque && value > 0 ? GOLD_SOFT : 'white', border: destaque && value > 0 ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4' }}>
-      <div className="flex items-center justify-between mb-2">
-        <Icon size={18} color={color} />
-        <ArrowRight size={14} className="text-stone-300" />
+    <button onClick={onClick} className="rounded-2xl p-4 text-left active:bg-stone-50"
+      style={{ position: 'relative', overflow: 'hidden', background: destaque && value > 0 ? GOLD_SOFT : '#fff', border: destaque && value > 0 ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.35)' }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 17, background: `${color}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={17} color={color} strokeWidth={2.2} />
+        </span>
+        <ArrowRight size={14} style={{ color: '#D8CDB8' }} />
       </div>
-      <div className="text-2xl font-extrabold" style={{ color: INK }}>{value}</div>
-      <div className="text-xs text-stone-500 mt-0.5">{label}</div>
-      {sub && <div className="text-xs mt-0.5 font-semibold" style={{ color }}>{sub}</div>}
+      <div className="text-2xl font-extrabold" style={{ color: INK, letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: 3 }}>{label}</div>
+      {sub && <div className="text-xs mt-1 font-semibold" style={{ color }}>{sub}</div>}
     </button>
   );
 }
@@ -2016,10 +2099,64 @@ function BadgeClinica() {
   );
 }
 
-function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje }) {
+function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   return (
     <div>
-      <div className="text-sm text-stone-400 mb-4 capitalize">{hojeExtenso()}</div>
+      {/* Cabeçalho-herói da marca: preto + dourado + estrela em marca d'água */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 14, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', right: 12, bottom: 0, opacity: 0.08, pointerEvents: 'none' }}><EstrelaLogo size={62} color={GOLD} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <EstrelaLogo size={11} color={GOLD} />
+          <span style={{ color: '#fff', fontWeight: 300, fontSize: 11.5, letterSpacing: '0.32em' }}>SPECIAL</span>
+          <span style={{ color: GOLD, fontWeight: 700, fontSize: 9.5, letterSpacing: '0.3em' }}>LAB</span>
+        </div>
+        <div style={{ color: '#fff', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', marginTop: 14, lineHeight: 1.15 }}>
+          {saudacao}{usuarioAtivo ? `, ${String(typeof usuarioAtivo === 'string' ? usuarioAtivo : usuarioAtivo.nome || '').split(' ')[0]}` : ''}!
+        </div>
+        <div style={{ color: GOLD, fontSize: 12.5, fontWeight: 700, marginTop: 4, textTransform: 'capitalize' }}>
+          {hojeExtenso()}
+          <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'none', marginLeft: 8 }}>
+            v{typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
+          {[
+            ['Em produção', producaoAtiva, '#F5A54A'],
+            ['Para hoje', paraHoje, '#E0BC85'],
+            ['Atrasados', atrasados, atrasados > 0 ? '#F87171' : '#4ADE80'],
+          ].map(([rot, val, cor]) => (
+            <div key={rot} style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: cor, boxShadow: `0 0 6px ${cor}66`, flexShrink: 0 }} />
+                <span style={{ fontSize: 8.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rot}</span>
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 3 }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* IA Special no laboratório: transformação de sorriso + perguntas técnicas */}
+      <div className="flex gap-2.5 mb-4">
+        <button onClick={onAbrirIA}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', textAlign: 'left', border: '1px solid rgba(184,147,90,0.45)', borderRadius: 18, padding: '14px 14px', background: 'linear-gradient(135deg, #2B2620, #1C1B19)', cursor: 'pointer', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <div style={{ position: 'absolute', right: -10, top: -12, opacity: 0.12, pointerEvents: 'none' }}><EstrelaLogo size={44} color={GOLD} /></div>
+          <Sparkles size={18} color={GOLD} />
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', marginTop: 8 }}>IA Special</div>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2, lineHeight: 1.4 }}>Transformação de sorriso com IA</div>
+        </button>
+        <button onClick={onAbrirPerguntas}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', textAlign: 'left', border: '1px solid #E8D5B0', borderRadius: 18, padding: '14px 14px', background: '#fff', cursor: 'pointer', boxShadow: '0 14px 30px -20px rgba(122,98,52,0.45)' }}>
+          <div style={{ position: 'absolute', right: -10, top: -12, opacity: 0.07, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></div>
+          <MessageCircle size={18} color={GOLD} />
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginTop: 8 }}>Perguntas</div>
+          <div style={{ fontSize: 10.5, color: '#78716C', marginTop: 2, lineHeight: 1.4 }}>Próteses, implantes e técnicas — com foto</div>
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 mb-4 lg:mb-6">
         <StatCard label="Em produção" value={producaoAtiva} color={GOLD} icon={Hammer} onClick={() => onFiltro('producao')} />
         <StatCard label="Para hoje" value={paraHoje} color="#EA580C" icon={CalendarClock} sub={paraHoje > 0 ? `≈ ${formatHoras(horasHoje)} de serviço` : null} onClick={() => onFiltro('hoje')} />
@@ -2032,33 +2169,45 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
       <div className="flex flex-col lg:grid lg:grid-cols-3 lg:gap-5 lg:items-start">
       <div className="order-1 lg:order-2 lg:col-start-3 flex flex-col">
       {ehGestor && temFuncionarios && (
-        <button onClick={onAbrirEquipe} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left" style={{ background: INK }}>
-          <BarChart3 size={20} color={GOLD} />
+        <button onClick={onAbrirEquipe} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #2B2620, #1C1B19)', border: '1px solid rgba(184,147,90,0.45)', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.1, pointerEvents: 'none' }}><EstrelaLogo size={44} color={GOLD} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <BarChart3 size={18} color={GOLD} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold text-white">Relatório da equipe</div>
-            <div className="text-xs" style={{ color: GOLD_SOFT }}>Produção, comissões e tempos médios</div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Produção, comissões e tempos médios</div>
           </div>
           <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       {ehGestor && (
-        <button onClick={onAbrirFinancas} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left border" style={{ background: 'white', borderColor: VERDE }}>
-          <TrendingUp size={20} color={VERDE} />
+        <button onClick={onAbrirFinancas} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E8D5B0', boxShadow: '0 14px 30px -22px rgba(122,98,52,0.5)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.06, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: '#DCF3E4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TrendingUp size={18} color={VERDE} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold" style={{ color: INK }}>Finanças</div>
             <div className="text-xs text-stone-400">Entradas, valores dos serviços e comissões</div>
           </div>
-          <ArrowRight size={16} className="text-stone-400" />
+          <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       {usuarioAtivo && (
-        <button onClick={onAbrirMeu} className="w-full mb-6 p-4 rounded-2xl flex items-center gap-3 text-left border" style={{ background: 'white', borderColor: GOLD }}>
-          <DollarSign size={20} color={VERDE} />
+        <button onClick={onAbrirMeu} className="w-full mb-6 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E8D5B0', boxShadow: '0 14px 30px -22px rgba(122,98,52,0.5)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.06, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <DollarSign size={18} color={'#7A6234'} />
+          </span>
           <div className="flex-1">
             <div className="text-sm font-bold" style={{ color: INK }}>Meu desempenho</div>
             <div className="text-xs text-stone-400">Minhas comissões, finalizados e tempos</div>
           </div>
-          <ArrowRight size={16} className="text-stone-400" />
+          <ArrowRight size={16} color={GOLD} />
         </button>
       )}
       <button onClick={onNovo} className="w-full mb-3 py-3.5 rounded-2xl text-white font-bold hidden lg:flex items-center justify-center gap-2" style={{ background: INK }}>
@@ -2109,7 +2258,12 @@ function CasoCard({ caso, onClick, endereco }) {
   const totalEtapas = caso.etapas?.length || 0;
   const esperandoDentista = aguardandoDentista(caso);
   return (
-    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0" style={{ border: esperandoDentista ? '1.5px solid #DC2626' : (caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4')) }}>
+    <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0"
+      style={{
+        border: esperandoDentista ? '1.5px solid #DC2626' : (caso.naClinica ? `1.5px solid ${ROXO}` : (producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4')),
+        borderLeft: `4px solid ${esperandoDentista ? '#DC2626' : caso.naClinica ? ROXO : caso.status === 'Pronto' ? VERDE : producao ? GOLD : '#D6D3D1'}`,
+        boxShadow: '0 12px 28px -22px rgba(28,27,25,0.35)',
+      }}>
       <div className="flex items-center justify-between gap-3 w-full">
         <div className="min-w-0 flex-1">
           <div className="font-bold truncate" style={{ color: INK }}>{caso.paciente}</div>
@@ -2321,18 +2475,18 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         <OverlayImagem />
         <SeletorDia dia={dia} setDia={setDia} />
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => { setMesOffset(mesOffset - 1); setDataSelecionada(null); }} className="p-2 rounded-xl bg-white border border-stone-200"><ChevronLeft size={16} className="text-stone-500" /></button>
+          <button onClick={() => { setMesOffset(mesOffset - 1); setDataSelecionada(null); }} className="p-2 rounded-full bg-white" style={{ border: '1px solid #E8D5B0', color: '#7A6234', boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}><ChevronLeft size={16} /></button>
           <div className="text-center">
-            <div className="text-sm font-extrabold capitalize" style={{ color: INK }}>{MESES[mesIdx]} de {ano}</div>
-            <div className="text-xs text-stone-400">{doMes.length} {doMes.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(totalMesHoras)} restantes</div>
+            <div className="capitalize" style={{ color: INK, fontSize: 15, fontWeight: 800 }}>{MESES[mesIdx]} <span style={{ color: '#A8A29E', fontSize: 12, fontWeight: 700 }}>{ano}</span></div>
+            <div className="text-xs" style={{ color: '#A8A29E' }}>{doMes.length} {doMes.length === 1 ? 'trabalho' : 'trabalhos'} • ≈ {formatHoras(totalMesHoras)} restantes</div>
           </div>
-          <button onClick={() => { setMesOffset(mesOffset + 1); setDataSelecionada(null); }} className="p-2 rounded-xl bg-white border border-stone-200" style={{ transform: 'rotate(180deg)' }}><ChevronLeft size={16} className="text-stone-500" /></button>
+          <button onClick={() => { setMesOffset(mesOffset + 1); setDataSelecionada(null); }} className="p-2 rounded-full bg-white" style={{ border: '1px solid #E8D5B0', color: '#7A6234', transform: 'rotate(180deg)', boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}><ChevronLeft size={16} /></button>
         </div>
 
         {/* Cabeçalho da semana completa */}
         <div className="grid grid-cols-7 gap-1 mb-1.5">
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, idx) => (
-            <div key={d} className="text-center text-xs font-bold" style={{ color: diasAtivos.includes(idx) ? '#78716C' : '#D6D3D1' }}>{d}</div>
+            <div key={d} className="text-center font-bold" style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: diasAtivos.includes(idx) ? '#B8935A' : '#D6D3D1' }}>{d}</div>
           ))}
         </div>
 
@@ -2506,7 +2660,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                 className="w-8 h-8 rounded-lg font-extrabold disabled:opacity-30" style={{ background: 'white', border: '1px solid #E7E5E4', color: INK }}>−</button>
               <span className="text-sm font-extrabold text-center" style={{ color: INK, width: '22px' }}>{pessoasDoDia}</span>
               <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.min(20, pessoasDoDia + 1) })}
-                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: INK, color: GOLD }}>+</button>
+                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
             </div>
             <div className="text-xs mt-1" style={{ color: '#7A6234' }}>
               Capacidade {dia === 'hoje' ? 'de hoje' : 'de amanhã'}: {formatHoras(horasDoDia)} × {pessoasDoDia} {pessoasDoDia === 1 ? 'pessoa' : 'pessoas'} = <b>{formatHoras(horasDoDia * pessoasDoDia)}</b>
@@ -2623,7 +2777,8 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
         <div className="absolute left-3 top-0 bottom-0 flex items-center pointer-events-none">
           <Search size={16} className="text-stone-400" />
         </div>
-        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar paciente ou dentista..." className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" />
+        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-3 rounded-xl text-sm outline-none bg-white"
+          style={{ border: busca ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)', fontWeight: 600 }} />
       </div>
       {dentistas && dentistas.length > 0 && (
         <div className="relative mb-3">
@@ -2641,7 +2796,10 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
       {!filtroRapido && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {filtros.map(f => (
-            <button key={f} onClick={() => setFiltroStatus(f)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={filtroStatus === f ? { background: INK, color: 'white' } : { background: '#F0EFEC', color: '#78716C' }}>
+            <button key={f} onClick={() => setFiltroStatus(f)} className="px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0"
+              style={filtroStatus === f
+                ? { background: 'linear-gradient(135deg, #24221E, #1C1B19)', color: GOLD, border: '1px solid rgba(184,147,90,0.5)', boxShadow: '0 8px 18px -12px rgba(28,27,25,0.8)' }
+                : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
               {f}
             </button>
           ))}
@@ -2712,7 +2870,55 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
   const [prazoEditadoManual, setPrazoEditadoManual] = useState(false);
   const [prazo, setPrazo] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [dentes, setDentes] = useState([]); // odontograma: dentes do trabalho (FDI)
+  const [gengiva, setGengiva] = useState([]); // odontograma: onde a prótese leva gengiva
+  const [anexosNovos, setAnexosNovos] = useState([]); // arquivos escolhidos antes de salvar
+  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const fotoRefN = useRef(null);
+  const camRefN = useRef(null);
+  const arqRefN = useRef(null);
+  const vidRefN = useRef(null);
+
+  const categoriaArq = (file) => {
+    const t = String(file.type || '');
+    const n = String(file.name || '').toLowerCase();
+    if (t.startsWith('video')) return 'video';
+    if (n.endsWith('.stl')) return 'stl';
+    if (t.startsWith('image')) return 'foto';
+    return 'documento';
+  };
+  const comprimirFotoN = (file) => new Promise((res, rej) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1280;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) { const r = Math.min(MAX / width, MAX / height); width = Math.round(width * r); height = Math.round(height * r); }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); };
+    img.src = url;
+  });
+  const addFotoN = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    try {
+      const dataURL = await comprimirFotoN(file);
+      setAnexosNovos(l => [...l, { nome: file.name || `foto-${l.length + 1}.jpg`, dataURL, mime: 'image/jpeg', categoria: 'foto' }]);
+    } catch (e) { setErro('Não consegui ler essa imagem. Tente outra.'); }
+  };
+  const addArquivoN = (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    setAnexosNovos(l => [...l, { nome: file.name, file, mime: file.type || 'application/octet-stream', categoria: categoriaArq(file) }]);
+  };
 
   const tipoAtual = tiposTrabalho.find(t => t.nome === tipoNome);
   const etapasPreview = itens.length ? etapasDeItens(tiposTrabalho, itens.map(i => i.nome)) : [];
@@ -2743,7 +2949,7 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
 
   const inputClass = "w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
 
-  const handleSalvar = () => {
+  const handleSalvar = async () => {
     if (dentistas.length === 0) {
       setErro('Cadastre os dentistas em Ajustes antes de criar casos.');
       return;
@@ -2764,27 +2970,54 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
     });
     const umSo = itensFinal.length === 1;
     const obsFinal = (umSo && itensFinal[0].quantidade > 1 ? `Quantidade: ${itensFinal[0].quantidade} unidades. ` : '') + observacoes.trim();
-    onSalvar({
-      paciente: paciente.trim(), dentista,
-      tipoTrabalho: umSo ? itensFinal[0].nome : rotuloItens(itensFinal),
-      itens: itensFinal,
-      material,
-      quantidade: umSo ? itensFinal[0].quantidade : 1,
-      dataEntrada, prazo: proximoDiaUtil(prazo, diasTrabalho), observacoes: obsFinal,
-      valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
-    });
+    setSalvando(true);
+    try {
+      // Sobe os anexos escolhidos ANTES de criar o caso (mesmo fluxo do Clinic)
+      const anexos = [];
+      for (const f of anexosNovos) {
+        const anexoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        const origem = f.file || dataURLparaBlob(f.dataURL, f.mime || 'image/jpeg');
+        const { url, caminho } = await window.arquivos.subir(origem, f.nome);
+        anexos.push({ id: anexoId, nome: f.nome, mime: f.mime || 'image/jpeg', categoria: f.categoria || 'foto', tamanho: f.file ? f.file.size : Math.round((f.dataURL || '').length * 0.75), url, caminho });
+      }
+      onSalvar({
+        paciente: paciente.trim(), dentista,
+        tipoTrabalho: umSo ? itensFinal[0].nome : rotuloItens(itensFinal),
+        itens: itensFinal,
+        material,
+        quantidade: umSo ? itensFinal[0].quantidade : 1,
+        dataEntrada, prazo: proximoDiaUtil(prazo, diasTrabalho), observacoes: obsFinal,
+        valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
+        anexos, dentes, gengiva,
+      });
+    } catch (e) {
+      console.error('salvar caso', e);
+      setErro('Não consegui enviar os anexos. Confira a internet e tente de novo.');
+    }
+    setSalvando(false);
   };
 
-  return (
-    <div className="flex flex-col gap-4 lg:max-w-[640px]">
-      <Campo label="Paciente *">
-        <input className={inputClass} value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente" />
-      </Campo>
+  // Visual igual ao "Novo Trabalho" do Special Clinic: cartões brancos com
+  // passos numerados em dourado e botão principal dourado.
+  const FONTE_LAB = "'Manrope', -apple-system, sans-serif";
+  const cartaoSec = { position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: 15, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
+  const inputEstilo = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #EEECE7', fontSize: 14, fontFamily: FONTE_LAB, outline: 'none', background: '#FAF9F7', boxSizing: 'border-box' };
+  const Passo = ({ n, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+      <span style={{ width: 21, height: 21, borderRadius: 11, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 10px -4px rgba(184,147,90,0.8)' }}>{n}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</span>
+    </div>
+  );
 
-      <Campo label="Dentista / Clínica *">
+  return (
+    <div className="flex flex-col gap-2.5 lg:max-w-[640px]" style={{ fontFamily: FONTE_LAB }}>
+      {/* Passo 1 — paciente e dentista */}
+      <div style={cartaoSec}>
+        <Passo n="1">Paciente e dentista</Passo>
+        <input style={{ ...inputEstilo, marginBottom: 9 }} value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente *" />
         {dentistas.length > 0 ? (
           <div>
-            <select className={inputClass} value={dentista} onChange={e => setDentista(e.target.value)}>
+            <select style={inputEstilo} value={dentista} onChange={e => setDentista(e.target.value)}>
               {dentistas.map(d => <option key={d.nome} value={d.nome}>{d.nome}</option>)}
             </select>
             {(() => {
@@ -2803,98 +3036,161 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
             <button onClick={onIrParaAjustes} className="mt-2 px-3 py-2 rounded-lg text-xs font-bold text-white" style={{ background: INK }}>Cadastrar em Ajustes →</button>
           </div>
         )}
-      </Campo>
+      </div>
 
-      <Campo label="Itens do trabalho *">
+      {/* Passo 2 — itens do trabalho */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><EstrelaLogo size={52} color={INK} /></div>
+        <Passo n="2">Itens do trabalho</Passo>
         <div className="flex flex-col gap-2">
-          <select className={inputClass} value={tipoNome} onChange={e => setTipoNome(e.target.value)}>
+          <select style={inputEstilo} value={tipoNome} onChange={e => setTipoNome(e.target.value)}>
             {tiposTrabalho.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias} dias • {formatHoras(tempoDoTipo(tiposTrabalho, t.nome))}{(t.valor || 0) > 0 ? ` • ${formatReais(t.valor)}` : ''})</option>)}
           </select>
-          <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 flex items-center justify-between gap-2">
+          <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '10px 13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div className="flex items-center gap-3">
-              <button onClick={() => setQuantidade(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg border border-stone-200 font-extrabold text-lg" style={{ color: INK }}>−</button>
+              <button onClick={() => setQuantidade(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg font-extrabold text-lg" style={{ color: INK, border: '1px solid #E7E5E4', background: '#fff' }}>−</button>
               <div className="text-center" style={{ minWidth: '52px' }}>
                 <div className="font-extrabold text-lg" style={{ color: INK }}>{quantidade}</div>
                 <div className="text-xs text-stone-400 -mt-1">{quantidade === 1 ? 'unidade' : 'unidades'}</div>
               </div>
-              <button onClick={() => setQuantidade(q => Math.min(32, q + 1))} className="w-9 h-9 rounded-lg border border-stone-200 font-extrabold text-lg" style={{ color: INK }}>＋</button>
+              <button onClick={() => setQuantidade(q => Math.min(32, q + 1))} className="w-9 h-9 rounded-lg font-extrabold text-lg" style={{ color: INK, border: '1px solid #E7E5E4', background: '#fff' }}>＋</button>
             </div>
-            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm text-white flex-shrink-0" style={{ background: INK }}>＋ Adicionar item</button>
+            <button onClick={adicionarItem} className="px-4 py-2.5 rounded-xl font-bold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>＋ Adicionar item</button>
           </div>
           {itens.length > 0 && (
-            <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
               {itens.map((it, idx) => {
                 const t = tiposTrabalho.find(x => x.nome === it.nome);
                 const unit = t?.valor || 0;
                 return (
-                  <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #F0EFEC' } : undefined}>
+                  <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #EEECE7' } : undefined}>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                      <div className="text-sm font-bold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
                       <div className="text-xs text-stone-400">{t ? `${t.prazoDias} dias` : ''}{unit > 0 ? ` • ${formatReais(unit)} / un.` : ' • sem valor no tipo (defina em Ajustes)'}</div>
                     </div>
-                    {unit > 0 && <div className="text-sm font-bold flex-shrink-0" style={{ color: VERDE }}>{formatReais(unit * it.quantidade)}</div>}
-                    <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 font-bold flex-shrink-0">×</button>
+                    {unit > 0 && <div className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(unit * it.quantidade)}</div>}
+                    <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg font-bold flex-shrink-0" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E' }}>×</button>
                   </div>
                 );
               })}
-              {valorTotal > 0 && (
-                <div className="flex items-center justify-between px-3 py-2.5" style={{ background: '#FAF9F7', borderTop: '1px solid #F0EFEC' }}>
-                  <span className="text-xs font-bold text-stone-500">TOTAL DO SERVIÇO</span>
-                  <span className="font-extrabold text-base" style={{ color: VERDE }}>{formatReais(valorTotal)}</span>
-                </div>
-              )}
+            </div>
+          )}
+          {valorTotal > 0 && (
+            <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1, pointerEvents: 'none' }}><EstrelaLogo size={34} color={GOLD} /></span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL DO SERVIÇO</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReais(valorTotal)}</span>
             </div>
           )}
           {itens.length === 0 && <div className="text-xs text-stone-400">Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>}
-        </div>
-      </Campo>
-
-      {etapasPreview.length > 1 && (
-        <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-          <div className="font-bold mb-1 flex items-center gap-1"><ListChecks size={13} /> Etapas deste trabalho:</div>
-          {etapasPreview.map((e, i) => (
-            <div key={i} className="flex items-center justify-between py-0.5">
-              <span>{i + 1}. {itens.length > 1 && e.item ? `${e.item} — ` : ''}{e.nome}{e.prova ? ' 🩺' : ''}</span>
-              <span className="font-semibold">{formatHoras(e.horas)}</span>
+          {etapasPreview.length > 1 && (
+            <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+              <div className="font-bold mb-1 flex items-center gap-1"><ListChecks size={13} /> Etapas deste trabalho:</div>
+              {etapasPreview.map((e, i) => (
+                <div key={i} className="flex items-center justify-between py-0.5">
+                  <span>{i + 1}. {itens.length > 1 && e.item ? `${e.item} — ` : ''}{e.nome}{e.prova ? ' 🩺' : ''}</span>
+                  <span className="font-semibold">{formatHoras(e.horas)}</span>
+                </div>
+              ))}
+              <div className="mt-1 opacity-75">🩺 = etapa com prova na clínica</div>
             </div>
-          ))}
-          <div className="mt-1 opacity-75">🩺 = etapa com prova na clínica</div>
+          )}
+          <select style={inputEstilo} value={material} onChange={e => setMaterial(e.target.value)}>
+            {MATERIAIS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
-      )}
-
-      <Campo label="Material">
-        <select className={inputClass} value={material} onChange={e => setMaterial(e.target.value)}>
-          {MATERIAIS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-      </Campo>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Campo label="Data de entrada *">
-          <input type="date" className={inputClass} value={dataEntrada} onChange={e => setDataEntrada(e.target.value)} />
-        </Campo>
-        <Campo label="Prazo de entrega *">
-          <input type="date" className={inputClass} value={prazo} onChange={e => { setPrazo(e.target.value); setPrazoEditadoManual(true); }} />
-        </Campo>
       </div>
 
-      {itens.length > 0 && !prazoEditadoManual && prazo && (
-        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-          <Timer size={14} />
-          <span>Prazo calculado: {prazoDiasCalc} dias (item mais demorado) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
+      {/* Passo 3 — odontograma: quais dentes e onde tem gengiva */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', left: -14, bottom: -16, opacity: 0.05, pointerEvents: 'none' }}><EstrelaLogo size={52} color={INK} /></div>
+        <Passo n="3">Dentes do trabalho <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <OdontogramaEdit dentes={dentes} gengiva={gengiva} aoMudar={({ dentes: d, gengiva: g }) => { setDentes(d); setGengiva(g); }} />
+      </div>
+
+      {/* Passo 4 — anexos */}
+      <div style={cartaoSec}>
+        <Passo n="4">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {[
+            [Camera, 'Foto', camRefN],
+            [Box, 'Vídeo', vidRefN],
+            [Paperclip, 'Galeria', fotoRefN],
+            [FileText, 'Arquivo', arqRefN],
+          ].map(([Icone, rotulo, ref]) => (
+            <button key={rotulo} onClick={() => ref.current && ref.current.click()}
+              style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #EEECE7', background: '#FAF9F7', cursor: 'pointer', fontFamily: FONTE_LAB, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 17, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icone size={17} color="#7A6234" strokeWidth={2.2} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: INK }}>{rotulo}</span>
+            </button>
+          ))}
         </div>
+        {anexosNovos.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {anexosNovos.map((f, i) => (
+              <div key={i} style={{ position: 'relative' }}>
+                {String(f.mime || '').startsWith('image') && f.dataURL ? (
+                  <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
+                ) : (
+                  <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
+                    <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
+                    <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
+                  </div>
+                )}
+                <button onClick={() => setAnexosNovos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input ref={camRefN} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFotoN} />
+        <input ref={vidRefN} type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={addArquivoN} />
+        <input ref={fotoRefN} type="file" accept="image/*" style={{ display: 'none' }} onChange={addFotoN} />
+        <input ref={arqRefN} type="file" style={{ display: 'none' }} onChange={addArquivoN} />
+      </div>
+
+      {/* Passo 5 — datas */}
+      <div style={cartaoSec}>
+        <Passo n="5">Datas</Passo>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Entrada *</div>
+            <input type="date" style={inputEstilo} value={dataEntrada} onChange={e => setDataEntrada(e.target.value)} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#8A8580', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Prazo de entrega *</div>
+            <input type="date" style={inputEstilo} value={prazo} onChange={e => { setPrazo(e.target.value); setPrazoEditadoManual(true); }} />
+          </div>
+        </div>
+        {itens.length > 0 && !prazoEditadoManual && prazo && (
+          <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl mt-2" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+            <Timer size={14} />
+            <span>Prazo calculado: {prazoDiasCalc} dias (item mais demorado) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
+          </div>
+        )}
+      </div>
+
+      {/* Passo 6 — observações */}
+      <div style={cartaoSec}>
+        <Passo n="6">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <textarea style={{ ...inputEstilo, minHeight: 80, resize: 'vertical' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Cor, dente(s), instruções..." />
+      </div>
+
+      {erro && (
+        <div style={{ background: '#FCE4E4', border: '1px solid #F5B5B5', borderRadius: 12, padding: '11px 13px', color: '#B42318', fontSize: 12.5, fontWeight: 700 }}>{erro}</div>
       )}
 
-      <Campo label="Observações">
-        <textarea className={inputClass} style={{ minHeight: '80px' }} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Detalhes adicionais (opcional)" />
-      </Campo>
-
-      <div className="text-xs text-stone-400">O caso já entra <b>em produção</b> — o dentista é avisado quando a equipe tocar em "Iniciar" na primeira etapa. Fotos e arquivos podem ser anexados depois de salvar.</div>
-
-      {erro && <div className="text-xs text-red-600 font-medium">{erro}</div>}
-
-      <div className="flex gap-3 mt-1">
-        <button onClick={onCancelar} className="flex-1 py-3 rounded-xl font-semibold text-sm bg-stone-100 text-stone-600">Cancelar</button>
-        <button onClick={handleSalvar} className="flex-1 py-3 rounded-xl font-semibold text-sm text-white" style={{ background: INK }}>Salvar Caso</button>
+      <button onClick={handleSalvar} disabled={salvando}
+        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: salvando ? '#D6D3D1' : 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE_LAB, boxShadow: salvando ? 'none' : '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+        {salvando ? 'Enviando anexos...' : <>Salvar trabalho <span style={{ fontSize: 17 }}>→</span></>}
+      </button>
+      <button onClick={onCancelar}
+        style={{ width: '100%', padding: 13, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE_LAB }}>
+        Cancelar
+      </button>
+      <div className="text-xs text-stone-400 text-center" style={{ lineHeight: 1.5 }}>
+        O caso já entra <b>em produção</b> — o dentista é avisado quando a equipe tocar em "Iniciar" na primeira etapa. Fotos e arquivos podem ser anexados depois de salvar.
       </div>
     </div>
   );
@@ -3061,7 +3357,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
   const [salvo, setSalvo] = useState(false);
   useEffect(() => { setTexto(chavePix || ''); }, [chavePix]);
   return (
-    <div className="rounded-2xl p-4 bg-white border border-stone-200">
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
       <div className="flex items-center gap-2 mb-1">
         <DollarSign size={16} color={GOLD} />
         <h2 className="text-sm font-bold" style={{ color: INK }}>Chave Pix do laboratório</h2>
@@ -3170,10 +3466,10 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
     && !(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
     && !window.navigator.standalone;
   const cartaoInstalar = mostrarInstalar ? (
-    <div className="rounded-2xl p-4 bg-white border border-stone-200">
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
       <div className="flex items-center gap-2 mb-1">
         <Download size={16} color={GOLD} />
-        <h2 className="text-sm font-bold" style={{ color: INK }}>Instalar o aplicativo</h2>
+        <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Instalar o aplicativo</h2>
       </div>
       <p className="text-xs text-stone-400 mb-3">Instale o Lab Special neste aparelho: no Android dá para baixar o app, e no iPhone ele vai para a Tela de Início.</p>
       <a href="/instalar.html" className="block text-center py-3 rounded-xl font-bold text-sm" style={{ background: INK, color: GOLD, textDecoration: 'none' }}>
@@ -3192,7 +3488,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="text-stone-500 text-sm font-medium">Ajustes disponíveis apenas para gestores.</div>
           <div className="text-stone-400 text-xs mt-1">Dentistas, tipos de trabalho, prazos, comissões e equipe são configurados pelo gestor do laboratório.</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <div className="text-sm font-bold mb-1" style={{ color: INK }}>O que você pode fazer:</div>
           <div className="text-xs text-stone-500 leading-relaxed">Ver e trabalhar nos casos, usar a tela "Dia", cronometrar suas etapas com Iniciar/Concluir, enviar trabalhos para prova e finalizar. Suas comissões e tempos ficam em <b>Meu desempenho</b>, no Início.</div>
         </div>
@@ -3205,11 +3501,11 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       {cartaoInstalar}
       <ChavePixCard chavePix={chavePix} onSalvar={onSetChavePix} />
       {/* Autorregulação de tempos */}
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2">
           <TrendingUp size={16} color={autoAjuste ? VERDE : '#A8A29E'} />
           <div className="flex-1">
-            <h2 className="text-sm font-bold" style={{ color: INK }}>Autorregulação de tempos</h2>
+            <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Autorregulação de tempos</h2>
             <p className="text-xs text-stone-400">Com 3+ tempos cronometrados numa etapa, a estimativa passa a seguir a média real automaticamente.</p>
           </div>
           <button onClick={() => onSetAutoAjuste(!autoAjuste)} className="flex-shrink-0 rounded-full p-0.5" style={{ width: '46px', height: '26px', background: autoAjuste ? VERDE : '#D6D3D1', transition: 'background 0.2s' }}>
@@ -3224,10 +3520,10 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       </div>
 
       {/* Equipe */}
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Users size={16} color={GOLD} />
-          <h2 className="text-sm font-bold flex-1" style={{ color: INK }}>Equipe</h2>
+          <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Equipe</h2>
           {ehGestor && funcionarios.length > 0 && (
             <button onClick={onAbrirEquipe} className="flex items-center gap-1 text-xs font-bold" style={{ color: GOLD }}>
               <BarChart3 size={13} /> Relatório
@@ -3254,7 +3550,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="flex flex-col mt-3">
             {funcionarios.map(f => (
               <div key={f.id} className="flex items-center gap-3 py-2.5 border-t border-stone-100">
-                <span className="w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-xs flex-shrink-0" style={{ background: INK, color: GOLD }}>
+                <span className="w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-xs flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                   {f.nome.charAt(0).toUpperCase()}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -3276,10 +3572,10 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         )}
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Hourglass size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Dias e horários de trabalho</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dias e horários de trabalho</h2>
         </div>
         <p className="text-xs text-stone-400 mb-3">Marque os dias em que o laboratório funciona e defina as horas de bancada de cada um (ex.: sábado só até meio-dia = 4h). Prazos que caírem em dia de folga pulam para o próximo dia de trabalho, e a carga de cada dia usa a capacidade dele.</p>
 
@@ -3331,7 +3627,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="flex items-center gap-3">
             <Users size={16} color={GOLD} className="flex-shrink-0" />
             <div className="flex-1">
-              <div className="text-sm font-bold" style={{ color: INK }}>Pessoas na produção</div>
+              <div className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Pessoas na produção</div>
               <div className="text-xs text-stone-400">Multiplica as horas de cada dia (ex.: 8h × {pessoas >= 1 ? pessoas : 1} {pessoas === 1 ? 'pessoa' : 'pessoas'} = {(pessoas >= 1 ? pessoas : 1) * 8}h disponíveis)</div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -3339,16 +3635,16 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                 className="w-9 h-9 rounded-xl font-extrabold text-lg disabled:opacity-30" style={{ background: '#F0EFEC', color: INK }}>−</button>
               <span className="text-lg font-extrabold text-center" style={{ color: INK, width: '28px' }}>{pessoas >= 1 ? pessoas : 1}</span>
               <button onClick={() => onSetPessoas(Math.min(20, (pessoas || 1) + 1))}
-                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: INK, color: GOLD }}>+</button>
+                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-3">
           <UserPlus size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Dentistas / Clínicas</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
         </div>
 
         <div className="flex flex-col gap-2 mb-1">
@@ -3391,10 +3687,10 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         )}
       </div>
 
-      <div className="rounded-2xl p-4 bg-white border border-stone-200">
+      <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
         <div className="flex items-center gap-2 mb-1">
           <Timer size={16} color={GOLD} />
-          <h2 className="text-sm font-bold" style={{ color: INK }}>Tipos de trabalho, etapas e comissões</h2>
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Tipos de trabalho, etapas e comissões</h2>
         </div>
         <p className="text-xs text-stone-400 mb-3">Toque no tipo para editar etapas, horas, provas e a comissão. As médias reais cronometradas aparecem embaixo de cada etapa.</p>
 
@@ -3473,7 +3769,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </button>
 
         <div className="flex items-center gap-3 mb-5">
-          <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: INK, color: GOLD }}>
+          <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
             {f.nome.charAt(0).toUpperCase()}
           </span>
           <div>
@@ -3482,7 +3778,8 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
           </div>
         </div>
 
-        <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+        <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
           <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Comissões — {mesNome}</div>
           <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
           <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>
@@ -3491,12 +3788,12 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <div className="rounded-2xl p-4 bg-white border border-stone-200">
+          <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
             <ListChecks size={17} color={GOLD} className="mb-1.5" />
             <div className="text-xl font-extrabold" style={{ color: INK }}>{temposDoMes.length}</div>
             <div className="text-xs text-stone-500">etapas cronometradas ({mesNome})</div>
           </div>
-          <div className="rounded-2xl p-4 bg-white border border-stone-200">
+          <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
             <Hourglass size={17} color={GOLD} className="mb-1.5" />
             <div className="text-xl font-extrabold" style={{ color: INK }}>{minutosMes > 0 ? formatMinutos(minutosMes) : '0min'}</div>
             <div className="text-xs text-stone-500">tempo de bancada ({mesNome})</div>
@@ -3583,21 +3880,22 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         )}
       </div>
 
-      <div className="rounded-2xl p-4 mb-5" style={{ background: INK }}>
+      <div className="rounded-2xl mb-5" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Comissões de {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
       </div>
 
-      <h2 className="text-sm font-bold mb-1" style={{ color: INK }}>Produção por funcionário ({mesNome})</h2>
+      <h2 className="font-bold mb-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Produção por funcionário ({mesNome})</h2>
       <p className="text-xs text-stone-400 mb-3">Toque num funcionário para abrir a ficha dele: etapas executadas, tempos e comissões por serviço.</p>
       {porFuncionario.length === 0 ? (
         <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-sm">Nenhum funcionário cadastrado.</div>
       ) : (
         <div className="flex flex-col gap-2 mb-6">
           {porFuncionario.map(f => (
-            <button key={f.id} onClick={() => setFuncionarioSel(f.id)} className="w-full text-left rounded-2xl p-4 bg-white border border-stone-200 flex items-center gap-3 active:bg-stone-50">
-              <span className="w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: INK, color: GOLD }}>
+            <button key={f.id} onClick={() => setFuncionarioSel(f.id)} className="w-full text-left rounded-2xl p-4 bg-white flex items-center gap-3 active:bg-stone-50" style={{ border: '1px solid #E8D5B0', boxShadow: '0 12px 28px -22px rgba(122,98,52,0.45)' }}>
+              <span className="w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
                 {f.nome.charAt(0).toUpperCase()}
               </span>
               <div className="flex-1 min-w-0">
@@ -3615,7 +3913,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         </div>
       )}
 
-      <h2 className="text-sm font-bold mb-3" style={{ color: INK }}>Tempo estimado × tempo real</h2>
+      <h2 className="font-bold mb-3" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Tempo estimado × tempo real</h2>
       <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-6">
         {Object.keys(medias).length === 0 ? (
           <div className="text-xs text-stone-400">Ainda não há tempos cronometrados. Peça à equipe para usar os botões <b>Iniciar</b> e <b>Concluir</b> nas etapas — cada registro alimenta este relatório.</div>
@@ -3723,7 +4021,7 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
     <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-5">
       <div className="flex items-center gap-2 mb-1">
         <ListChecks size={16} color={GOLD} />
-        <h2 className="text-sm font-bold flex-1" style={{ color: INK }}>Etapas de produção</h2>
+        <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Etapas de produção</h2>
         <span className="text-xs font-semibold" style={{ color: pct === 100 ? VERDE : GOLD }}>{concluidas}/{total}</span>
       </div>
       <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2">
@@ -4249,6 +4547,113 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   );
 }
 
+// ─── Odontograma (leitura): mostra os dentes marcados pelo dentista no pedido da clínica ───
+// Dourado = dente do trabalho; anel rosa = onde a prótese leva gengiva. Numeração FDI.
+const ODONTO_SUP = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+const ODONTO_INF = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+const ROSA_GENGIVA = '#D96B8F';
+
+function dentesDoArco(lista, cx, cy, rx, ry, baixo) {
+  return lista.map((num, i) => {
+    const t = ((168 - i * (156 / (lista.length - 1))) * Math.PI) / 180;
+    return { num, x: cx + rx * Math.cos(t), y: baixo ? cy + ry * Math.sin(t) : cy - ry * Math.sin(t) };
+  });
+}
+
+function OdontogramaLeitura({ dentes = [], gengiva = [] }) {
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  return (
+    <div>
+      <svg viewBox="0 0 340 402" style={{ width: '100%', maxWidth: 360, display: 'block', margin: '0 auto' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB">ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB">ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? '#1C1B19' : '#8A8580'}>{p.num}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="text-xs mt-1.5" style={{ color: '#57534E', lineHeight: 1.6 }}>
+        {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+        {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Odontograma interativo (igual ao do Special Clinic): toca no dente (dourado)
+// e no modo Gengiva marca o anel rosa onde a prótese leva gengiva.
+function OdontogramaEdit({ dentes = [], gengiva = [], aoMudar }) {
+  const [modo, setModo] = useState('dente');
+  const FONTE_OD = "'Manrope', -apple-system, sans-serif";
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  const tocar = (num) => {
+    if (modo === 'dente') {
+      const tem = dentes.includes(num);
+      aoMudar({ dentes: tem ? dentes.filter(d => d !== num) : [...dentes, num].sort((a, b) => a - b), gengiva });
+    } else {
+      const tem = gengiva.includes(num);
+      aoMudar({ dentes, gengiva: tem ? gengiva.filter(d => d !== num) : [...gengiva, num].sort((a, b) => a - b) });
+    }
+  };
+  const chip = (ativo, cor, corFundo) => ({ flex: 1, padding: '9px 6px', borderRadius: 11, fontFamily: FONTE_OD, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: ativo ? `1.5px solid ${cor}` : '1px solid #E7E5E4', background: ativo ? corFundo : '#FAF9F7', color: ativo ? cor : '#78716C' });
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+        <button onClick={() => setModo('dente')} style={chip(modo === 'dente', '#7A6234', 'rgba(184,147,90,0.14)')}>
+          <span style={{ width: 12, height: 12, borderRadius: 6, background: GOLD, flexShrink: 0 }} /> Dentes
+        </button>
+        <button onClick={() => setModo('gengiva')} style={chip(modo === 'gengiva', ROSA_GENGIVA, 'rgba(217,107,143,0.1)')}>
+          <span style={{ width: 12, height: 12, borderRadius: 6, border: `2.5px solid ${ROSA_GENGIVA}`, boxSizing: 'border-box', flexShrink: 0 }} /> Gengiva
+        </button>
+      </div>
+      <svg viewBox="0 0 340 402" style={{ width: '100%', display: 'block', touchAction: 'manipulation' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num} onClick={() => tocar(p.num)} style={{ cursor: 'pointer' }}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? '#1C1B19' : '#8A8580'} style={{ userSelect: 'none' }}>{p.num}</text>
+              <circle cx={p.x} cy={p.y} r="18" fill="rgba(0,0,0,0)" />
+            </g>
+          );
+        })}
+      </svg>
+      {(dentes.length > 0 || gengiva.length > 0) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 6 }}>
+          <div style={{ flex: 1, fontSize: 11.5, color: '#57534E', lineHeight: 1.6 }}>
+            {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+            {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+          </div>
+          <button onClick={() => aoMudar({ dentes: [], gengiva: [] })}
+            style={{ border: '1px solid #E7E5E4', background: '#fff', borderRadius: 9, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE_OD, flexShrink: 0 }}>Limpar</button>
+        </div>
+      )}
+      {dentes.length === 0 && gengiva.length === 0 && (
+        <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, marginTop: 2 }}>Toque nos dentes que entram no trabalho. No modo <b style={{ color: ROSA_GENGIVA }}>Gengiva</b>, marque onde a prótese leva gengiva.</div>
+      )}
+    </div>
+  );
+}
+
 function ObservacoesEditaveis({ caso, onSalvar }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(caso.observacoes || '');
@@ -4365,6 +4770,22 @@ function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
   );
 }
 
+// ID do trabalho, copiável num toque — pra identificar e buscar rapidinho
+function IdCopiavel({ id }) {
+  const [ok, setOk] = useState(false);
+  const copiar = async (e) => {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(String(id)); setOk(true); setTimeout(() => setOk(false), 1600); } catch (err) { }
+  };
+  return (
+    <button onClick={copiar} title="Copiar ID"
+      className="inline-flex items-center gap-1 mt-1 px-2 py-1 rounded-lg text-[10px] font-bold"
+      style={{ background: ok ? '#DCF3E4' : '#F5F4F0', color: ok ? '#166B3A' : '#78716C', border: `1px solid ${ok ? '#A7E3BC' : '#E7E5E4'}`, fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.04em' }}>
+      {ok ? 'ID copiado ✓' : `ID ${String(id).toUpperCase()} ⧉`}
+    </button>
+  );
+}
+
 function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
@@ -4439,6 +4860,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
           <div className="min-w-0">
             <h2 className="text-lg font-extrabold truncate" style={{ color: INK }}>{caso.paciente}</h2>
             <div className="text-sm text-stone-500 truncate">{caso.dentista}</div>
+            <IdCopiavel id={caso.id} />
             {endereco && !caso.naClinica && (
               <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs mt-0.5" style={{ color: '#1A73E8' }}>
                 <MapPin size={11} className="flex-shrink-0" /><span className="truncate">{endereco}</span>
@@ -4498,6 +4920,13 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
             </div>
           )}
         </div>
+
+        {(((caso.dentes || []).length > 0) || ((caso.gengiva || []).length > 0)) && (
+          <div className="mt-4 pt-4 border-t border-stone-100">
+            <div className="text-xs text-stone-400 mb-2">🦷 Dentes do trabalho (marcados pelo dentista)</div>
+            <OdontogramaLeitura dentes={caso.dentes || []} gengiva={caso.gengiva || []} />
+          </div>
+        )}
 
         <ObservacoesEditaveis caso={caso} onSalvar={onSalvarObs} />
       </div>
@@ -4583,7 +5012,7 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
       </button>
 
       <div className="flex items-center gap-3 mb-5">
-        <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: INK, color: GOLD }}>
+        <span className="w-12 h-12 rounded-full flex items-center justify-center font-extrabold text-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>
           {usuarioAtivo.nome.charAt(0).toUpperCase()}
         </span>
         <div>
@@ -4592,7 +5021,8 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+      <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Minhas comissões — {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>
@@ -4601,19 +5031,19 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <ListChecks size={17} color={GOLD} className="mb-1.5" />
           <div className="text-xl font-extrabold" style={{ color: INK }}>{meusTemposMes.length}</div>
           <div className="text-xs text-stone-500">etapas cronometradas ({mesNome})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Hourglass size={17} color={GOLD} className="mb-1.5" />
           <div className="text-xl font-extrabold" style={{ color: INK }}>{formatMinutos(minutosMes) === '—' ? '0min' : formatMinutos(minutosMes)}</div>
           <div className="text-xs text-stone-500">tempo de bancada ({mesNome})</div>
         </div>
       </div>
 
-      <h2 className="text-sm font-bold mb-3" style={{ color: INK }}>Meus tempos médios</h2>
+      <h2 className="font-bold mb-3" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Meus tempos médios</h2>
       <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-6">
         {Object.keys(minhasMedias).length === 0 ? (
           <div className="text-xs text-stone-400">Ainda sem tempos cronometrados. Use os botões <b>Iniciar</b> e <b>Concluir</b> nas etapas para registrar.</div>
@@ -4792,7 +5222,7 @@ function EntregasView({ casos, provasLevar, provasNaClinica, getEndereco, getTel
 
 // ─── Finanças (só gestor): entradas, valores e comissões ───
 // Combinado de pagamento do dentista (aparece para ele no Special Clinic)
-function PrazoPagamentoEdit({ atual, onSalvar }) {
+function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtual, onSalvarData }) {
   const [texto, setTexto] = useState(atual || '');
   const [salvo, setSalvo] = useState(false);
   return (
@@ -4805,11 +5235,37 @@ function PrazoPagamentoEdit({ atual, onSalvar }) {
           {salvo ? '✓' : 'Salvar'}
         </button>
       </div>
+      {/* Vencimento automático — DUAS formas de combinar (uma exclui a outra):
+          • PRAZO: N dias após cada entrega  • DATA: um dia marcado pro pagamento
+          Nos dois casos, passou sem baixa → fica VERMELHO no app do dentista
+          e o robô da nuvem manda notificação de atraso todo dia de manhã. */}
+      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Vencimento: prazo em dias após a entrega <span className="font-normal text-stone-400">(fica vermelho no app dele se passar)</span>:</div>
+      <div className="flex gap-1.5 flex-wrap">
+        {[[null, 'Sem prazo'], [2, '2 dias'], [5, '5 dias'], [7, '7 dias'], [15, '15 dias'], [30, '30 dias']].map(([n, rot]) => (
+          <button key={rot} onClick={() => onSalvarDias(n)}
+            className="px-3 py-2 rounded-xl text-xs font-bold"
+            style={!dataAtual && (diasAtual ?? null) === n
+              ? { background: INK, color: GOLD, border: `1px solid ${INK}` }
+              : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
+            {rot}
+          </button>
+        ))}
+      </div>
+      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Ou uma data marcada para o pagamento:</div>
+      <div className="flex items-center gap-2">
+        <input type="date" value={dataAtual || ''} onChange={e => onSalvarData(e.target.value || null)}
+          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
+          style={dataAtual ? { background: INK, color: GOLD, border: `1px solid ${INK}`, colorScheme: 'dark' } : { background: '#fff', color: '#57534E', border: '1px solid #E7E5E4' }} />
+        {dataAtual && (
+          <button onClick={() => onSalvarData(null)} className="px-3 py-2.5 rounded-xl text-xs font-bold" style={{ background: '#fff', color: '#B42318', border: '1px solid #F5B5B5' }}>Limpar</button>
+        )}
+      </div>
+      {dataAtual && <div className="text-xs mt-1.5" style={{ color: '#7A6234' }}>Combinado: pagamento até <b>{dataAtual.split('-').reverse().join('/')}</b> — passou sem baixa, fica vermelho e o dentista é notificado.</div>}
     </div>
   );
 }
 
-function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSetPrazoPagamento, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
+function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSetPrazoPagamento, onSetDiasPagamento, onSetDataPagamento, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dentistaCobranca, setDentistaCobranca] = useState(null);
   const [valorPagamento, setValorPagamento] = useState('');
@@ -4952,7 +5408,8 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
         </div>
       </div>
 
-      <div className="rounded-2xl p-4 mb-3" style={{ background: INK }}>
+      <div className="rounded-2xl mb-3" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
         <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Entrou de serviço em {mesNome}</div>
         <div className="text-3xl font-extrabold text-white">{formatReais(valorEntrou)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{entraram.length} {entraram.length === 1 ? 'trabalho recebido' : 'trabalhos recebidos'} no mês</div>
@@ -4964,17 +5421,17 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Flag size={16} style={{ color: VERDE }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: INK }}>{formatReais(valorFinalizado)}</div>
           <div className="text-xs text-stone-500">finalizados no mês ({finalizados.length})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <CheckCircle2 size={16} style={{ color: VERDE }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: INK }}>{formatReais(valorEntregue)}</div>
           <div className="text-xs text-stone-500">entregues no mês ({entregues.length})</div>
         </div>
-        <div className="rounded-2xl p-4 bg-white border border-stone-200">
+        <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
           <Users size={16} style={{ color: '#EA580C' }} className="mb-1.5" />
           <div className="text-lg font-extrabold" style={{ color: '#EA580C' }}>− {formatReais(totalComissoes)}</div>
           <div className="text-xs text-stone-500">comissões no mês</div>
@@ -5031,7 +5488,11 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
                     )}
                     <PrazoPagamentoEdit
                       atual={(dentistas || []).find(x => x.nome === d.nome)?.prazoPagamento}
-                      onSalvar={(texto) => onSetPrazoPagamento(d.nome, texto)} />
+                      onSalvar={(texto) => onSetPrazoPagamento(d.nome, texto)}
+                      diasAtual={(dentistas || []).find(x => x.nome === d.nome)?.diasPagamento ?? null}
+                      onSalvarDias={(n) => onSetDiasPagamento(d.nome, n)}
+                      dataAtual={(dentistas || []).find(x => x.nome === d.nome)?.dataPagamento || null}
+                      onSalvarData={(data) => onSetDataPagamento(d.nome, data)} />
                     {/* Registrar pagamento */}
                     <div className="rounded-xl p-3" style={{ background: '#F5F4F0' }}>
                       <div className="text-xs font-bold mb-2" style={{ color: INK }}>Registrar pagamento recebido:</div>

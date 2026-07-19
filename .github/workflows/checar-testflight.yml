@@ -1,0 +1,24 @@
+# Consulta a Apple: estado dos builds no TestFlight (processando/válido/inválido).
+name: Estado do TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/special-lab-test-mode-9jrxb1]
+    paths: ['checar-testflight.mjs', '.github/workflows/checar-testflight.yml']
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Consulta a Apple
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node checar-testflight.mjs

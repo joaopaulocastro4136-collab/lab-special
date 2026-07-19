@@ -8,7 +8,7 @@ on:
       versao:
         description: "Versão visível (ex.: 3.1)"
         required: false
-        default: "3.1"
+        default: "5.7"
 
 jobs:
   build:
@@ -56,6 +56,8 @@ jobs:
         run: npm ci
 
       - name: Gera o pacote web do app
+        env:
+          VERSAO_APP: ${{ github.event.inputs.versao || '5.7' }}
         run: node build-android.mjs
 
       - name: Sincroniza com o projeto iOS
@@ -83,7 +85,7 @@ jobs:
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
-            MARKETING_VERSION=${{ github.event.inputs.versao || '3.1' }} \
+            MARKETING_VERSION=${{ github.event.inputs.versao || '5.7' }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Exporta o IPA

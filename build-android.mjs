@@ -8,7 +8,11 @@ await esbuild.build({
   format: 'iife',
   jsx: 'automatic',
   loader: { '.png': 'dataurl' },
-  define: { 'process.env.NODE_ENV': '"production"' },
+  define: {
+    'process.env.NODE_ENV': '"production"',
+    // Carimbo de versão visível no app (a fábrica passa VERSAO_APP; local fica "dev")
+    '__VERSAO_APP__': JSON.stringify(process.env.VERSAO_APP || 'dev'),
+  },
   outfile: 'www-bundle.js',
   logLevel: 'info',
 });

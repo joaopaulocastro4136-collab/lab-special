@@ -8,11 +8,11 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
-  getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
+  getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2 } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -282,7 +282,11 @@ async function registrarPush(dados) {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     let perm = await PushNotifications.checkPermissions();
     if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
-    if (perm.receive !== 'granted') return;
+    if (perm.receive !== 'granted') {
+      // Notificações desligadas nos Ajustes do iPhone → avisa na tela, senão ninguém descobre
+      window.dispatchEvent(new CustomEvent('push-sem-permissao'));
+      return;
+    }
     await PushNotifications.addListener('registration', async (t) => {
       try {
         await setDoc(doc(db, 'labs', LAB, 'pushTokens', t.value), {
@@ -292,6 +296,17 @@ async function registrarPush(dados) {
           atualizadoEm: new Date().toISOString(),
         });
       } catch (e) { console.error('Erro ao salvar token push', e); }
+    });
+    // Tocar no aviso da barra → abre direto o trabalho (o carteiro manda o casoId junto)
+    await PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+      const d = (ev && ev.notification && ev.notification.data) || {};
+      if (d.casoId) {
+        window.__casoPushPendente = d.casoId;
+        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: d.casoId }));
+      } else if (d.abrirAba) {
+        window.__abaPushPendente = d.abrirAba;
+        window.dispatchEvent(new CustomEvent('abrir-aba-push', { detail: d.abrirAba }));
+      }
     });
     await PushNotifications.register();
   } catch (e) { console.error('Push indisponível', e); }
@@ -419,8 +434,8 @@ function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
   return (
     <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 10, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
       {/* brilho dourado de fundo + estrela da marca em marca d'água */}
-      <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)' }} />
-      <div style={{ position: 'absolute', right: 16, bottom: 8, opacity: 0.09 }}><Estrela size={52} color={GOLD} /></div>
+      <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', right: 16, bottom: 8, opacity: 0.09, pointerEvents: 'none' }}><Estrela size={52} color={GOLD} /></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Estrela size={10} color={GOLD} />
         <div style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Seus trabalhos</div>
@@ -487,11 +502,19 @@ function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
 // A foto vai com segurança para a Cloud Function do laboratório, que usa IA
 // generativa para redesenhar os dentes — alinhamento, simetria, proporção e o
 // tom escolhido — e devolve a foto transformada.
+// Escala de cor odontológica (VITA): do branqueado ao natural mais amarelado
 const TONS_IA = [
-  { rotulo: 'Mais claro', valor: 'claro', cor: '#FDFDFB' },
-  { rotulo: 'Natural', valor: 'natural', cor: '#F2ECDC' },
-  { rotulo: 'Mais escuro', valor: 'escuro', cor: '#E3D5B8' },
+  { rotulo: 'BL', valor: 'bl', cor: '#FDFDFC', desc: 'super branco — clareamento máximo (Hollywood)' },
+  { rotulo: 'B1', valor: 'b1', cor: '#F5F0E2', desc: 'branco natural, luminoso e crível' },
+  { rotulo: 'A1', valor: 'a1', cor: '#EFE3C9', desc: 'natural clássico, levemente quente' },
+  { rotulo: 'A2', valor: 'a2', cor: '#E3D0A6', desc: 'mais amarelado — tom natural sem clareamento' },
 ];
+// Transformações antigas do histórico usavam outros nomes de tom
+function rotuloTom(v) {
+  const t = TONS_IA.find(x => x.valor === v);
+  if (t) return t.rotulo;
+  return { claro: 'Mais claro', natural: 'Natural', escuro: 'Mais escuro' }[v] || v || 'A1';
+}
 
 async function transformarSorrisoNaNuvem(fotoDataURL, tom) {
   const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
@@ -503,19 +526,400 @@ function mensagemErroIA(e) {
   const codigo = String((e && e.code) || '');
   if (codigo.includes('resource-exhausted')) return 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.';
   if (codigo.includes('unauthenticated')) return 'Entre na sua conta para usar a IA Special.';
-  if (codigo.includes('not-found') || codigo.includes('unimplemented')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
+  if (codigo.includes('not-found') || codigo.includes('unimplemented') || codigo.includes('failed-precondition')) return 'A IA Special está sendo ativada pelo laboratório. Tente mais tarde.';
   if (codigo.includes('invalid-argument')) return 'Essa foto não serviu. Tente uma foto mais nítida do sorriso.';
   return 'Não consegui transformar agora. Verifique a internet e tente de novo.';
 }
 
-function IASpecial({ aoFechar, aoAvisar }) {
+// Comparador antes/depois: arrasta o dedo (ou o mouse) em qualquer ponto da foto
+// — funciona no iPhone de verdade (nada de controle invisível que só pega no pino)
+function ComparadorImagens({ antes, depois, corte, setCorte }) {
+  const mover = (clientX, el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0) setCorte(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)));
+  };
+  return (
+    <div style={{ position: 'relative', touchAction: 'none', cursor: 'ew-resize', userSelect: 'none' }}
+      onTouchStart={e => mover(e.touches[0].clientX, e.currentTarget)}
+      onTouchMove={e => mover(e.touches[0].clientX, e.currentTarget)}
+      onMouseDown={e => mover(e.clientX, e.currentTarget)}
+      onMouseMove={e => { if (e.buttons === 1) mover(e.clientX, e.currentTarget); }}>
+      <img src={depois} alt="Depois" draggable={false} style={{ display: 'block', width: '100%', pointerEvents: 'none' }} />
+      <img src={antes} alt="Antes" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)`, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.6)', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.45)' }}>⇄</div>
+      </div>
+      <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>ANTES</span>
+      <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>DEPOIS ✨</span>
+    </div>
+  );
+}
+
+// ─── Cartão "antes e depois" para compartilhar no WhatsApp ───
+// Monta uma imagem única: antes | depois lado a lado, etiquetas, divisor dourado
+// e rodapé com a marca Special e o nome do paciente.
+function carregarImg(src) {
+  return new Promise((res, rej) => {
+    const im = new window.Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('não carregou a imagem'));
+    im.src = src;
+  });
+}
+
+async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente) {
+  const [a, d] = await Promise.all([carregarImg(antesSrc), carregarImg(depoisSrc)]);
+  const W = 1080, HIMG = 850, RODAPE = 140, H = HIMG + RODAPE;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#141311'; x.fillRect(0, 0, W, H);
+  const cover = (img, dx, dw) => {
+    const r = Math.max(dw / img.width, HIMG / img.height);
+    const sw = dw / r, sh = HIMG / r;
+    x.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, dx, 0, dw, HIMG);
+  };
+  x.save(); x.beginPath(); x.rect(0, 0, W / 2, HIMG); x.clip(); cover(a, 0, W / 2); x.restore();
+  x.save(); x.beginPath(); x.rect(W / 2, 0, W / 2, HIMG); x.clip(); cover(d, W / 2, W / 2); x.restore();
+  // divisor dourado
+  const grad = x.createLinearGradient(0, 0, 0, HIMG);
+  grad.addColorStop(0, '#E8C48A'); grad.addColorStop(1, '#B8935A');
+  x.fillStyle = grad; x.fillRect(W / 2 - 3, 0, 6, HIMG);
+  // etiquetas ANTES / DEPOIS
+  const etiqueta = (texto, cx, dourada) => {
+    x.font = '800 34px Manrope, -apple-system, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    const tw = x.measureText(texto).width;
+    const pw = tw + 48, ph = 58, py = 26;
+    x.fillStyle = dourada ? '#B8935A' : 'rgba(0,0,0,0.62)';
+    x.beginPath();
+    if (x.roundRect) x.roundRect(cx - pw / 2, py, pw, ph, 29); else x.rect(cx - pw / 2, py, pw, ph);
+    x.fill();
+    x.fillStyle = dourada ? '#1C1B19' : '#FFFFFF';
+    x.fillText(texto, cx, py + ph / 2 + 2);
+  };
+  etiqueta('ANTES', W / 4, false);
+  etiqueta('DEPOIS ✨', (3 * W) / 4, true);
+  // rodapé: estrela + SPECIAL + paciente
+  const yR = HIMG + RODAPE / 2;
+  x.save();
+  x.translate(64, yR);
+  x.scale(0.62, 0.62);
+  x.fillStyle = '#B8935A';
+  const estrela = new Path2D('M0,-55 C4,-17 17,-4 46,0 C17,4 4,17 0,55 C-4,17 -17,4 -46,0 C-17,-4 -4,-17 0,-55 Z');
+  x.fill(estrela);
+  x.restore();
+  x.textAlign = 'left'; x.textBaseline = 'middle';
+  x.font = '300 40px Manrope, -apple-system, sans-serif';
+  x.fillStyle = '#FFFFFF';
+  x.fillText('S P E C I A L', 108, yR - 16);
+  x.font = '700 24px Manrope, -apple-system, sans-serif';
+  x.fillStyle = '#B8935A';
+  x.fillText('IA SPECIAL — simulação de sorriso', 108, yR + 26);
+  if (paciente) {
+    x.textAlign = 'right';
+    x.font = '800 30px Manrope, -apple-system, sans-serif';
+    x.fillStyle = '#FFFFFF';
+    x.fillText(paciente, W - 44, yR - 14);
+    x.font = '600 22px Manrope, -apple-system, sans-serif';
+    x.fillStyle = 'rgba(255,255,255,0.55)';
+    x.fillText(formatDateBR(todayISO()), W - 44, yR + 22);
+  }
+  return c.toDataURL('image/jpeg', 0.92);
+}
+
+async function compartilharAntesDepois(antesSrc, depoisSrc, paciente, aoAvisar) {
+  try {
+    const dataURL = await gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente);
+    const blob = dataURLparaBlob(dataURL, 'image/jpeg');
+    const nome = `antes-depois-${String(paciente || 'sorriso').replace(/\s+/g, '-').toLowerCase()}.jpg`;
+    const file = new File([blob], nome, { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: `Antes e depois — ${paciente}` });
+      return;
+    }
+    const el = document.createElement('a');
+    el.href = URL.createObjectURL(blob); el.download = nome;
+    document.body.appendChild(el); el.click(); document.body.removeChild(el);
+    if (aoAvisar) aoAvisar('Antes e depois salvo ✓');
+  } catch (e) {
+    console.error('cartão antes/depois', e);
+    if (e && e.name !== 'AbortError' && aoAvisar) aoAvisar('Não consegui montar o antes e depois. Tente de novo.');
+  }
+}
+
+// ─── Perguntas à IA Special: chat de dúvidas com foto ───
+// "Que implante é esse?", componentes, passo a passo, dúvidas de odontologia.
+function comprimirImagemChat(file) {
+  return new Promise((res, rej) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 900;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) { const r = Math.min(MAX / width, MAX / height); width = Math.round(width * r); height = Math.round(height * r); }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); };
+    img.src = url;
+  });
+}
+
+const SUGESTOES_IA = [
+  '📷 Que implante é esse? (anexe a foto)',
+  'Diferença entre pilar reto e angulado?',
+  'Desenhe um esquema: conexão hexágono externo vs cone morse',
+];
+
+function PerguntasIA({ dentista, aoFechar, aoAvisar }) {
+  const chaveLS = 'sc-perguntas-' + dentista;
+  const [mensagens, setMensagens] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveLS) || '[]'); } catch (e) { return []; } });
+  const [texto, setTexto] = useState('');
+  const [fotoPend, setFotoPend] = useState(null);
+  const [pensando, setPensando] = useState(false);
+  const fimRef = useRef(null);
+  const inputFotoRef = useRef(null);
+  useGestoVoltar(aoFechar);
+  useEffect(() => { if (fimRef.current) fimRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensagens.length, pensando]);
+  const persistir = (lista) => {
+    setMensagens(lista);
+    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-20).map(m => ({ ...m, ilustracao: null })))); } catch (e) { /* sem espaço: segue só em memória */ }
+  };
+
+  const anexarFoto = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try { setFotoPend(await comprimirImagemChat(file)); } catch (err) { aoAvisar('Não consegui ler essa foto.'); }
+  };
+
+  const enviar = async (textoLivre) => {
+    const t = String(textoLivre ?? texto).replace('📷 ', '').trim();
+    const fotoEnv = fotoPend;
+    if ((!t && !fotoEnv) || pensando) return;
+    const minha = { de: 'eu', texto: t, foto: fotoEnv || null };
+    const historico = mensagens.slice(-6).filter(m => m.texto).map(m => ({ de: m.de, texto: m.texto }));
+    const base = [...mensagens, minha];
+    persistir(base);
+    setTexto(''); setFotoPend(null);
+    setPensando(true);
+    try {
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 120000 });
+      const r = await chamar({ pergunta: t, foto: fotoEnv ? fotoEnv.split(',')[1] : '', historico });
+      const ilustracao = r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null;
+      persistir([...base, { de: 'ia', texto: r.data.resposta, ilustracao }]);
+    } catch (e) {
+      console.error('perguntarIA', e);
+      aoAvisar(mensagemErroIA(e));
+    }
+    setPensando(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 8900, background: '#141311', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+      <style>{`@keyframes iaPonto { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }`}</style>
+      {/* topo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(12px + env(safe-area-inset-top)) 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={aoFechar} style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+        <div style={{ width: 36, height: 36, borderRadius: 18, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <MessageCircle size={17} color={INK} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: '#fff' }}>Perguntas</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>IA SPECIAL</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.5)' }}>implantes, componentes, passo a passo — envie foto e pergunte</div>
+        </div>
+      </div>
+
+      {/* conversa */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px' }}>
+        {mensagens.length === 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '14px 14px', fontSize: 12.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+              👋 Olá, {dentista.split(' ').slice(0, 2).join(' ')}! Sou a <b style={{ color: GOLD }}>IA Special</b>. Me pergunte sobre implantes, componentes protéticos, materiais e técnicas — pode <b>anexar foto</b> que eu analiso (ex.: identificar um implante).
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 8px' }}>Experimente</div>
+            {SUGESTOES_IA.map(s => (
+              <button key={s} onClick={() => (s.startsWith('📷') ? (inputFotoRef.current && inputFotoRef.current.click()) : enviar(s))}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'rgba(184,147,90,0.1)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, fontWeight: 700, color: GOLD, cursor: 'pointer', fontFamily: FONTE }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        {mensagens.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.de === 'eu' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+            <div style={{ maxWidth: '84%', borderRadius: m.de === 'eu' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', padding: '10px 13px', background: m.de === 'eu' ? 'linear-gradient(135deg, #E8C48A, #B8935A)' : 'rgba(255,255,255,0.07)', border: m.de === 'eu' ? 'none' : '1px solid rgba(255,255,255,0.09)' }}>
+              {m.de === 'ia' && <div style={{ fontSize: 8.5, fontWeight: 800, color: GOLD, letterSpacing: '0.1em', marginBottom: 4 }}>✨ IA SPECIAL</div>}
+              {m.ilustracao && <img src={m.ilustracao} alt="ilustração" style={{ width: '100%', maxWidth: 280, borderRadius: 12, marginBottom: m.texto ? 8 : 0, display: 'block', border: '1px solid rgba(184,147,90,0.45)' }} />}
+              {m.foto && <img src={m.foto} alt="foto" style={{ width: '100%', maxWidth: 220, borderRadius: 10, marginBottom: m.texto ? 7 : 0, display: 'block' }} />}
+              {m.texto && <div style={{ fontSize: 13.5, lineHeight: 1.55, color: m.de === 'eu' ? INK : 'rgba(255,255,255,0.92)', fontWeight: m.de === 'eu' ? 700 : 500, whiteSpace: 'pre-wrap' }}>{m.texto}</div>}
+            </div>
+          </div>
+        ))}
+        {pensando && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
+            <div style={{ borderRadius: '16px 16px 16px 4px', padding: '13px 16px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', gap: 5 }}>
+              {[0, 1, 2].map(i => <span key={i} style={{ width: 7, height: 7, borderRadius: 4, background: GOLD, animation: `iaPonto 1.2s ease-in-out ${i * 0.18}s infinite` }} />)}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center', margin: '6px 0 4px', lineHeight: 1.5 }}>
+          Respostas geradas por IA — confirme condutas clínicas com o laboratório.
+        </div>
+        <div ref={fimRef} />
+      </div>
+
+      {/* barra de escrever */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '10px 12px calc(12px + env(safe-area-inset-bottom))' }}>
+        {fotoPend && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
+            <img src={fotoPend} alt="anexo" style={{ width: 46, height: 46, borderRadius: 10, objectFit: 'cover', border: `1px solid ${GOLD}` }} />
+            <span style={{ flex: 1, fontSize: 11.5, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>Foto anexada — escreva a pergunta (ou só envie)</span>
+            <button onClick={() => setFotoPend(null)} style={{ width: 26, height: 26, borderRadius: 13, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 800, cursor: 'pointer', lineHeight: '24px', padding: 0 }}>×</button>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+          <button onClick={() => inputFotoRef.current && inputFotoRef.current.click()}
+            style={{ width: 42, height: 42, borderRadius: 21, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Camera size={18} color={GOLD} />
+          </button>
+          <input value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') enviar(); }}
+            placeholder="Escreva sua pergunta..."
+            style={{ flex: 1, padding: '12px 14px', borderRadius: 21, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, fontFamily: FONTE, outline: 'none', minWidth: 0 }} />
+          <button onClick={() => enviar()} disabled={pensando || (!texto.trim() && !fotoPend)}
+            style={{ width: 42, height: 42, borderRadius: 21, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: pensando || (!texto.trim() && !fotoPend) ? 0.45 : 1 }}>
+            <Send size={17} color={INK} />
+          </button>
+        </div>
+      </div>
+      <input ref={inputFotoRef} type="file" accept="image/*" onChange={anexarFoto} style={{ display: 'none' }} />
+    </div>
+  );
+}
+
+// ─── Comparador em TELA CHEIA: antes/depois grandão, arrasta pra alternar,
+// botões Antes | ⇄ | Depois pra ir e voltar, e pinça pra dar zoom nos detalhes ───
+function ComparadorTelaCheia({ antes, depois, nome, aoFechar }) {
+  const [corte, setCorte] = useState(50);
+  const [escala, setEscala] = useState(1);
+  const [arrastando, setArrastando] = useState(false);
+  const gesto = useRef({});
+  useGestoVoltar(aoFechar);
+  const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const mover = (clientX, el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0) setCorte(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)));
+  };
+  const aoIniciar = (e) => {
+    setArrastando(true);
+    if (e.touches.length === 2) gesto.current = { modo: 'pinca', d0: dist(e.touches), esc0: escala };
+    else { gesto.current = { modo: 'corte' }; mover(e.touches[0].clientX, e.currentTarget); }
+  };
+  const aoMover = (e) => {
+    if (gesto.current.modo === 'pinca' && e.touches.length === 2) {
+      setEscala(Math.max(1, Math.min(4, gesto.current.esc0 * (dist(e.touches) / gesto.current.d0))));
+    } else if (gesto.current.modo === 'corte' && e.touches.length === 1) {
+      mover(e.touches[0].clientX, e.currentTarget);
+    }
+  };
+  const btnRodape = (ativo) => ({ flex: 1, maxWidth: 150, padding: '12px 0', borderRadius: 13, fontFamily: FONTE, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: ativo ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.18)', background: ativo ? 'rgba(184,147,90,0.2)' : 'rgba(255,255,255,0.07)', color: ativo ? GOLD : 'rgba(255,255,255,0.85)' });
+  const trans = arrastando ? 'none' : 'clip-path 0.3s ease, left 0.3s ease';
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9600, background: '#0D0C0B', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+      {/* topo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'calc(10px + env(safe-area-inset-top)) 12px 10px' }}>
+        <Estrela size={11} color={GOLD} />
+        <span style={{ flex: 1, minWidth: 0, color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+        <button onClick={aoFechar} style={{ width: 38, height: 38, borderRadius: 19, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(30,28,25,0.85)', color: '#fff', fontSize: 17, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>×</button>
+      </div>
+      {/* palco */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', touchAction: 'none', cursor: 'ew-resize' }}
+        onTouchStart={aoIniciar} onTouchMove={aoMover} onTouchEnd={() => { setArrastando(false); gesto.current = {}; }}
+        onMouseDown={e => { setArrastando(true); mover(e.clientX, e.currentTarget); }}
+        onMouseMove={e => { if (e.buttons === 1) mover(e.clientX, e.currentTarget); }}
+        onMouseUp={() => setArrastando(false)}
+        onWheel={e => setEscala(v => Math.max(1, Math.min(4, v - e.deltaY / 400)))}
+        onDoubleClick={() => setEscala(1)}>
+        <div style={{ position: 'relative', transform: `scale(${escala})`, transition: arrastando ? 'none' : 'transform 0.18s ease' }}>
+          <img src={depois} alt="Depois" draggable={false} style={{ display: 'block', maxWidth: '100vw', maxHeight: 'calc(100vh - 190px)', pointerEvents: 'none', userSelect: 'none' }} />
+          <img src={antes} alt="Antes" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)`, transition: trans, pointerEvents: 'none', userSelect: 'none' }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.7)', transform: 'translateX(-50%)', transition: trans, pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.5)' }}>⇄</div>
+          </div>
+          <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>ANTES</span>
+          <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>DEPOIS ✨</span>
+        </div>
+      </div>
+      {/* rodapé: ir e voltar entre antes e depois */}
+      <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))' }}>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 9 }}>arraste sobre a foto • pinça para zoom • toque duplo volta o zoom</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <button onClick={() => setCorte(100)} style={btnRodape(corte > 85)}>Antes</button>
+          <button onClick={() => setCorte(50)} style={{ ...btnRodape(corte >= 15 && corte <= 85), maxWidth: 70 }}>⇄</button>
+          <button onClick={() => setCorte(0)} style={btnRodape(corte < 15)}>Depois ✨</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
-  const [tom, setTom] = useState('natural');
+  const [tom, setTom] = useState('a1');
   const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
+  const [paciente, setPaciente] = useState('');
+  const [historico, setHistorico] = useState(null); // null = carregando
+  const [verSim, setVerSim] = useState(null); // simulação salva aberta do histórico
+  const [compararCheia, setCompararCheia] = useState(null); // comparador antes/depois em tela cheia
   const inputRef = useRef(null);
-  useGestoVoltar(aoFechar);
+  useGestoVoltar(() => {
+    if (compararCheia) { setCompararCheia(null); return; }
+    if (verSim) { setVerSim(null); return; }
+    if (foto) { setFoto(null); setResultado(null); return; }
+    aoFechar();
+  });
+
+  // Histórico do dentista: cada transformação fica salva na nuvem
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', dentista)));
+        if (!ativo) return;
+        const lista = [];
+        snap.forEach(d => lista.push(d.data()));
+        setHistorico(lista.sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 40));
+      } catch (e) { console.error('histórico IA', e); if (ativo) setHistorico([]); }
+    })();
+    return () => { ativo = false; };
+  }, [dentista]);
+
+  const salvarSimulacao = async (antesDataURL, depoisDataURL, tomUsado) => {
+    try {
+      const nome = paciente.trim() || 'Paciente';
+      const [antesUp, depoisUp] = await Promise.all([
+        subirArquivo(dataURLparaBlob(antesDataURL, 'image/jpeg'), `ia-antes-${novoId()}.jpg`),
+        subirArquivo(dataURLparaBlob(depoisDataURL, depoisDataURL.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'), `ia-depois-${novoId()}.jpg`),
+      ]);
+      const sim = {
+        id: novoId(), dentista, paciente: nome, tom: tomUsado, data: todayISO(),
+        antesUrl: antesUp.url, antesCaminho: antesUp.caminho,
+        depoisUrl: depoisUp.url, depoisCaminho: depoisUp.caminho,
+      };
+      await setDoc(doc(db, 'labs', LAB, 'iaSimulacoes', sim.id), sim);
+      setHistorico(h => [sim, ...(h || [])].slice(0, 40));
+      aoAvisar('Transformação salva no histórico ✓');
+    } catch (e) { console.error('salvar simulação', e); }
+  };
 
   const escolherFoto = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -523,6 +927,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
     if (!file) return;
     try {
       const dataURL = await comprimirImagem(file);
+      setVerSim(null);
       setFoto(dataURL);
       setResultado(null);
       setCorte(50);
@@ -538,6 +943,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
       const out = await transformarSorrisoNaNuvem(foto, alvo);
       setResultado(out);
       setCorte(50);
+      salvarSimulacao(foto, out, alvo); // guarda no histórico em segundo plano
     } catch (e) {
       console.error('IA Special', e);
       aoAvisar(mensagemErroIA(e));
@@ -545,24 +951,17 @@ function IASpecial({ aoFechar, aoAvisar }) {
     setProcessando(false);
   };
 
-  const baixar = () => {
-    const a = document.createElement('a');
-    a.href = resultado;
-    a.download = `sorriso-ia-special-${todayISO()}.jpg`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    aoAvisar('Simulação salva ✓');
-  };
-
-  const compartilhar = async () => {
+  // Compartilhar/baixar = o cartão antes+depois com a marca (pronto pro WhatsApp)
+  const compartilhar = () => compartilharAntesDepois(foto, resultado, paciente.trim() || 'Paciente', aoAvisar);
+  const baixar = async () => {
     try {
-      const blob = dataURLparaBlob(resultado, 'image/jpeg');
-      const file = new File([blob], 'sorriso-ia-special.jpg', { type: 'image/jpeg' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Simulação IA Special' });
-        return;
-      }
-      baixar();
-    } catch (e) { if (e && e.name !== 'AbortError') baixar(); }
+      const dataURL = await gerarCartaoAntesDepois(foto, resultado, paciente.trim() || 'Paciente');
+      const a = document.createElement('a');
+      a.href = dataURL;
+      a.download = `antes-depois-${todayISO()}.jpg`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      aoAvisar('Antes e depois salvo ✓');
+    } catch (e) { aoAvisar('Não consegui montar o antes e depois.'); }
   };
 
   const btnDourado = { border: 'none', borderRadius: 14, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontFamily: FONTE, cursor: 'pointer', boxShadow: '0 12px 26px -14px rgba(184,147,90,0.9)' };
@@ -587,44 +986,81 @@ function IASpecial({ aoFechar, aoAvisar }) {
           </div>
         </div>
 
-        {!foto && (
+        {!foto && !verSim && (
           <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '2px 2px 7px' }}>Nova transformação</div>
+            <input value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente"
+              style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14.5, fontWeight: 700, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
             <button onClick={() => inputRef.current && inputRef.current.click()}
-              style={{ width: '100%', borderRadius: 22, border: '1.5px dashed rgba(184,147,90,0.6)', background: 'rgba(184,147,90,0.07)', padding: '44px 20px', cursor: 'pointer', fontFamily: FONTE, textAlign: 'center' }}>
-              <div style={{ width: 66, height: 66, borderRadius: 33, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', boxShadow: '0 14px 30px -12px rgba(184,147,90,0.8)' }}>
-                <Camera size={28} color={INK} />
+              style={{ width: '100%', borderRadius: 20, border: '1.5px dashed rgba(184,147,90,0.6)', background: 'rgba(184,147,90,0.07)', padding: '28px 20px', cursor: 'pointer', fontFamily: FONTE, textAlign: 'center' }}>
+              <div style={{ width: 58, height: 58, borderRadius: 29, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', boxShadow: '0 14px 30px -12px rgba(184,147,90,0.8)' }}>
+                <Camera size={25} color={INK} />
               </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 16 }}>Adicionar foto do sorriso</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 6, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria.<br />Quanto mais nítido o sorriso, melhor o resultado.</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: '#fff', marginTop: 13 }}>Adicionar foto do sorriso</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 5, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria — quanto mais nítida, melhor.</div>
             </button>
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              {[['📸', 'Foto do paciente sorrindo'], ['✨', 'A IA redesenha: forma, simetria e alinhamento'], ['🎨', 'Você escolhe o tom da cor']].map(([ic, tx]) => (
-                <div key={tx} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 20 }}>{ic}</div>
-                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{tx}</div>
-                </div>
-              ))}
+
+            {/* Histórico: cada transformação fica guardada com o paciente */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '20px 2px 9px' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Histórico</span>
+              {historico && historico.length > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 800, color: GOLD, background: 'rgba(184,147,90,0.18)', borderRadius: 999, padding: '2px 8px' }}>{historico.length}</span>
+              )}
             </div>
+            {historico === null && (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', padding: '8px 2px' }}>Carregando histórico...</div>
+            )}
+            {historico && historico.length === 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '16px 14px', fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                Suas transformações aparecem aqui. Coloque o nome do paciente, adicione a foto e transforme — fica tudo salvo pra mostrar depois. ✨
+              </div>
+            )}
+            {historico && historico.map(s => (
+              <button key={s.id} onClick={() => { setCorte(50); setVerSim(s); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 9, marginBottom: 8, cursor: 'pointer', fontFamily: FONTE, textAlign: 'left' }}>
+                <img src={s.depoisUrl} alt={s.paciente} style={{ width: 52, height: 52, borderRadius: 11, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(184,147,90,0.4)' }} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.paciente}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                    {formatDateBR(s.data)} • cor {rotuloTom(s.tom)}
+                  </span>
+                </span>
+                <span style={{ color: GOLD, fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
+              </button>
+            ))}
           </div>
         )}
 
-        {foto && (
+        {/* Transformação salva aberta do histórico */}
+        {verSim && (
+          <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+              <button onClick={() => setVerSim(null)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{verSim.paciente}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • cor {rotuloTom(verSim.tom)}</div>
+              </div>
+            </div>
+            <div style={{ borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
+              <ComparadorImagens antes={verSim.antesUrl} depois={verSim.depoisUrl} corte={corte} setCorte={setCorte} />
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+            <button onClick={() => setCompararCheia({ antes: verSim.antesUrl, depois: verSim.depoisUrl, nome: verSim.paciente })}
+              style={{ width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Maximize2 size={14} color={GOLD} /> Ver em tela cheia
+            </button>
+            <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar)}
+              style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Share2 size={16} /> Compartilhar antes e depois
+            </button>
+          </div>
+        )}
+
+        {foto && !verSim && (
           <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
             <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
-              {/* depois (embaixo) + antes (por cima, cortada no divisor) */}
-              <img src={resultado || foto} alt="Sorriso" style={{ display: 'block', width: '100%' }} />
-              {resultado && (
-                <>
-                  <img src={foto} alt="Antes" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)` }} />
-                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.6)', transform: 'translateX(-50%)' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.45)' }}>⇄</div>
-                  </div>
-                  <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px' }}>ANTES</span>
-                  <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px' }}>DEPOIS ✨</span>
-                  <input type="range" min="0" max="100" value={corte} onChange={e => setCorte(Number(e.target.value))}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'ew-resize', touchAction: 'none' }} />
-                </>
-              )}
+              {!resultado && <img src={foto} alt="Sorriso" style={{ display: 'block', width: '100%' }} />}
+              {resultado && <ComparadorImagens antes={foto} depois={resultado} corte={corte} setCorte={setCorte} />}
               {processando && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,12,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', left: 0, right: 0, height: 3, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, animation: 'iaVarredura 2.2s ease-in-out infinite', boxShadow: `0 0 18px ${GOLD}` }} />
@@ -636,10 +1072,16 @@ function IASpecial({ aoFechar, aoAvisar }) {
             </div>
 
             {resultado && !processando && (
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+              <>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+                <button onClick={() => setCompararCheia({ antes: foto, depois: resultado, nome: paciente.trim() || 'Paciente' })}
+                  style={{ width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Maximize2 size={14} color={GOLD} /> Ver em tela cheia
+                </button>
+              </>
             )}
 
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Tom dos dentes</div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Cor dos dentes</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {TONS_IA.map(n => (
                 <button key={n.valor} onClick={() => resultado ? gerar(n.valor) : setTom(n.valor)} disabled={processando}
@@ -649,8 +1091,11 @@ function IASpecial({ aoFechar, aoAvisar }) {
                 </button>
               ))}
             </div>
+            <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
+              {(TONS_IA.find(t => t.valor === tom) || {}).desc}
+            </div>
             {resultado && !processando && (
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 7 }}>Toque em outro tom para gerar de novo com ele</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor para gerar de novo com ela</div>
             )}
 
             {!resultado && (
@@ -663,7 +1108,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
             {resultado && !processando && (
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button onClick={compartilhar} style={{ ...btnDourado, flex: 1, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Share2 size={16} /> Compartilhar
+                  <Share2 size={16} /> Compartilhar antes e depois
                 </button>
                 <button onClick={baixar} title="Baixar"
                   style={{ width: 54, borderRadius: 14, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -684,12 +1129,58 @@ function IASpecial({ aoFechar, aoAvisar }) {
           O resultado é ilustrativo — o tratamento real depende do planejamento clínico com o Laboratório Special.
         </div>
       </div>
+      {compararCheia && <ComparadorTelaCheia antes={compararCheia.antes} depois={compararCheia.depois} nome={compararCheia.nome} aoFechar={() => setCompararCheia(null)} />}
       <input ref={inputRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display: 'none' }} />
     </div>
   );
 }
 
-function App({ dentista, email, prazoPagamento }) {
+// ─── Gráfico do Financeiro: barras animadas dos últimos meses (feito × pago) ───
+// Toque num mês para ver os valores exatos dele.
+function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
+  const [anim, setAnim] = useState(false);
+  const [sel, setSel] = useState(null);
+  useEffect(() => { const t = setTimeout(() => setAnim(true), 150); return () => clearTimeout(t); }, []);
+  const ult = meses.slice(0, 6).reverse(); // do mais antigo para o mais novo
+  if (ult.length === 0) return null;
+  const max = Math.max(...ult.map(([, r]) => Math.max(r.valor, r.pago)), 1);
+  const ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const abrev = (m) => ABREV[parseInt(m.split('-')[1], 10) - 1];
+  const selecionado = ult.find(([m]) => m === sel);
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: '16px 16px 12px', marginBottom: 12, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+      <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 800, color: INK, letterSpacing: '0.04em' }}>Movimento dos últimos meses</div>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#78716C' }}>
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: 'linear-gradient(135deg, #E8C48A, #B8935A)' }} /> Feito
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#78716C' }}>
+          <span style={{ width: 8, height: 8, borderRadius: 4, background: 'linear-gradient(135deg, #4ADE80, #15803D)' }} /> Pago
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: selecionado ? INK : '#A8A29E', fontWeight: selecionado ? 700 : 500, marginTop: 5, minHeight: 16 }}>
+        {selecionado
+          ? `${nomeMes(selecionado[0])}: feito ${formatReais(selecionado[1].valor)} • pago ${formatReais(selecionado[1].pago)}`
+          : 'Toque num mês para ver os valores'}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 110, marginTop: 10 }}>
+        {ult.map(([m, r]) => (
+          <button key={m} onClick={() => setSel(sel === m ? null : m)}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontFamily: FONTE, height: '100%', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 84, width: '100%', justifyContent: 'center', background: sel === m ? 'rgba(184,147,90,0.09)' : 'transparent', borderRadius: 10, transition: 'background 0.15s' }}>
+              <div style={{ width: '32%', maxWidth: 20, height: anim ? `${Math.max(5, (r.valor / max) * 100)}%` : '5%', borderRadius: '5px 5px 2px 2px', background: 'linear-gradient(180deg, #E8C48A, #B8935A)', transition: 'height 0.9s cubic-bezier(0.25, 0.8, 0.3, 1)' }} />
+              <div style={{ width: '32%', maxWidth: 20, height: anim ? `${Math.max(5, (r.pago / max) * 100)}%` : '5%', borderRadius: '5px 5px 2px 2px', background: 'linear-gradient(180deg, #4ADE80, #15803D)', transition: 'height 0.9s cubic-bezier(0.25, 0.8, 0.3, 1) 0.12s' }} />
+            </div>
+            <span style={{ fontSize: 9.5, fontWeight: 800, color: sel === m ? INK : '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{abrev(m)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
   const [pagamentosLab, setPagamentosLab] = useState([]); // pagamentos registrados pelo laboratório (data + valor)
@@ -698,10 +1189,17 @@ function App({ dentista, email, prazoPagamento }) {
   const [aba, setAba] = useState('trabalhos');
   const [detalhe, setDetalhe] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pushBloqueado, setPushBloqueado] = useState(false); // notificações desligadas nos Ajustes do iPhone
   const [meusDados, setMeusDados] = useState(false);
   const [sinoAberto, setSinoAberto] = useState(false);
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
+  const [buscaCasos, setBuscaCasos] = useState(''); // busca da tela inicial: paciente, tipo ou ID
   const [iaAberta, setIaAberta] = useState(false);
+  const [perguntasAbertas, setPerguntasAbertas] = useState(false);
+  const [extratoVer, setExtratoVer] = useState(null); // extrato aberto pra VER antes de decidir compartilhar
+  const [previsaoModo, setPrevisaoModo] = useState('lista'); // previsão: 'lista' (urgência) ou 'datas' (calendário do mês)
+  const [mesCal, setMesCal] = useState(() => todayISO().slice(0, 7)); // mês aberto no calendário da previsão
+  const [diaCal, setDiaCal] = useState(() => todayISO()); // dia tocado no calendário
   // Avisos já vistos (fica só neste aparelho)
   const [avisosVistos, setAvisosVistos] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sc-avisos-vistos') || '[]'); } catch (e) { return []; }
@@ -714,8 +1212,10 @@ function App({ dentista, email, prazoPagamento }) {
   const iniciais = (dentista || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
   const statusAnterior = useRef({});
   const producaoAnterior = useRef({});
-  // Deslizar da borda esquerda: volta pra aba Trabalhos (o detalhe aberto trata o gesto primeiro)
+  // Deslizar da borda esquerda: fecha o extrato aberto ou volta pra aba Trabalhos
+  // (o detalhe aberto trata o gesto primeiro)
   useGestoVoltar(() => {
+    if (extratoVer) { setExtratoVer(null); return; }
     if (aba !== 'trabalhos') { setAba('trabalhos'); return; }
     return false;
   });
@@ -732,6 +1232,45 @@ function App({ dentista, email, prazoPagamento }) {
   useEffect(() => {
     registrarPush({ tipo: 'clinica', dentista, email: email || '' });
   }, [dentista]);
+
+  // Permissão de notificação negada nos Ajustes → mostra o aviso vermelho na tela
+  useEffect(() => {
+    const ouvir = () => setPushBloqueado(true);
+    window.addEventListener('push-sem-permissao', ouvir);
+    return () => window.removeEventListener('push-sem-permissao', ouvir);
+  }, []);
+
+  // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
+  // Se o app estava fechado, o id fica guardado e abre assim que os casos carregarem.
+  useEffect(() => {
+    const abrirDoPush = (id) => {
+      const c = id && casos.find(x => x.id === id);
+      if (c) {
+        window.__casoPushPendente = null;
+        setIaAberta(false); setPerguntasAbertas(false); setSinoAberto(false);
+        setAba('trabalhos');
+        setDetalhe(c);
+      }
+    };
+    const ouvir = (e) => abrirDoPush(e.detail);
+    window.addEventListener('abrir-caso-push', ouvir);
+    if (window.__casoPushPendente) abrirDoPush(window.__casoPushPendente);
+    return () => window.removeEventListener('abrir-caso-push', ouvir);
+  }, [casos]);
+
+  // Aviso de pagamento atrasado tocado → abre direto o Financeiro
+  useEffect(() => {
+    const abrirAba = (ab) => {
+      if (!ab) return;
+      window.__abaPushPendente = null;
+      setIaAberta(false); setPerguntasAbertas(false); setSinoAberto(false); setDetalhe(null);
+      setAba(ab);
+    };
+    const ouvir = (e) => abrirAba(e.detail);
+    window.addEventListener('abrir-aba-push', ouvir);
+    if (window.__abaPushPendente) abrirAba(window.__abaPushPendente);
+    return () => window.removeEventListener('abrir-aba-push', ouvir);
+  }, []);
 
   useEffect(() => {
     const q1 = query(collection(db, 'labs', LAB, 'casos'), where('dentista', '==', dentista));
@@ -795,6 +1334,36 @@ function App({ dentista, email, prazoPagamento }) {
   const totalAndamento = Math.round(naoEntregues.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
   // O valor entra na conta assim que o trabalho é criado (andamento + entregues − pago)
   const saldo = Math.round((totalAndamento + totalEntregue - totalPago) * 100) / 100;
+
+  // Vencimento por entrega: o combinado (N dias após a entrega) vira uma data em cada
+  // trabalho entregue. Os pagamentos quitam as entregas mais antigas primeiro; o que
+  // sobrar sem baixa e passar da data fica VERMELHO (vencido).
+  const diasPagamentoN = (diasPagamento === null || diasPagamento === undefined || diasPagamento === '') ? null : Number(diasPagamento);
+  const dataPagamentoStr = dataPagamento || null; // data marcada pro pagamento (vale pras entregas até essa data)
+  const situacaoPag = {}; // id → { pago } ou { vence, diasV }
+  {
+    let restante = totalPago;
+    [...todasEntregas]
+      .filter(c => (c.valor || 0) > 0)
+      .sort((a, b) => String(a.dataSaida || '').localeCompare(String(b.dataSaida || '')))
+      .forEach(c => {
+        if (restante >= (c.valor || 0) - 0.005) {
+          restante = Math.round((restante - (c.valor || 0)) * 100) / 100;
+          situacaoPag[c.id] = { pago: true };
+        } else if (c.dataSaida && (dataPagamentoStr || diasPagamentoN !== null)) {
+          const vence = (dataPagamentoStr && c.dataSaida <= dataPagamentoStr)
+            ? dataPagamentoStr
+            : (diasPagamentoN !== null ? addDias(c.dataSaida, diasPagamentoN) : null);
+          if (vence) situacaoPag[c.id] = { pago: false, vence, diasV: diasRestantes(vence) };
+          else situacaoPag[c.id] = { pago: false };
+        } else {
+          situacaoPag[c.id] = { pago: false };
+        }
+      });
+  }
+  const entregasVencidas = todasEntregas.filter(c => situacaoPag[c.id] && !situacaoPag[c.id].pago && situacaoPag[c.id].vence && situacaoPag[c.id].diasV < 0);
+  const totalVencido = Math.round(entregasVencidas.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+  const vencidoDesde = entregasVencidas.map(c => situacaoPag[c.id].vence).sort()[0] || null;
   const formatReais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
   const copiar = async (texto, aviso) => {
     try { await navigator.clipboard.writeText(texto); mostrarToast(aviso); }
@@ -879,6 +1448,66 @@ function App({ dentista, email, prazoPagamento }) {
     }
   };
 
+  // Extrato: entregas do mês OU trabalhos em produção (com valores). Primeiro ABRE
+  // pra ver na tela; aí o dentista decide se compartilha (PDF pro WhatsApp).
+  const abrirExtrato = (qual) => {
+    try {
+      const mesAtual = todayISO().slice(0, 7);
+      const ehMes = qual === 'mes';
+      const lista = ehMes
+        ? todasEntregas.filter(c => (c.dataSaida || '').startsWith(mesAtual))
+        : naoEntregues;
+      if (lista.length === 0) {
+        mostrarToast(ehMes ? 'Nenhuma entrega neste mês ainda.' : 'Nenhum trabalho em produção agora.');
+        return;
+      }
+      const total = Math.round(lista.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+      const titulo = ehMes ? 'Entregas do mês' : 'Trabalhos em produção';
+      const img = desenharExtrato({
+        dentista,
+        titulo,
+        subtitulo: ehMes ? nomeMes(mesAtual) : formatDateBR(todayISO()),
+        linhas: lista.map(c => ({
+          titulo: c.paciente,
+          sub: `${c.tipoTrabalho}${ehMes
+            ? (c.dataSaida ? ` • entregue ${formatDateBR(c.dataSaida)}` : '')
+            : (c.status === 'Pronto' ? ' • pronto para entrega' : (c.prazo ? ` • previsão ${formatDateBR(c.prazo)}` : ''))}`,
+          valor: c.valor || 0,
+        })),
+        total,
+        rodape: ehMes
+          ? 'Trabalhos entregues pelo Laboratório Special no mês.'
+          : 'Trabalhos ainda em produção no Laboratório Special.',
+      });
+      setExtratoVer({ img, titulo, nomeArq: `${ehMes ? 'entregas-do-mes' : 'em-producao'}-${todayISO()}.pdf` });
+    } catch (e) {
+      console.error(e);
+      mostrarToast('Não consegui montar o extrato. Tente de novo.');
+    }
+  };
+
+  const compartilharExtratoAberto = async () => {
+    if (!extratoVer) return;
+    try {
+      const pdf = jpegParaPDF(extratoVer.img);
+      const file = new File([pdf], extratoVer.nomeArq, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: extratoVer.titulo });
+        return;
+      }
+      const u = URL.createObjectURL(pdf);
+      const a = document.createElement('a');
+      a.href = u; a.download = extratoVer.nomeArq;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(u), 5000);
+      mostrarToast('Extrato baixado ✓');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      console.error(e);
+      mostrarToast('Não consegui compartilhar. Tente de novo.');
+    }
+  };
+
   const cartao = { background: '#fff', border: '1px solid #E7E5E4', borderRadius: 16, padding: 14, marginBottom: 10, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
 
   // Panorama da tela inicial: dados do gráfico + caixinhas de situação abaixo dele
@@ -912,7 +1541,7 @@ function App({ dentista, email, prazoPagamento }) {
   const bannerIA = (
     <button onClick={() => setIaAberta(true)}
       style={{ width: '100%', textAlign: 'left', position: 'relative', overflow: 'hidden', borderRadius: 18, marginBottom: 18, padding: 15, background: 'linear-gradient(120deg, #2A2116, #1C1B19 60%, #33281A)', border: '1px solid rgba(184,147,90,0.5)', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 16px 36px -20px rgba(122,86,40,0.65)' }}>
-      <div style={{ position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 65%)' }} />
+      <div style={{ position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 65%)', pointerEvents: 'none' }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.9)' }}>
           <Sparkles size={21} color={INK} />
@@ -926,6 +1555,23 @@ function App({ dentista, email, prazoPagamento }) {
         </div>
         <span style={{ color: GOLD, fontSize: 20, flexShrink: 0, fontWeight: 300 }}>›</span>
       </div>
+    </button>
+  );
+  // Chat de perguntas à IA (implantes, componentes, passo a passo)
+  const bannerPerguntas = (
+    <button onClick={() => setPerguntasAbertas(true)}
+      style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 11, borderRadius: 16, marginTop: -8, marginBottom: 18, padding: '12px 14px', background: '#fff', border: '1px solid #E7E5E4', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+      <span style={{ width: 38, height: 38, borderRadius: 19, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <MessageCircle size={18} color="#7A6234" />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>Perguntas</span>
+          <span style={{ fontSize: 8, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 999, padding: '2px 6px', letterSpacing: '0.06em' }}>IA</span>
+        </span>
+        <span style={{ display: 'block', fontSize: 11, color: '#78716C', marginTop: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Que implante é esse? Envie a foto e tire dúvidas</span>
+      </span>
+      <span style={{ color: '#A8A29E', fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
     </button>
   );
 
@@ -953,6 +1599,12 @@ function App({ dentista, email, prazoPagamento }) {
       </div>
     );
   };
+
+  const termoBusca = buscaCasos.trim().toLowerCase();
+  const resultadosBusca = termoBusca === '' ? [] : casos.filter(c =>
+    String(c.paciente || '').toLowerCase().includes(termoBusca)
+    || String(c.tipoTrabalho || '').toLowerCase().includes(termoBusca)
+    || String(c.id || '').toLowerCase().includes(termoBusca));
 
   const Secao = ({ titulo, cor, itens, vazio }) => (
     <div style={{ marginBottom: 18 }}>
@@ -1113,7 +1765,22 @@ function App({ dentista, email, prazoPagamento }) {
             ))}
             {panorama}
             {caixinhasSituacao}
+            {/* Busca rápida: paciente, tipo de trabalho ou ID */}
+            <div style={{ position: 'relative', marginBottom: 14 }}>
+              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><Estrela size={11} color={buscaCasos ? GOLD : '#C9C4BC'} /></span>
+              <input value={buscaCasos} onChange={e => setBuscaCasos(e.target.value)} placeholder="Buscar por paciente ou ID..."
+                style={{ width: '100%', padding: '13px 40px 13px 36px', borderRadius: 14, border: buscaCasos ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: '#fff', fontSize: 13.5, fontWeight: 600, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)' }} />
+              {buscaCasos && (
+                <button onClick={() => setBuscaCasos('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, borderRadius: 13, border: 'none', background: '#F0EFEC', color: '#78716C', fontSize: 13, fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
+              )}
+            </div>
+            {termoBusca !== '' && (
+              <Secao titulo={`Resultados da busca (${resultadosBusca.length})`} cor="#7A6234" itens={resultadosBusca} vazio="Nenhum trabalho encontrado — confira o nome ou o ID." />
+            )}
+            {termoBusca === '' && <>
             {bannerIA}
+            {bannerPerguntas}
             {enviadosHoje.length > 0 && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button onClick={() => compartilharEnviados(false)}
@@ -1141,6 +1808,7 @@ function App({ dentista, email, prazoPagamento }) {
                 Mostrar tudo
               </button>
             )}
+            </>}
           </>
         )}
         {aba === 'novo' && (
@@ -1148,6 +1816,39 @@ function App({ dentista, email, prazoPagamento }) {
         )}
         {aba === 'previsao' && (
           <>
+            {naoEntregues.length > 0 && (() => {
+              const comPrazo = naoEntregues.filter(c => c.prazo);
+              const saemLogo = comPrazo.filter(c => diasRestantes(c.prazo) >= 0 && diasRestantes(c.prazo) <= 1).length;
+              const naSemana = comPrazo.filter(c => diasRestantes(c.prazo) >= 0 && diasRestantes(c.prazo) <= 7).length;
+              const atrasadosP = comPrazo.filter(c => diasRestantes(c.prazo) < 0).length;
+              return (
+                <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+                  <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={54} color={GOLD} /></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Estrela size={10} color={GOLD} />
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Previsão de entregas</span>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.55)', marginTop: 13 }}>Próxima entrega</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', lineHeight: 1.15 }}>{proximaEntrega ? formatDateBR(proximaEntrega.prazo) : '—'}</div>
+                  {proximaEntrega && <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proximaEntrega.paciente} • {proximaEntrega.tipoTrabalho}</div>}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: '#F5A54A', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Hoje / amanhã</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 3 }}>{saemLogo} {saemLogo === 1 ? 'trabalho' : 'trabalhos'}</div>
+                    </div>
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Próximos 7 dias</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginTop: 3 }}>{naSemana} {naSemana === 1 ? 'trabalho' : 'trabalhos'}</div>
+                    </div>
+                    <div style={{ flex: 1, background: atrasadosP > 0 ? 'rgba(220,38,38,0.16)' : 'rgba(22,163,74,0.14)', border: `1px solid ${atrasadosP > 0 ? 'rgba(248,113,113,0.35)' : 'rgba(74,222,128,0.25)'}`, borderRadius: 13, padding: '9px 11px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: atrasadosP > 0 ? '#FCA5A5' : '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{atrasadosP > 0 ? 'Em atraso' : 'Prazos'}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: atrasadosP > 0 ? '#FCA5A5' : '#86EFAC', marginTop: 3 }}>{atrasadosP > 0 ? atrasadosP : 'Em dia ✓'}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             {naoEntregues.length === 0 && (
               <div style={{ ...cartao, textAlign: 'center', padding: 32 }}>
                 <div style={{ width: 52, height: 52, borderRadius: 26, background: '#DCF3E4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
@@ -1157,6 +1858,130 @@ function App({ dentista, email, prazoPagamento }) {
                 <div style={{ fontSize: 12.5, color: '#A8A29E', marginTop: 4 }}>Tudo entregue. Envie um novo trabalho quando precisar.</div>
               </div>
             )}
+            {/* Como ver a fila: por urgência (lista) ou agrupada por data de entrega (agenda) */}
+            {naoEntregues.length > 0 && (
+              <div style={{ display: 'flex', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 15, padding: 4, marginBottom: 12, boxShadow: '0 10px 24px -18px rgba(28,27,25,0.3)' }}>
+                {[['lista', 'Lista'], ['datas', 'Calendário']].map(([m, rot]) => (
+                  <button key={m} onClick={() => setPrevisaoModo(m)}
+                    style={{ flex: 1, padding: '11px 6px', borderRadius: 12, border: 'none', fontFamily: FONTE, fontSize: 12.5, fontWeight: 800, letterSpacing: '0.05em', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'background 0.2s',
+                      background: previsaoModo === m ? 'linear-gradient(135deg, #24221E, #1C1B19)' : 'transparent',
+                      color: previsaoModo === m ? GOLD : '#8A8580' }}>
+                    {previsaoModo === m && <Estrela size={10} color={GOLD} />}
+                    {rot}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Calendário do mês: todos os dias (1, 2, 3...) com as entregas marcadas.
+                Toque num dia para ver os trabalhos que saem nele. */}
+            {previsaoModo === 'datas' && naoEntregues.length > 0 && (() => {
+              const [anoC, mmC] = mesCal.split('-').map(Number);
+              const diasNoMes = new Date(anoC, mmC, 0).getDate();
+              const inicioSemana = new Date(anoC, mmC - 1, 1).getDay();
+              const hoje = todayISO();
+              const porDia = {};
+              naoEntregues.forEach(c => { if (c.prazo) (porDia[c.prazo] = porDia[c.prazo] || []).push(c); });
+              const semPrazoLista = naoEntregues.filter(c => !c.prazo);
+              const mudarMes = (delta) => {
+                const d = new Date(anoC, mmC - 1 + delta, 1);
+                setMesCal(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+              };
+              const celulas = [];
+              for (let i = 0; i < inicioSemana; i++) celulas.push(null);
+              for (let d = 1; d <= diasNoMes; d++) celulas.push(`${mesCal}-${String(d).padStart(2, '0')}`);
+              const doDia = porDia[diaCal] || [];
+              const CardTrabalho = ({ c }) => {
+                const feitas = (c.etapas || []).filter(e => e.concluida).length;
+                const total = (c.etapas || []).length;
+                const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
+                return (
+                  <div onClick={() => setDetalhe(c)} style={{ ...cartao, cursor: 'pointer', padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.paciente}</div>
+                        <div style={{ fontSize: 11.5, color: '#78716C', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.tipoTrabalho}</div>
+                      </div>
+                      {c.status === 'Pronto' ? (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '4px 10px', flexShrink: 0 }}>Pronto ✓</span>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <div style={{ width: 44, height: 4.5, borderRadius: 3, background: '#F0EFEC', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: GOLD }} />
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#A8A29E' }}>{pct}%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              };
+              return (
+                <>
+                  <div style={{ ...cartao, position: 'relative', overflow: 'hidden', padding: 15 }}>
+                    <div style={{ position: 'absolute', right: -16, top: -18, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={62} color={INK} /></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <button onClick={() => mudarMes(-1)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid #E8D5B0', background: '#fff', color: '#7A6234', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}>‹</button>
+                      <div style={{ flex: 1, textAlign: 'center' }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: INK, letterSpacing: '0.02em' }}>{NOMES_MESES[mmC - 1]}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#A8A29E', marginLeft: 6 }}>{anoC}</span>
+                      </div>
+                      <button onClick={() => mudarMes(1)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid #E8D5B0', background: '#fff', color: '#7A6234', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}>›</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 5 }}>
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                        <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: '#B8935A', letterSpacing: '0.08em' }}>{d}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                      {celulas.map((data, i) => {
+                        if (!data) return <div key={`v${i}`} />;
+                        const n = (porDia[data] || []).length;
+                        const atrasado = n > 0 && data < hoje;
+                        const ehHoje = data === hoje;
+                        const sel = data === diaCal;
+                        return (
+                          <button key={data} onClick={() => setDiaCal(data)}
+                            style={{
+                              aspectRatio: '1', borderRadius: 11, cursor: 'pointer', fontFamily: FONTE, padding: 0,
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                              border: sel ? `2px solid ${INK}` : (ehHoje ? `2px solid ${GOLD}` : '1px solid #EFECE7'),
+                              background: sel ? INK : (atrasado ? '#FCE4E4' : (n > 0 ? 'rgba(184,147,90,0.14)' : '#FAF9F7')),
+                            }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1, color: sel ? GOLD : (atrasado ? '#B42318' : (n > 0 ? '#7A6234' : '#A8A29E')) }}>{parseInt(data.slice(8), 10)}</span>
+                            {n > 0 ? (
+                              <span style={{ minWidth: 14, height: 14, borderRadius: 7, padding: '0 3px', fontSize: 8.5, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', background: sel ? GOLD : (atrasado ? '#DC2626' : INK), color: sel ? INK : '#fff' }}>{n}</span>
+                            ) : (
+                              <span style={{ height: 14 }} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, background: 'rgba(184,147,90,0.6)' }} /> com entrega</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, background: '#DC2626' }} /> atrasado</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9.5, fontWeight: 700, color: '#78716C' }}><span style={{ width: 9, height: 9, borderRadius: 5, border: `2px solid ${GOLD}`, boxSizing: 'border-box', background: '#fff' }} /> hoje</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '4px 2px 8px' }}>
+                    {formatDateBR(diaCal)}{diaCal === hoje ? ' — hoje' : ''}
+                  </div>
+                  {doDia.length === 0 && (
+                    <div style={{ ...cartao, fontSize: 12, color: '#A8A29E', textAlign: 'center', padding: 18 }}>Nenhuma entrega prevista neste dia.</div>
+                  )}
+                  {doDia.map(c => <CardTrabalho key={c.id} c={c} />)}
+                  {semPrazoLista.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '10px 2px 8px' }}>Sem prazo definido</div>
+                      {semPrazoLista.map(c => <CardTrabalho key={c.id} c={c} />)}
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
+            {previsaoModo === 'lista' && (
             <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>
             {[...naoEntregues].sort((a, b) => String(a.prazo).localeCompare(String(b.prazo))).map(c => {
               const dias = c.prazo ? diasRestantes(c.prazo) : null;
@@ -1172,7 +1997,7 @@ function App({ dentista, email, prazoPagamento }) {
               const pct = total > 0 ? Math.round((feitas / total) * 100) : 0;
               const situacao = c.status === 'Pronto' ? 'Pronto — aguardando entrega' : comecou ? `Em produção • ${feitas} de ${total} etapas` : 'Na fila para começar';
               return (
-                <div key={c.id} style={{ ...cartao, cursor: 'pointer' }} onClick={() => setDetalhe(c)}>
+                <div key={c.id} style={{ ...cartao, cursor: 'pointer', borderLeft: `3px solid ${c.status === 'Pronto' ? VERDE : corE}` }} onClick={() => setDetalhe(c)}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800, fontSize: 15, color: INK }}>{c.paciente}</div>
@@ -1194,53 +2019,125 @@ function App({ dentista, email, prazoPagamento }) {
               );
             })}
             </div>
+            )}
           </>
         )}
         {aba === 'financeiro' && (
           <>
-            <div style={{ ...cartao, background: INK, border: 'none', padding: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#A8A29E', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Saldo a pagar</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: saldo > 0 ? GOLD : '#86EFAC', marginTop: 4 }}>{formatReais(Math.max(0, saldo))}</div>
-              {saldo < 0 && <div style={{ fontSize: 12, color: '#86EFAC', marginTop: 2 }}>Você tem {formatReais(-saldo)} de crédito</div>}
-              {prazoPagamento && (
-                <div style={{ marginTop: 12, background: 'rgba(184,147,90,0.15)', borderRadius: 10, padding: '9px 12px', fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
-                  Combinado de pagamento: {prazoPagamento}
+            {/* Cartão-herói do saldo: identidade da marca (preto + dourado + estrela em marca d'água) */}
+            <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 12, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+              <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', right: 14, bottom: 4, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={58} color={GOLD} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Estrela size={10} color={GOLD} />
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Financeiro</span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.55)', marginTop: 13 }}>Saldo a pagar</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: saldo > 0 ? GOLD : '#86EFAC', lineHeight: 1.15, textShadow: '0 8px 26px rgba(184,147,90,0.35)' }}>{formatReais(Math.max(0, saldo))}</div>
+              {saldo <= 0 && (
+                <div style={{ fontSize: 12, color: '#86EFAC', fontWeight: 700, marginTop: 2 }}>
+                  {saldo < 0 ? `Você tem ${formatReais(-saldo)} de crédito` : 'Tudo em dia com o laboratório ✓'}
                 </div>
               )}
+              {(prazoPagamento || diasPagamentoN !== null || dataPagamentoStr) && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: GOLD, fontWeight: 700 }}>
+                  <CalendarClock size={13} /> Combinado: {dataPagamentoStr ? `pagamento até ${formatDateBR(dataPagamentoStr)}` : diasPagamentoN !== null ? `pagar até ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : prazoPagamento}
+                </div>
+              )}
+              {totalVencido > 0 && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, marginLeft: 8, background: 'rgba(220,38,38,0.22)', border: '1px solid rgba(248,113,113,0.55)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: '#FCA5A5', fontWeight: 800 }}>
+                  ⚠️ {formatReais(totalVencido)} vencido
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                {[
+                  ['Em andamento', totalAndamento, '#F5A54A'],
+                  ['Entregues', totalEntregue, '#E0BC85'],
+                  ['Já pago', totalPago, '#4ADE80'],
+                ].map(([rot, val, cor]) => (
+                  <div key={rot} style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 4, background: cor, boxShadow: `0 0 6px ${cor}66`, flexShrink: 0 }} />
+                      <span style={{ fontSize: 8.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{rot}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: '#fff', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatReais(val)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
+            {/* Pagamento VENCIDO: bem explícito, em vermelho, até a baixa ser dada no laboratório */}
+            {totalVencido > 0 && (
+              <div style={{ position: 'relative', overflow: 'hidden', background: '#FEF1F1', border: '2px solid #F87171', borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 14px 34px -20px rgba(220,38,38,0.5)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 22, background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0, boxShadow: '0 8px 20px -8px rgba(220,38,38,0.8)' }}>⚠️</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#B42318' }}>Pagamento vencido</div>
+                    <div style={{ fontSize: 11.5, color: '#7F1D1D', marginTop: 2, lineHeight: 1.45 }}>
+                      {entregasVencidas.length === 1 ? '1 trabalho passou' : `${entregasVencidas.length} trabalhos passaram`} do combinado
+                      {dataPagamentoStr ? ` (pagamento até ${formatDateBR(dataPagamentoStr)})` : diasPagamentoN !== null ? ` de ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : ''}
+                      {vencidoDesde ? ` — desde ${formatDateBR(vencidoDesde)}` : ''}.
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#DC2626', flexShrink: 0 }}>{formatReais(totalVencido)}</div>
+                </div>
+                {info.chavePix && (
+                  <button onClick={() => copiar(gerarPixCopiaCola(info.chavePix, totalVencido), `Código Pix de ${formatReais(totalVencido)} copiado — cole no app do seu banco ✓`)}
+                    style={{ width: '100%', marginTop: 12, padding: 13, borderRadius: 13, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+                    Pagar o vencido agora — Pix de {formatReais(totalVencido)}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Pix: mesmo funcionamento de sempre (chave + código com valor exato), visual premium */}
             {info.chavePix && saldo > 0 && (
-              <div style={{ ...cartao, border: `2px solid ${VERDE}` }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginBottom: 8, letterSpacing: '0.02em' }}>Pagar com Pix</div>
-                <div style={{ fontSize: 12, color: '#57534E', marginBottom: 4 }}>Chave Pix do laboratório:</div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <div style={{ flex: 1, background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.chavePix}</div>
-                  <button onClick={() => copiar(info.chavePix, 'Chave Pix copiada ✓')} style={{ padding: '10px 14px', borderRadius: 10, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE }}>Copiar</button>
+              <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1.5px solid #E8C48A', borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 14px 34px -22px rgba(122,86,40,0.55)' }}>
+                <div style={{ position: 'absolute', right: -14, top: -16, opacity: 0.06, pointerEvents: 'none' }}><Estrela size={50} color={INK} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 21, background: 'linear-gradient(135deg, #DCF3E4, #A7E3BC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: INK }}>Pagar com Pix</div>
+                    <div style={{ fontSize: 11, color: '#78716C', marginTop: 1 }}>O código já vai com o valor exato preenchido</div>
+                  </div>
                 </div>
                 <button onClick={() => copiar(gerarPixCopiaCola(info.chavePix, Math.max(0, saldo)), `Código Pix de ${formatReais(saldo)} copiado — cole no app do seu banco ✓`)}
-                  style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>
-                  Copiar código Pix de {formatReais(Math.max(0, saldo))} (copia e cola)
+                  style={{ width: '100%', marginTop: 13, padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #22C55E, #15803D)', color: '#fff', fontWeight: 800, fontSize: 14.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 12px 26px -14px rgba(21,128,61,0.8)' }}>
+                  Copiar código Pix de {formatReais(Math.max(0, saldo))}
                 </button>
-                <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 8, lineHeight: 1.5 }}>
-                  Abra o app do seu banco → Pix → "Pix copia e cola" → cole o código — o valor já vai preenchido. Depois de pagar, o laboratório registra e seu saldo atualiza aqui.
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <div style={{ flex: 1, background: '#FAF9F7', border: '1px solid #E7E5E4', borderRadius: 11, padding: '9px 12px', fontSize: 12, fontWeight: 700, color: '#57534E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.chavePix}</div>
+                  <button onClick={() => copiar(info.chavePix, 'Chave Pix copiada ✓')} style={{ padding: '9px 14px', borderRadius: 11, border: `1px solid ${GOLD}`, background: 'transparent', color: '#7A6234', fontWeight: 800, fontSize: 11.5, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>Copiar chave</button>
+                </div>
+                <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 9, lineHeight: 1.5 }}>
+                  Abra o app do seu banco → Pix → "Pix copia e cola" → cole o código. Depois de pagar, o laboratório registra e seu saldo atualiza aqui.
                 </div>
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Em andamento</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#B54708', marginTop: 2 }}>{formatReais(totalAndamento)}</div>
+            {/* Extrato pro WhatsApp: o que entregou no mês e o que está em produção */}
+            <div style={{ ...cartao, position: 'relative', overflow: 'hidden', padding: 15, marginBottom: 12 }}>
+              <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Share2 size={15} color="#7A6234" />
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Extrato</span>
               </div>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Entregues</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: INK, marginTop: 2 }}>{formatReais(totalEntregue)}</div>
+              <div style={{ fontSize: 11.5, color: '#78716C', lineHeight: 1.5, marginBottom: 11 }}>
+                Veja os trabalhos e valores na tela — e, se quiser, compartilhe o PDF no WhatsApp pra combinar o que vai ser pago.
               </div>
-              <div style={{ ...cartao, flex: 1, marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>Já pago</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: VERDE, marginTop: 2 }}>{formatReais(totalPago)}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => abrirExtrato('mes')}
+                  style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                  <Estrela size={12} color={GOLD} /> Entregas do mês
+                </button>
+                <button onClick={() => abrirExtrato('producao')}
+                  style={{ flex: 1, padding: '12px 6px', borderRadius: 12, border: `1.5px solid ${GOLD}`, background: 'rgba(184,147,90,0.08)', color: '#7A6234', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+                  <Estrela size={12} color="#7A6234" /> Em produção
+                </button>
               </div>
             </div>
+
+            <GraficoFinanceiro meses={mesesOrdenados} formatReais={formatReais} nomeMes={nomeMes} />
             {/* Relatório mensal: cada mês fechado com o que foi feito e o que foi pago */}
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Relatório mensal</div>
             {mesesOrdenados.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E', marginBottom: 10 }}>Assim que houver entregas, cada mês aparece aqui com o total feito e o total pago.</div>}
@@ -1298,15 +2195,25 @@ function App({ dentista, email, prazoPagamento }) {
 
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '8px 2px 8px' }}>Entregas e valores</div>
             {todasEntregas.length === 0 && <div style={{ fontSize: 12, color: '#A8A29E' }}>Nenhum trabalho entregue ainda.</div>}
-            {todasEntregas.slice(0, 30).map(c => (
-              <div key={c.id} style={{ ...cartao, display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{c.paciente}</div>
-                  <div style={{ fontSize: 11, color: '#A8A29E' }}>{c.tipoTrabalho}{c.dataSaida ? ` • ${formatDateBR(c.dataSaida)}` : ''}</div>
+            {todasEntregas.slice(0, 30).map(c => {
+              const sp = situacaoPag[c.id];
+              const vencido = sp && !sp.pago && sp.vence && sp.diasV < 0;
+              let pill = null;
+              if (sp && sp.pago) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '3px 9px' }}>pago ✓</span>;
+              else if (vencido) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: '#DC2626', borderRadius: 999, padding: '3px 9px' }}>VENCIDO {-sp.diasV === 1 ? 'há 1 dia' : `há ${-sp.diasV} dias`}</span>;
+              else if (sp && sp.vence && sp.diasV === 0) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: '#E07C1F', borderRadius: 999, padding: '3px 9px' }}>vence hoje</span>;
+              else if (sp && sp.vence) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#7A6234', background: 'rgba(184,147,90,0.16)', borderRadius: 999, padding: '3px 9px' }}>vence {formatDateBR(sp.vence)}</span>;
+              return (
+                <div key={c.id} style={{ ...cartao, display: 'flex', alignItems: 'center', gap: 10, padding: 12, ...(vencido ? { border: '1.5px solid #FCA5A5', background: '#FEF7F7' } : {}) }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{c.paciente}</div>
+                    <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{c.tipoTrabalho}{c.dataSaida ? ` • ${formatDateBR(c.dataSaida)}` : ''}</div>
+                    {pill && <div style={{ marginTop: 5 }}>{pill}</div>}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: vencido ? '#DC2626' : (c.valor > 0 ? '#166B3A' : '#A8A29E'), flexShrink: 0 }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: c.valor > 0 ? '#166B3A' : '#A8A29E' }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
-              </div>
-            ))}
+              );
+            })}
             <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 8, lineHeight: 1.5, textAlign: 'center' }}>
               Valores conforme registrado pelo Laboratório Special. Dúvidas? Fale com o laboratório.
             </div>
@@ -1315,12 +2222,49 @@ function App({ dentista, email, prazoPagamento }) {
       </div>
 
       <PuxarAtualizar aoAtualizar={recarregarInfo} />
-      {iaAberta && <IASpecial aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
+      {iaAberta && <IASpecial dentista={dentista} aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
+      {perguntasAbertas && <PerguntasIA dentista={dentista} aoFechar={() => setPerguntasAbertas(false)} aoAvisar={mostrarToast} />}
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
+
+      {/* Visor do extrato: vê os trabalhos e valores na tela; compartilhar é opcional */}
+      {extratoVer && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 8800, background: '#141311', display: 'flex', flexDirection: 'column', fontFamily: FONTE }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: 'calc(12px + env(safe-area-inset-top)) 14px 10px' }}>
+            <Estrela size={11} color={GOLD} />
+            <span style={{ flex: 1, minWidth: 0, color: '#fff', fontSize: 14.5, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{extratoVer.titulo}</span>
+            <button onClick={() => setExtratoVer(null)} style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>×</button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 10px', WebkitOverflowScrolling: 'touch' }}>
+            <img src={extratoVer.img} alt={extratoVer.titulo} style={{ display: 'block', width: '100%', maxWidth: 560, margin: '0 auto', borderRadius: 16, boxShadow: '0 20px 50px -20px rgba(0,0,0,0.8)' }} />
+          </div>
+          <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))', display: 'flex', gap: 8 }}>
+            <button onClick={compartilharExtratoAberto}
+              style={{ flex: 1, padding: 15, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 14.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 12px 26px -14px rgba(184,147,90,0.9)' }}>
+              <Share2 size={16} /> Compartilhar PDF
+            </button>
+            <button onClick={() => setExtratoVer(null)}
+              style={{ padding: '15px 18px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={{ position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, background: INK, color: '#fff', borderRadius: 14, padding: '12px 18px', fontSize: 13, fontWeight: 700, boxShadow: '0 14px 34px rgba(0,0,0,0.35)', maxWidth: '90%', fontFamily: FONTE }}>
           {toast}
+        </div>
+      )}
+
+      {pushBloqueado && (
+        <div style={{ position: 'fixed', top: 'calc(8px + env(safe-area-inset-top))', left: 12, right: 12, zIndex: 9500, background: '#B3261E', color: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 14px 34px rgba(0,0,0,0.35)', fontFamily: FONTE, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.35, flex: 1 }}>
+            As notificações estão desligadas no iPhone. Abra Ajustes → Notificações → Special Clinic e ative os avisos.
+          </div>
+          <button onClick={() => setPushBloqueado(false)}
+            style={{ border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', borderRadius: 10, padding: '8px 12px', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>
+            OK
+          </button>
         </div>
       )}
 
@@ -1335,10 +2279,99 @@ function App({ dentista, email, prazoPagamento }) {
   );
 }
 
+// ─── Visor de imagem em tela cheia: pinça para zoom, arrastar, girar e compartilhar ───
+function VisorImagem({ nome, src, aoFechar, aoAvisar }) {
+  const [t, setT] = useState({ escala: 1, rot: 0, x: 0, y: 0 });
+  const gesto = useRef({ modo: null, ultimoToque: 0 });
+  useGestoVoltar(aoFechar);
+
+  const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const aoIniciar = (e) => {
+    if (e.touches.length === 2) {
+      gesto.current = { ...gesto.current, modo: 'pinca', d0: dist(e.touches), escala0: t.escala };
+    } else if (e.touches.length === 1) {
+      gesto.current = { ...gesto.current, modo: 'arrasto', x0: e.touches[0].clientX, y0: e.touches[0].clientY, tx0: t.x, ty0: t.y };
+    }
+  };
+  const aoMover = (e) => {
+    const g = gesto.current;
+    if (g.modo === 'pinca' && e.touches.length === 2) {
+      const esc = Math.max(1, Math.min(6, g.escala0 * (dist(e.touches) / g.d0)));
+      setT(v => ({ ...v, escala: esc }));
+    } else if (g.modo === 'arrasto' && e.touches.length === 1) {
+      setT(v => ({ ...v, x: g.tx0 + (e.touches[0].clientX - g.x0), y: g.ty0 + (e.touches[0].clientY - g.y0) }));
+    }
+  };
+  const aoSoltar = () => {
+    const agora = Date.now();
+    if (gesto.current.modo === 'arrasto') {
+      const g = gesto.current;
+      const moveu = Math.hypot(t.x - g.tx0, t.y - g.ty0) > 8;
+      if (!moveu) {
+        // toque duplo: alterna zoom 1x ↔ 2.5x
+        if (agora - gesto.current.ultimoToque < 300) {
+          setT(v => v.escala > 1 ? { ...v, escala: 1, x: 0, y: 0 } : { ...v, escala: 2.5 });
+        }
+        gesto.current.ultimoToque = agora;
+      }
+    }
+    gesto.current.modo = null;
+  };
+
+  const compartilhar = async () => {
+    try {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      const file = new File([blob], nome || 'foto.jpg', { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: nome });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = nome || 'foto.jpg';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch (e) { if (e && e.name !== 'AbortError' && aoAvisar) aoAvisar('Não consegui compartilhar esta foto.'); }
+  };
+
+  const btnRedondo = { width: 46, height: 46, borderRadius: 23, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(30,28,25,0.85)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTE };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: '#0D0C0B', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: FONTE }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', touchAction: 'none' }}
+        onTouchStart={aoIniciar} onTouchMove={aoMover} onTouchEnd={aoSoltar}
+        onWheel={(e) => setT(v => ({ ...v, escala: Math.max(1, Math.min(6, v.escala - e.deltaY / 400)) }))}
+        onDoubleClick={() => setT(v => v.escala > 1 ? { ...v, escala: 1, x: 0, y: 0 } : { ...v, escala: 2.5 })}>
+        <img src={src} alt={nome} draggable={false}
+          style={{ maxWidth: '100vw', maxHeight: '100vh', transform: `translate(${t.x}px, ${t.y}px) scale(${t.escala}) rotate(${t.rot}deg)`, transition: gesto.current.modo ? 'none' : 'transform 0.18s ease', userSelect: 'none' }} />
+      </div>
+      {/* topo: nome + fechar */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', paddingTop: 'calc(10px + env(safe-area-inset-top))', background: 'linear-gradient(180deg, rgba(0,0,0,0.7), transparent)' }}>
+        <Estrela size={11} color={GOLD} />
+        <span style={{ flex: 1, minWidth: 0, color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+        <button onClick={aoFechar} style={{ ...btnRedondo, width: 38, height: 38, fontSize: 17, fontWeight: 800 }}>×</button>
+      </div>
+      {/* rodapé: girar, ajustar, compartilhar */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '14px 12px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))', background: 'linear-gradient(0deg, rgba(0,0,0,0.7), transparent)' }}>
+        <button onClick={() => setT(v => ({ ...v, rot: (v.rot + 90) % 360 }))} title="Girar" style={btnRedondo}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v6h-6" /></svg>
+        </button>
+        <button onClick={() => setT({ escala: 1, rot: 0, x: 0, y: 0 })} title="Ajustar" style={{ ...btnRedondo, width: 'auto', padding: '0 18px', fontSize: 12.5, fontWeight: 800, color: GOLD }}>Ajustar</button>
+        <button onClick={compartilhar} title="Compartilhar" style={btnRedondo}>
+          <Share2 size={18} color="#fff" />
+        </button>
+      </div>
+      <div style={{ position: 'absolute', bottom: 'calc(78px + env(safe-area-inset-bottom))', left: 0, right: 0, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, pointerEvents: 'none' }}>
+        pinça para zoom • arraste para mover • toque duplo amplia
+      </div>
+    </div>
+  );
+}
+
 function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const [imagens, setImagens] = useState({});
   const [videoAberto, setVideoAberto] = useState(null);
   const [stlAberto, setStlAberto] = useState(null);
+  const [fotoAberta, setFotoAberta] = useState(null); // visor de imagem em tela cheia
+  const [baixando, setBaixando] = useState(null); // id do anexo sendo carregado
   const [editando, setEditando] = useState(false);
   const semPrefixoQtd = (t) => String(t || '').replace(/^Quantidade: \d+ unidades?\. ?/, '');
   const [pacE, setPacE] = useState(caso.paciente);
@@ -1346,6 +2379,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   // Itens do trabalho em edição (trabalhos antigos sem lista viram 1 item com o tipo atual)
   const itensDoCaso = () => ((caso.itens && caso.itens.length) ? caso.itens : [{ nome: caso.tipoTrabalho, quantidade: caso.quantidade || 1 }]).map(i => ({ nome: i.nome, quantidade: i.quantidade || 1 }));
   const [itensE, setItensE] = useState(itensDoCaso);
+  const [dentesE, setDentesE] = useState(caso.dentes || []);
+  const [gengivaE, setGengivaE] = useState(caso.gengiva || []);
   const [tipoAdd, setTipoAdd] = useState('');
   const [qtdAdd, setQtdAdd] = useState(1);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
@@ -1368,6 +2403,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     pacE !== caso.paciente
     || obsE !== semPrefixoQtd(caso.observacoes)
     || JSON.stringify(itensE) !== JSON.stringify(itensDoCaso())
+    || JSON.stringify(dentesE) !== JSON.stringify(caso.dentes || [])
+    || JSON.stringify(gengivaE) !== JSON.stringify(caso.gengiva || [])
   );
   const tentarFechar = () => {
     if (alterouAlgo) setAvisoSalvar(true);
@@ -1378,8 +2415,9 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     else setEditando(false);
   };
 
-  // Deslizar da borda esquerda: fecha o 3D/vídeo aberto ou o detalhe (respeitando a trava de salvar)
+  // Deslizar da borda esquerda: fecha o visor/3D/vídeo aberto ou o detalhe (respeitando a trava de salvar)
   useGestoVoltar(() => {
+    if (fotoAberta) { setFotoAberta(null); return; }
     if (stlAberto) { setStlAberto(null); return; }
     if (videoAberto) { setVideoAberto(null); return; }
     tentarFechar();
@@ -1389,6 +2427,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     setPacE(caso.paciente);
     setObsE(semPrefixoQtd(caso.observacoes));
     setItensE(itensDoCaso());
+    setDentesE(caso.dentes || []);
+    setGengivaE(caso.gengiva || []);
     setTipoAdd('');
     setQtdAdd(1);
     setConfirmandoExclusao(false);
@@ -1428,6 +2468,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       const patch = {
         paciente: pacE.trim(),
         observacoes: (umSo && itensFinal[0].quantidade > 1 ? `Quantidade: ${itensFinal[0].quantidade} unidades. ` : '') + obsE.trim(),
+        dentes: dentesE, gengiva: gengivaE,
         dataHora: new Date().toISOString(),
       };
       if (mudouItens) {
@@ -1544,35 +2585,47 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   const abrirAnexo = async (a) => {
     const ehVideo = String(a.mime || '').startsWith('video');
     const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
+    const ehImagem = String(a.mime || '').startsWith('image');
     // Formato novo: o anexo já tem o link direto do armazém — abre na hora, sem baixar antes
     if (a.url) {
       if (ehVideo) { setVideoAberto({ nome: a.nome, dataURL: a.url }); return; }
       if (ehSTL) { setStlAberto({ nome: a.nome, url: a.url }); return; }
-      setImagens(m => ({ ...m, [a.id]: m[a.id] ? null : a.url }));
+      if (ehImagem) { setFotoAberta({ nome: a.nome, src: a.url }); return; }
+      // Documento: baixa/abre direto
+      const abre = document.createElement('a');
+      abre.href = a.url; abre.download = a.nome; abre.target = '_blank'; abre.rel = 'noopener';
+      document.body.appendChild(abre); abre.click(); document.body.removeChild(abre);
       return;
     }
-    if (ehVideo) {
-      // Vídeo abre no reprodutor em tela cheia
+    // Formato antigo (guardado no banco): baixa e abre
+    setBaixando(a.id);
+    try {
+      if (ehVideo) {
+        const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
+        if (dataURL) {
+          setImagens(m => ({ ...m, [a.id]: dataURL }));
+          setVideoAberto({ nome: a.nome, dataURL });
+        }
+        return;
+      }
+      if (ehSTL) {
+        // STL abre o visualizador 3D NA HORA; o arquivo baixa com o "carregando" já na tela
+        setStlAberto({ nome: a.nome, dataURL: imagens[a.id] || null });
+        if (!imagens[a.id]) {
+          const dataURL = ((await lerAnexo(a.id)) || {}).dataURL;
+          if (dataURL) setStlAberto(s => s ? { nome: a.nome, dataURL } : s);
+          else setStlAberto(null);
+        }
+        return;
+      }
       const dataURL = imagens[a.id] || (await lerAnexo(a.id) || {}).dataURL;
-      if (dataURL) {
-        setImagens(m => ({ ...m, [a.id]: dataURL }));
-        setVideoAberto({ nome: a.nome, dataURL });
-      }
-      return;
-    }
-    if (ehSTL) {
-      // STL abre o visualizador 3D NA HORA; o arquivo baixa com o "carregando" já na tela
-      setStlAberto({ nome: a.nome, dataURL: imagens[a.id] || null });
-      if (!imagens[a.id]) {
-        const dataURL = ((await lerAnexo(a.id)) || {}).dataURL;
-        if (dataURL) setStlAberto(s => s ? { nome: a.nome, dataURL } : s);
-        else setStlAberto(null);
-      }
-      return;
-    }
-    if (imagens[a.id]) { setImagens(m => ({ ...m, [a.id]: null })); return; }
-    const dados = await lerAnexo(a.id);
-    if (dados && dados.dataURL) setImagens(m => ({ ...m, [a.id]: dados.dataURL }));
+      if (!dataURL) return;
+      setImagens(m => ({ ...m, [a.id]: dataURL }));
+      if (ehImagem) { setFotoAberta({ nome: a.nome, src: dataURL }); return; }
+      const abre = document.createElement('a');
+      abre.href = dataURL; abre.download = a.nome;
+      document.body.appendChild(abre); abre.click(); document.body.removeChild(abre);
+    } finally { setBaixando(null); }
   };
 
   // Dentista aprova um arquivo que o laboratório pediu p/ avaliar — o lab é avisado
@@ -1601,21 +2654,47 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       <div style={{ background: '#F5F4F0', borderRadius: (typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1024px)').matches) ? 22 : '22px 22px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 30px' }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 44, height: 4, borderRadius: 2, background: '#D6D3D1', margin: '0 auto 16px' }} />
         {!editando ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 19, color: INK }}>{caso.paciente}</div>
-              <div style={{ fontSize: 13, color: '#78716C', marginTop: 2 }}>
-                {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
-              </div>
+          <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '17px 16px 15px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 16px 38px -20px rgba(28,27,25,0.6)' }}>
+            <div style={{ position: 'absolute', top: -60, right: -60, width: 180, height: 180, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', right: 12, bottom: 2, opacity: 0.08, pointerEvents: 'none' }}><Estrela size={44} color={GOLD} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Estrela size={9} color={GOLD} />
+              <span style={{ flex: 1, fontSize: 9.5, fontWeight: 800, color: GOLD, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Paciente</span>
+              <EtiquetaStatus status={caso.status} discreta />
             </div>
-            <EtiquetaStatus status={caso.status} discreta />
-            <button onClick={iniciarEdicao} style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 10, padding: '7px 12px', fontSize: 12, fontWeight: 800, color: INK, cursor: 'pointer', fontFamily: FONTE }}>✏️ Editar</button>
+            <div style={{ fontWeight: 800, fontSize: 21, color: '#fff', marginTop: 8, lineHeight: 1.2 }}>{caso.paciente}</div>
+            <div style={{ fontSize: 12.5, color: GOLD, fontWeight: 700, marginTop: 3 }}>
+              {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
+            </div>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(String(caso.id)); aoAvisar && aoAvisar('ID do trabalho copiado ✓'); } catch (e) { } }}
+              title="Copiar ID"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 11px', fontSize: 10, color: GOLD, fontWeight: 800, cursor: 'pointer', fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.05em' }}>
+              ID {String(caso.id).toUpperCase()} ⧉
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+              {caso.prazo && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '6px 11px', fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>
+                  <CalendarClock size={12} color={GOLD} /> entrega {formatDateBR(caso.prazo)}
+                </span>
+              )}
+              {caso.valor > 0 && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '6px 11px', fontSize: 11, color: GOLD, fontWeight: 800 }}>
+                  {formatReaisG(caso.valor)}
+                </span>
+              )}
+              <span style={{ flex: 1 }} />
+              <button onClick={iniciarEdicao} style={{ background: 'transparent', border: `1.5px solid ${GOLD}`, borderRadius: 11, padding: '7px 13px', fontSize: 11.5, fontWeight: 800, color: GOLD, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>✏️ Editar</button>
+            </div>
           </div>
         ) : (
-          <div style={{ background: '#fff', border: `2px solid ${GOLD}`, borderRadius: 16, padding: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#7A6234', marginBottom: 10 }}>✏️ EDITANDO ORDEM DE TRABALHO</div>
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1.5px solid #E8C48A', borderRadius: 18, padding: 15, boxShadow: '0 14px 34px -22px rgba(122,86,40,0.55)' }}>
+            <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 13, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>✏️</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Editando trabalho</span>
+            </div>
             <input value={pacE} onChange={e => setPacE(e.target.value)} placeholder="Nome do paciente"
-              style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', marginBottom: 10 }} />
+              style={{ width: '100%', padding: '12px 13px', borderRadius: 12, border: '1px solid #EEECE7', background: '#FAF9F7', fontSize: 14.5, fontWeight: 700, fontFamily: FONTE, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }} />
             <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Itens do trabalho</div>
             {caso.origem === 'clinica' && caso.status === 'Em Produção' && (
               <select value={tipoAdd} onChange={e => setTipoAdd(e.target.value)}
@@ -1653,14 +2732,19 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
             {(() => {
               const total = itensE.reduce((s, i) => s + unitDoItem(i.nome) * i.quantidade, 0);
               return total > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: INK, borderRadius: 11, padding: '11px 13px', marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700 }}>VALOR TOTAL</span>
+                <div style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 10 }}>
+                  <div style={{ position: 'absolute', right: 40, top: -8, opacity: 0.1, pointerEvents: 'none' }}><Estrela size={30} color={GOLD} /></div>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL</span>
                   <span style={{ fontSize: 16, fontWeight: 800, color: GOLD }}>{formatReaisG(total)}</span>
                 </div>
               ) : (
                 <div style={{ fontSize: 11, color: '#A8A29E', marginBottom: 10 }}>Valor a combinar com o laboratório.</div>
               );
             })()}
+            <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '2px 0 6px' }}>Dentes do trabalho</div>
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '10px 10px 8px', marginBottom: 10 }}>
+              <Odontograma dentes={dentesE} gengiva={gengivaE} aoMudar={({ dentes: d, gengiva: g }) => { setDentesE(d); setGengivaE(g); }} />
+            </div>
             <textarea value={obsE} onChange={e => setObsE(e.target.value)} placeholder="Observações..."
               style={{ width: '100%', minHeight: 70, padding: '11px 13px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', resize: 'vertical', marginBottom: 10 }} />
             <div style={{ display: 'flex', gap: 8 }}>
@@ -1733,41 +2817,83 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         )}
 
         {(caso.anexos || []).length > 0 && (
-          <div style={{ background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4' }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Arquivos e fotos</div>
-            {caso.anexos.map(a => {
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', borderRadius: 18, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4', boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' }}>
+            <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={48} color={INK} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: INK, letterSpacing: '0.04em' }}>Arquivos e fotos</span>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 999, padding: '2px 8px' }}>{caso.anexos.length}</span>
+            </div>
+
+            {/* Pedidos de aprovação em destaque */}
+            {caso.anexos.filter(a => a.aprovacao?.status === 'pendente').map(a => {
               const ehVideo = String(a.mime || '').startsWith('video');
               const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
               return (
-                <div key={a.id} style={{ marginBottom: 8 }}>
-                  <button onClick={() => abrirAnexo(a)} style={{ width: '100%', textAlign: 'left', background: a.aprovacao?.status === 'pendente' ? '#FDF6EC' : '#FAF9F7', border: a.aprovacao?.status === 'pendente' ? '1.5px solid #E8C48A' : '1px solid #E7E5E4', borderRadius: 12, padding: '10px 12px', fontSize: 13, fontWeight: 700, color: INK, cursor: 'pointer', fontFamily: FONTE }}>
-                    {ehVideo ? '🎥' : (ehSTL ? '🦷' : '📎')} {a.nome} {ehVideo ? <span style={{ color: GOLD }}>▶ tocar</span> : (ehSTL ? <span style={{ color: GOLD }}>ver em 3D</span> : (imagens[a.id] ? '▲' : '▼'))}
-                  </button>
-                  {a.aprovacao?.status === 'pendente' && (
-                    <div style={{ background: '#FDF6EC', border: '1px solid #E8C48A', borderRadius: 12, padding: '10px 12px', marginTop: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#7A6234', marginBottom: 8 }}>👍 O laboratório pediu sua aprovação deste arquivo. Abra, confira e aprove:</div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => abrirAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
-                          {ehSTL ? 'Ver em 3D' : (ehVideo ? 'Ver o vídeo' : 'Abrir')}
-                        </button>
-                        <button onClick={() => aprovarAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
-                          ✓ Aprovar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {a.aprovacao?.status === 'aprovado' && (
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#166B3A', marginTop: 5 }}>✓ Você aprovou este arquivo{a.aprovacao.respondidaEm ? ` em ${formatDateBR(a.aprovacao.respondidaEm)}` : ''}</div>
-                  )}
-                  {imagens[a.id] && String(a.mime || '').startsWith('image') && (
-                    <img src={imagens[a.id]} alt={a.nome} style={{ width: '100%', borderRadius: 12, marginTop: 8 }} />
-                  )}
-                  {imagens[a.id] && !String(a.mime || '').startsWith('image') && !ehVideo && (
-                    <a href={imagens[a.id]} download={a.nome} style={{ display: 'block', marginTop: 8, fontSize: 13, color: GOLD, fontWeight: 700 }}>⬇ Baixar arquivo</a>
-                  )}
+                <div key={'ap-' + a.id} style={{ background: '#FDF6EC', border: '1.5px solid #E8C48A', borderRadius: 14, padding: '11px 12px', marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#7A6234', marginBottom: 8 }}>👍 O laboratório pediu sua aprovação: <b>{a.nome}</b></div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => abrirAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: '1px solid #E8C48A', background: '#fff', color: INK, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                      {ehSTL ? 'Ver em 3D' : (ehVideo ? 'Ver o vídeo' : 'Abrir')}
+                    </button>
+                    <button onClick={() => aprovarAnexo(a)} style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: VERDE, color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE }}>
+                      ✓ Aprovar
+                    </button>
+                  </div>
                 </div>
               );
             })}
+
+            {/* Grade de miniaturas: foto mostra a foto; vídeo, 3D e documento com cartões próprios */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {caso.anexos.map(a => {
+                const ehVideo = String(a.mime || '').startsWith('video');
+                const ehSTL = String(a.nome || '').toLowerCase().endsWith('.stl');
+                const ehImagem = String(a.mime || '').startsWith('image');
+                const miniatura = ehImagem ? (a.url || imagens[a.id]) : null;
+                const aprovado = a.aprovacao?.status === 'aprovado';
+                const pendente = a.aprovacao?.status === 'pendente';
+                return (
+                  <button key={a.id} onClick={() => abrirAnexo(a)}
+                    style={{ position: 'relative', aspectRatio: '1', borderRadius: 14, overflow: 'hidden', border: pendente ? '2px solid #E8C48A' : '1px solid #E7E5E4', background: ehVideo ? '#1C1B19' : (ehSTL ? '#F6EEDD' : '#FAF9F7'), cursor: 'pointer', padding: 0, fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                    {miniatura ? (
+                      <img src={miniatura} alt={a.nome} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 26 }}>{ehVideo ? '🎥' : ehSTL ? '🦷' : ehImagem ? '🖼' : '📄'}</span>
+                        <span style={{ fontSize: 8.5, fontWeight: 700, color: ehVideo ? 'rgba(255,255,255,0.7)' : '#78716C', maxWidth: '86%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
+                      </>
+                    )}
+                    {(ehVideo || ehSTL) && (
+                      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ width: 36, height: 36, borderRadius: 18, background: ehVideo ? 'rgba(255,255,255,0.92)' : 'rgba(28,27,25,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: ehVideo ? 14 : 9.5, fontWeight: 800, color: ehVideo ? INK : GOLD, boxShadow: '0 6px 16px rgba(0,0,0,0.3)' }}>
+                          {ehVideo ? '▶' : '3D'}
+                        </span>
+                      </span>
+                    )}
+                    {miniatura && (
+                      <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 6px 5px', background: 'linear-gradient(0deg, rgba(0,0,0,0.55), transparent)', fontSize: 8.5, fontWeight: 700, color: 'rgba(255,255,255,0.9)', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</span>
+                    )}
+                    {aprovado && (
+                      <span style={{ position: 'absolute', top: 5, right: 5, width: 20, height: 20, borderRadius: 10, background: VERDE, color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.25)' }}>✓</span>
+                    )}
+                    {pendente && (
+                      <span style={{ position: 'absolute', top: 5, right: 5, fontSize: 13 }}>👍</span>
+                    )}
+                    {baixando === a.id && (
+                      <span style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#7A6234' }}>abrindo...</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 10, textAlign: 'center' }}>Toque na foto para ampliar • no vídeo para assistir • no 3D para girar a peça</div>
+          </div>
+        )}
+
+        {(((caso.dentes || []).length > 0) || ((caso.gengiva || []).length > 0)) && (
+          <div style={{ background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>🦷 Dentes do trabalho</div>
+            <Odontograma dentes={caso.dentes || []} gengiva={caso.gengiva || []} />
           </div>
         )}
 
@@ -1819,6 +2945,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
           </div>
         )}
 
+        {fotoAberta && <VisorImagem nome={fotoAberta.nome} src={fotoAberta.src} aoFechar={() => setFotoAberta(null)} aoAvisar={aoAvisar} />}
         {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} url={stlAberto.url} onFechar={() => setStlAberto(null)} />}
         {videoAberto && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'black', display: 'flex', flexDirection: 'column' }} onClick={() => setVideoAberto(null)}>
@@ -1958,6 +3085,187 @@ function desenharListaEnvios({ dentista, casos }) {
   return cv.toDataURL('image/jpeg', 0.92);
 }
 
+// Extrato financeiro (entregas do mês ou trabalhos em produção) — imagem que vira PDF
+// pra mandar no WhatsApp e combinar o pagamento com o laboratório.
+// Visual da marca: preto + dourado, estrela desenhada, linhas finas — sem caixinhas.
+function desenharExtrato({ dentista, titulo, subtitulo, linhas, total, rodape }) {
+  const W = 1080, PAD = 72, LINHA = 124, CAB = 268;
+  const H = CAB + 46 + linhas.length * LINHA + 40 + 128 + 96;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const F = "-apple-system, 'Segoe UI', Roboto, sans-serif";
+  const caber = (txt, max) => { let t = String(txt || ''); while (ctx.measureText(t).width > max && t.length > 3) t = t.slice(0, -2); return t.length === String(txt || '').length ? t : t + '…'; };
+  const reais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
+  const estrela = new Path2D('M0,-55 C4,-17 17,-4 46,0 C17,4 4,17 0,55 C-4,17 -17,4 -46,0 C-17,-4 -4,-17 0,-55 Z');
+  const cartao = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+  // Fundo creme suave
+  ctx.fillStyle = '#F7F5F1'; ctx.fillRect(0, 0, W, H);
+  // Cabeçalho preto com a estrela da marca em marca d'água
+  const grad = ctx.createLinearGradient(0, 0, W, CAB);
+  grad.addColorStop(0, '#24221E'); grad.addColorStop(0.55, '#1C1B19'); grad.addColorStop(1, '#2B2620');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, CAB);
+  ctx.save();
+  ctx.translate(W - 130, CAB - 30);
+  ctx.scale(1.9, 1.9);
+  ctx.globalAlpha = 0.09;
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  // Estrela pequena + nome da marca espaçadinho
+  ctx.save();
+  ctx.translate(PAD + 12, 78);
+  ctx.scale(0.30, 0.30);
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#B8935A'; ctx.font = `800 24px ${F}`;
+  ctx.fillText('L A B O R A T Ó R I O   S P E C I A L', PAD + 44, 80);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#FFFFFF'; ctx.font = `300 56px ${F}`;
+  ctx.fillText(caber(titulo, W - PAD * 2), PAD, 164);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `600 26px ${F}`;
+  ctx.fillText(caber(`${subtitulo}  •  ${dentista}`, W - PAD * 2), PAD, 212);
+  // Fio dourado separando o cabeçalho
+  const fio = ctx.createLinearGradient(0, 0, W, 0);
+  fio.addColorStop(0, 'rgba(184,147,90,0)'); fio.addColorStop(0.5, '#B8935A'); fio.addColorStop(1, 'rgba(184,147,90,0)');
+  ctx.fillStyle = fio; ctx.fillRect(0, CAB - 3, W, 3);
+  // Lista: linhas finas, número dourado, valor à direita
+  let y = CAB + 46;
+  linhas.forEach((l, i) => {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#B8935A'; ctx.font = `800 22px ${F}`;
+    ctx.fillText(String(i + 1).padStart(2, '0'), PAD, y + 44);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#1C1B19'; ctx.font = `800 31px ${F}`;
+    const vTxt = l.valor > 0 ? reais(l.valor) : 'a combinar';
+    if (l.valor > 0) ctx.fillText(vTxt, W - PAD, y + 48);
+    else { ctx.fillStyle = '#A8A29E'; ctx.font = `600 25px ${F}`; ctx.fillText(vTxt, W - PAD, y + 46); }
+    const wValor = ctx.measureText(vTxt).width;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#1C1B19'; ctx.font = `700 32px ${F}`;
+    ctx.fillText(caber(l.titulo, W - PAD * 2 - 66 - wValor - 34), PAD + 66, y + 46);
+    ctx.fillStyle = '#8A8580'; ctx.font = `500 24px ${F}`;
+    ctx.fillText(caber(l.sub, W - PAD * 2 - 66 - wValor - 34), PAD + 66, y + 84);
+    if (i < linhas.length - 1) { ctx.fillStyle = '#E7E2D8'; ctx.fillRect(PAD, y + LINHA - 18, W - PAD * 2, 1.5); }
+    y += LINHA;
+  });
+  // Total: faixa preta com fio dourado e valor em destaque
+  y += 22;
+  cartao(PAD - 16, y, W - (PAD - 16) * 2, 128, 20);
+  ctx.fillStyle = '#1C1B19'; ctx.fill();
+  ctx.strokeStyle = 'rgba(184,147,90,0.55)'; ctx.lineWidth = 2;
+  cartao(PAD - 16, y, W - (PAD - 16) * 2, 128, 20); ctx.stroke();
+  ctx.save();
+  ctx.translate(PAD + 16, y + 64);
+  ctx.scale(0.22, 0.22);
+  ctx.fillStyle = '#B8935A';
+  ctx.fill(estrela);
+  ctx.restore();
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = `800 23px ${F}`;
+  ctx.fillText(`TOTAL  •  ${linhas.length} ${linhas.length === 1 ? 'TRABALHO' : 'TRABALHOS'}`, PAD + 46, y + 64);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#E8C48A'; ctx.font = `800 52px ${F}`;
+  ctx.fillText(reais(total), W - PAD - 12, y + 66);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  // Rodapé discreto, centralizado
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8A8580'; ctx.font = `600 22px ${F}`;
+  ctx.fillText(caber(rodape, W - PAD * 2), W / 2, y + 128 + 58);
+  ctx.textAlign = 'left';
+  return cv.toDataURL('image/jpeg', 0.92);
+}
+
+// ─── Odontograma: arcada com a numeração FDI (11-18, 21-28, 31-38, 41-48).
+// O dentista toca nos dentes do trabalho (dourado) e pode marcar gengiva (anel rosa).
+const ODONTO_SUP = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+const ODONTO_INF = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+const ROSA_GENGIVA = '#D96B8F';
+
+function dentesDoArco(lista, cx, cy, rx, ry, baixo) {
+  return lista.map((num, i) => {
+    const t = ((168 - i * (156 / (lista.length - 1))) * Math.PI) / 180;
+    return { num, x: cx + rx * Math.cos(t), y: baixo ? cy + ry * Math.sin(t) : cy - ry * Math.sin(t) };
+  });
+}
+
+function Odontograma({ dentes = [], gengiva = [], aoMudar }) {
+  const [modo, setModo] = useState('dente');
+  const interativo = !!aoMudar;
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  const tocar = (num) => {
+    if (!interativo) return;
+    if (modo === 'dente') {
+      const tem = dentes.includes(num);
+      aoMudar({ dentes: tem ? dentes.filter(d => d !== num) : [...dentes, num].sort((a, b) => a - b), gengiva });
+    } else {
+      const tem = gengiva.includes(num);
+      aoMudar({ dentes, gengiva: tem ? gengiva.filter(d => d !== num) : [...gengiva, num].sort((a, b) => a - b) });
+    }
+  };
+  const chip = (ativo, cor, corFundo) => ({ flex: 1, padding: '9px 6px', borderRadius: 11, fontFamily: FONTE, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: ativo ? `1.5px solid ${cor}` : '1px solid #E7E5E4', background: ativo ? corFundo : '#FAF9F7', color: ativo ? cor : '#78716C' });
+  return (
+    <div>
+      {interativo && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <button onClick={() => setModo('dente')} style={chip(modo === 'dente', '#7A6234', 'rgba(184,147,90,0.14)')}>
+            <span style={{ width: 12, height: 12, borderRadius: 6, background: GOLD, flexShrink: 0 }} /> Dentes
+          </button>
+          <button onClick={() => setModo('gengiva')} style={chip(modo === 'gengiva', ROSA_GENGIVA, 'rgba(217,107,143,0.1)')}>
+            <span style={{ width: 12, height: 12, borderRadius: 6, border: `2.5px solid ${ROSA_GENGIVA}`, boxSizing: 'border-box', flexShrink: 0 }} /> Gengiva
+          </button>
+        </div>
+      )}
+      <svg viewBox="0 0 340 402" style={{ width: '100%', display: 'block', touchAction: 'manipulation' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num} onClick={() => tocar(p.num)} style={{ cursor: interativo ? 'pointer' : 'default' }}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? INK : '#8A8580'} style={{ userSelect: 'none' }}>{p.num}</text>
+              {interativo && <circle cx={p.x} cy={p.y} r="18" fill="rgba(0,0,0,0)" />}
+            </g>
+          );
+        })}
+      </svg>
+      {(dentes.length > 0 || gengiva.length > 0) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 6 }}>
+          <div style={{ flex: 1, fontSize: 11.5, color: '#57534E', lineHeight: 1.6 }}>
+            {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+            {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+          </div>
+          {interativo && (
+            <button onClick={() => aoMudar({ dentes: [], gengiva: [] })}
+              style={{ border: '1px solid #E7E5E4', background: '#fff', borderRadius: 9, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>Limpar</button>
+          )}
+        </div>
+      )}
+      {interativo && dentes.length === 0 && gengiva.length === 0 && (
+        <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, marginTop: 2 }}>Toque nos dentes que entram no trabalho. No modo <b style={{ color: ROSA_GENGIVA }}>Gengiva</b>, marque onde a prótese leva gengiva.</div>
+      )}
+    </div>
+  );
+}
+
 function NovoPedido({ dentista, info, aoEnviar }) {
   const tipos = info.tipos;
   const [paciente, setPaciente] = useState('');
@@ -1965,6 +3273,8 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   const [qtd, setQtd] = useState(1);
   const [itens, setItens] = useState([]);
   const [obs, setObs] = useState('');
+  const [dentes, setDentes] = useState([]); // odontograma: dentes do trabalho (FDI)
+  const [gengiva, setGengiva] = useState([]); // odontograma: onde a prótese leva gengiva
   const [fotos, setFotos] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
@@ -1973,7 +3283,15 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   const arqRef = useRef(null);
   const vidRef = useRef(null);
 
-  const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', background: '#fff', boxSizing: 'border-box' };
+  const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: 12, border: '1px solid #EEECE7', fontSize: 14, fontFamily: FONTE, outline: 'none', background: '#FAF9F7', boxSizing: 'border-box' };
+  const cartaoSec = { position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 18, padding: 15, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.15)' };
+  // Cabeçalho de cada passo: bolinha dourada numerada + rótulo
+  const Passo = ({ n, children }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+      <span style={{ width: 21, height: 21, borderRadius: 11, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 10px -4px rgba(184,147,90,0.8)' }}>{n}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{children}</span>
+    </div>
+  );
 
   const addFoto = async (ev) => {
     const file = ev.target.files && ev.target.files[0];
@@ -2050,9 +3368,10 @@ function NovoPedido({ dentista, info, aoEnviar }) {
         anexos, etapas, naClinica: false, provaPendente: false,
         quantidade: umSo ? itensFinal[0].quantidade : 1,
         valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
+        dentes, gengiva,
         origem: 'clinica', dataHora: new Date().toISOString(),
       });
-      setPaciente(''); setTipo(''); setQtd(1); setItens([]); setObs(''); setFotos([]);
+      setPaciente(''); setTipo(''); setQtd(1); setItens([]); setObs(''); setFotos([]); setDentes([]); setGengiva([]);
       aoEnviar();
     } catch (e) {
       console.error(e);
@@ -2062,104 +3381,135 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Passo 1 — paciente */}
+      <div style={cartaoSec}>
+        <Passo n="1">Paciente</Passo>
         <input style={inputStyle} value={paciente} onChange={e => { setPaciente(e.target.value); setErro(''); }} placeholder="Nome do paciente *" />
-        <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
-          <option value="">{itens.length > 0 ? 'Adicionar outro item...' : 'Escolha o item *'}</option>
-          {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
-        </select>
-        {tipo && (
-          <div style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quantidade</div>
-              {(() => {
-                const t = tipos.find(x => x.nome === tipo);
-                const unit = t ? (t.valor || 0) : 0;
-                return unit > 0
-                  ? <div style={{ fontSize: 12, color: '#78716C', marginTop: 3 }}>{formatReaisG(unit)} por unidade</div>
-                  : <div style={{ fontSize: 12, color: '#A8A29E', marginTop: 3 }}>valor a combinar</div>;
-              })()}
-            </div>
-            <SeletorQtd qtd={qtd} setQtd={setQtd} />
-          </div>
-        )}
-        {tipo && (
-          <button onClick={adicionarItem} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: INK, color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>＋ Adicionar item</button>
-        )}
-        {itens.length === 0 && !tipo && (
-          <div style={{ fontSize: 11.5, color: '#A8A29E', lineHeight: 1.5 }}>Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>
-        )}
-        {itens.length > 0 && (
-          <div style={{ background: '#fff', border: '1px solid #E7E5E4', borderRadius: 12, overflow: 'hidden' }}>
-            {itens.map((it, idx) => {
-              const t = tipos.find(x => x.nome === it.nome);
-              const unit = t ? (t.valor || 0) : 0;
-              return (
-                <div key={it.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderTop: idx > 0 ? '1px solid #F0EFEC' : 'none' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                    <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${t.prazoDias || 5} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
-                  </div>
-                  {unit > 0 && <div style={{ fontSize: 13.5, fontWeight: 800, color: VERDE }}>{formatReaisG(unit * it.quantidade)}</div>}
-                  <button onClick={() => removerItem(it.nome)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E', fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {valorTotal > 0 && (
-          <div style={{ background: INK, borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 12, color: '#A8A29E', fontWeight: 700 }}>VALOR TOTAL DO SERVIÇO</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReaisG(valorTotal)}</span>
-          </div>
-        )}
-        <textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observações: cor, dente(s), instruções..." />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
-        {[
-          [Camera, 'Foto', camRef],
-          [Video, 'Vídeo', vidRef],
-          [Image, 'Galeria', fileRef],
-          [FileText, 'Arquivo', arqRef],
-        ].map(([Icone, rotulo, ref]) => (
-          <button key={rotulo} onClick={() => ref.current && ref.current.click()}
-            style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, boxShadow: '0 8px 18px -14px rgba(28,27,25,0.3)' }}>
-            <Icone size={19} color={GOLD} strokeWidth={2.2} />
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>{rotulo}</span>
-          </button>
-        ))}
+      {/* Passo 2 — itens do trabalho */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', right: -12, top: -14, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
+        <Passo n="2">Itens do trabalho</Passo>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
+            <option value="">{itens.length > 0 ? 'Adicionar outro item...' : 'Escolha o item *'}</option>
+            {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
+          </select>
+          {tipo && (
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quantidade</div>
+                {(() => {
+                  const t = tipos.find(x => x.nome === tipo);
+                  const unit = t ? (t.valor || 0) : 0;
+                  return unit > 0
+                    ? <div style={{ fontSize: 12, color: '#78716C', marginTop: 3 }}>{formatReaisG(unit)} por unidade</div>
+                    : <div style={{ fontSize: 12, color: '#A8A29E', marginTop: 3 }}>valor a combinar</div>;
+                })()}
+              </div>
+              <SeletorQtd qtd={qtd} setQtd={setQtd} />
+            </div>
+          )}
+          {tipo && (
+            <button onClick={adicionarItem} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>＋ Adicionar item</button>
+          )}
+          {itens.length === 0 && !tipo && (
+            <div style={{ fontSize: 11.5, color: '#A8A29E', lineHeight: 1.5 }}>Escolha o item, ajuste a quantidade e toque em <b>Adicionar item</b>. Pode adicionar vários itens no mesmo trabalho (ex.: coroa unitária + provisório).</div>
+          )}
+          {itens.length > 0 && (
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
+              {itens.map((it, idx) => {
+                const t = tipos.find(x => x.nome === it.nome);
+                const unit = t ? (t.valor || 0) : 0;
+                return (
+                  <div key={it.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderTop: idx > 0 ? '1px solid #EEECE7' : 'none' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                      <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${t.prazoDias || 5} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
+                    </div>
+                    {unit > 0 && <div style={{ fontSize: 13.5, fontWeight: 800, color: '#166B3A' }}>{formatReaisG(unit * it.quantidade)}</div>}
+                    <button onClick={() => removerItem(it.nome)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E', fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {valorTotal > 0 && (
+            <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ position: 'absolute', right: 42, top: -10, opacity: 0.1, pointerEvents: 'none' }}><Estrela size={34} color={GOLD} /></div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 800, letterSpacing: '0.1em' }}>VALOR TOTAL DO SERVIÇO</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>{formatReaisG(valorTotal)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Passo 3 — odontograma: quais dentes e onde tem gengiva */}
+      <div style={cartaoSec}>
+        <div style={{ position: 'absolute', left: -14, bottom: -16, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
+        <Passo n="3">Dentes do trabalho <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <Odontograma dentes={dentes} gengiva={gengiva} aoMudar={({ dentes: d, gengiva: g }) => { setDentes(d); setGengiva(g); }} />
+      </div>
+
+      {/* Passo 4 — anexos */}
+      <div style={cartaoSec}>
+        <Passo n="4">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {[
+            [Camera, 'Foto', camRef],
+            [Video, 'Vídeo', vidRef],
+            [Image, 'Galeria', fileRef],
+            [FileText, 'Arquivo', arqRef],
+          ].map(([Icone, rotulo, ref]) => (
+            <button key={rotulo} onClick={() => ref.current && ref.current.click()}
+              style={{ padding: '13px 4px', borderRadius: 14, border: '1px solid #EEECE7', background: '#FAF9F7', cursor: 'pointer', fontFamily: FONTE, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 17, background: 'linear-gradient(135deg, #F3EBDA, #E8D5B0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icone size={17} color="#7A6234" strokeWidth={2.2} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: INK }}>{rotulo}</span>
+            </button>
+          ))}
+        </div>
+        {fotos.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {fotos.map((f, i) => (
+              <div key={i} style={{ position: 'relative' }}>
+                {String(f.mime || '').startsWith('image') ? (
+                  <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
+                ) : (
+                  <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
+                    <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
+                    <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
+                  </div>
+                )}
+                <button onClick={() => setFotos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={vidRef} type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={addArquivo} />
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={arqRef} type="file" style={{ display: 'none' }} onChange={addArquivo} />
 
-      {fotos.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          {fotos.map((f, i) => (
-            <div key={i} style={{ position: 'relative' }}>
-              {String(f.mime || '').startsWith('image') ? (
-                <img src={f.dataURL} alt={f.nome} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 12, border: '1px solid #E7E5E4' }} />
-              ) : (
-                <div style={{ width: 84, height: 84, borderRadius: 12, border: '1px solid #E7E5E4', background: '#FAF9F7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: 6 }}>
-                  <span style={{ fontSize: 22 }}>{f.categoria === 'video' ? '🎥' : f.categoria === 'stl' ? '🦷' : '📄'}</span>
-                  <span style={{ fontSize: 9, color: '#78716C', fontWeight: 700, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>{f.nome}</span>
-                </div>
-              )}
-              <button onClick={() => setFotos(fs => fs.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, border: 'none', background: INK, color: '#fff', fontSize: 12, cursor: 'pointer', lineHeight: '22px', padding: 0 }}>×</button>
-            </div>
-          ))}
-        </div>
+      {/* Passo 5 — observações */}
+      <div style={cartaoSec}>
+        <Passo n="5">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <textarea style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Cor, dente(s), instruções..." />
+      </div>
+
+      {erro && (
+        <div style={{ background: '#FCE4E4', border: '1px solid #F5B5B5', borderRadius: 12, padding: '11px 13px', color: '#B42318', fontSize: 12.5, fontWeight: 700 }}>{erro}</div>
       )}
 
-      {erro && <div style={{ color: '#B42318', fontSize: 12, fontWeight: 700, marginTop: 12 }}>{erro}</div>}
-
-      <button onClick={enviar} disabled={enviando} style={{ width: '100%', marginTop: 16, padding: 15, borderRadius: 14, border: 'none', background: enviando ? '#A8A29E' : VERDE, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: FONTE }}>
-        {enviando ? 'Enviando...' : 'Enviar para produção'}
+      <button onClick={enviar} disabled={enviando}
+        style={{ width: '100%', marginTop: 4, padding: 16, borderRadius: 15, border: 'none', background: enviando ? '#D6D3D1' : 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 15.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: enviando ? 'none' : '0 14px 30px -14px rgba(184,147,90,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+        {enviando ? 'Enviando...' : <>Enviar para produção <span style={{ fontSize: 17 }}>→</span></>}
       </button>
-      <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 10, lineHeight: 1.5, textAlign: 'center' }}>
+      <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, textAlign: 'center' }}>
         O trabalho entra direto na fila de produção do laboratório, com prazo calculado automaticamente — e você acompanha cada etapa por aqui.
       </div>
     </div>
@@ -2173,6 +3523,8 @@ function Raiz() {
   const [estado, setEstado] = useState('verificando'); // verificando | ok | negado
   const [nomeDentista, setNomeDentista] = useState('');
   const [prazoPag, setPrazoPag] = useState('');
+  const [diasPag, setDiasPag] = useState(null);
+  const [dataPag, setDataPag] = useState(null);
   const [entrando, setEntrando] = useState(false);
   const [abrindo, setAbrindo] = useState(true);
   const [tentativa, setTentativa] = useState(0);
@@ -2193,7 +3545,7 @@ function Raiz() {
     getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
       .then(s => {
         if (!ativo) return;
-        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setEstado('ok'); }
+        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok'); }
         else setEstado('negado');
       })
       .catch(() => { if (ativo) setEstado('negado'); });
@@ -2266,7 +3618,7 @@ function Raiz() {
     );
   }
 
-  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} /></>;
+  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} dataPagamento={dataPag} /></>;
 }
 
 document.title = 'Special Clinic';

@@ -8,14 +8,83 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
-  getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc,
+  getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc, query, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import App from './App.jsx';
 import logoMarca from './logo-special.png';
 
 // ─── Armazém de arquivos (Firebase Storage): anexos vão como binário puro ───
 // Muito mais rápido que guardar no banco (sem limite de 1MB, sem inflar 33% em texto)
+// ─── Ponte da IA Special (a mesma IA do Special Clinic, agora no Lab) ───
+// O App.jsx não importa Firebase; a IA fala com a nuvem por aqui.
+function instalarIA() {
+  const funcoes = getFunctions(fbApp, 'southamerica-east1');
+  window.iaNuvem = {
+    async transformar(fotoDataURL, tom) {
+      const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
+      const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+      return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
+    },
+    async perguntar({ pergunta, foto, historico }) {
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 120000 });
+      const r = await chamar({ pergunta, foto, historico });
+      return {
+        resposta: r.data.resposta,
+        ilustracao: r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null,
+      };
+    },
+    async listarSimulacoes() {
+      const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', 'Laboratório Special')));
+      const lista = [];
+      snap.forEach(d => lista.push(d.data()));
+      return lista.sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 40);
+    },
+    async salvarSimulacao(sim) {
+      await setDoc(doc(db, 'labs', LAB, 'iaSimulacoes', sim.id), sim);
+    },
+  };
+}
+
+// Grava UM caso direto na nuvem (usado pelo pedido de aprovação — precisa
+// chegar com certeza, é ele que dispara o aviso no celular do dentista)
+function instalarNuvemCasos() {
+  const novoIdN = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  window.nuvemCasos = {
+    async salvarCaso(caso) {
+      await setDoc(docCaso(caso.id), caso);
+      espelhoCasos.set(caso.id, JSON.stringify(caso));
+    },
+    // Canal RESERVA do pedido de aprovação: um doc próprio que a nuvem observa
+    // e dispara a notificação — mesmo que a gravação do caso falhe.
+    async avisarAprovacao(dados) {
+      await setDoc(doc(db, 'labs', LAB, 'avisosAprovacao', novoIdN()), { ...dados, em: new Date().toISOString() });
+    },
+    // Telemetria: registra o que aconteceu no aparelho (pra diagnóstico)
+    logar(dados) {
+      setDoc(doc(db, 'labs', LAB, 'logsApp', novoIdN()), { ...dados, em: new Date().toISOString() }).catch(() => { });
+    },
+  };
+}
+
+// Sinal de vida na abertura: grava qual versão do Lab está rodando neste aparelho.
+// É o que permite diagnosticar de longe "o iPhone está com o app antigo ou novo?".
+let jaLogouAbertura = false;
+function logarAbertura(email) {
+  if (jaLogouAbertura) return;
+  jaLogouAbertura = true;
+  try {
+    window.nuvemCasos.logar({
+      acao: 'abriu-app',
+      app: 'lab',
+      versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev',
+      plataforma: typeof location !== 'undefined' && location.protocol === 'capacitor:' ? 'ios-app' : 'web',
+      email: email || '',
+    });
+  } catch (e) { /* telemetria nunca derruba o app */ }
+}
+
 function instalarArquivos() {
   const st = getStorage();
   window.arquivos = {
@@ -72,37 +141,51 @@ function ordenarCasos(lista) {
 
 async function lerCasos() {
   const snap = await getDocs(colCasos());
-  const lista = [];
   espelhoCasos = new Map();
+  const porId = new Map();
   snap.forEach(d => {
-    const c = d.data();
-    lista.push(c);
-    espelhoCasos.set(d.id, JSON.stringify(c));
+    const bruto = d.data();
+    // O espelho guarda o dado COMO ESTÁ no banco (chave = nome do documento):
+    // qualquer conserto abaixo vira diferença e é gravado de volta no próximo salvar
+    espelhoCasos.set(d.id, JSON.stringify(bruto));
+    // Caso antigo sem "id" dentro do dado: usa o nome do documento como id
+    const c = bruto.id ? bruto : { ...bruto, id: d.id };
+    // Documento duplicado do mesmo caso (migração antiga): vale o canônico
+    // (nome do documento == id); o repetido some no próximo salvar
+    const jaTem = porId.get(c.id);
+    if (!jaTem || d.id === c.id) porId.set(c.id, c);
   });
-  return ordenarCasos(lista);
+  return ordenarCasos([...porId.values()]);
 }
 
 async function gravarCasos(lista) {
-  const batch = writeBatch(db);
   const idsNovos = new Set();
-  let mudou = false;
+  const ops = [];
   for (const c of lista) {
+    if (!c || !c.id) continue; // um caso malformado não pode derrubar a gravação dos outros
     idsNovos.add(c.id);
     const json = JSON.stringify(c);
-    if (espelhoCasos.get(c.id) !== json) {
-      batch.set(docCaso(c.id), c);
-      espelhoCasos.set(c.id, json);
-      mudou = true;
-    }
+    if (espelhoCasos.get(c.id) !== json) ops.push({ tipo: 'set', id: c.id, c, json });
   }
   for (const id of [...espelhoCasos.keys()]) {
-    if (!idsNovos.has(id)) {
-      batch.delete(docCaso(id));
-      espelhoCasos.delete(id);
-      mudou = true;
+    if (!idsNovos.has(id)) ops.push({ tipo: 'del', id });
+  }
+  // O Firestore aceita no máximo 500 operações por lote — divide em lotes menores.
+  // O espelho só é atualizado DEPOIS que o banco confirmou: se a gravação falhar,
+  // a próxima tentativa grava de novo (antes, a falha deixava o espelho mentindo).
+  for (let i = 0; i < ops.length; i += 400) {
+    const parte = ops.slice(i, i + 400);
+    const batch = writeBatch(db);
+    for (const op of parte) {
+      if (op.tipo === 'set') batch.set(docCaso(op.id), op.c);
+      else batch.delete(docCaso(op.id));
+    }
+    await batch.commit();
+    for (const op of parte) {
+      if (op.tipo === 'set') espelhoCasos.set(op.id, op.json);
+      else espelhoCasos.delete(op.id);
     }
   }
-  if (mudou) await batch.commit();
 }
 
 async function lerKV(key) {
@@ -172,7 +255,7 @@ async function sincronizarAcesso(configJson) {
     const batch = writeBatch(db);
     atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
-      batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null });
+      batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null, dataPagamento: d.dataPagamento || null });
     }
     // Informações que a clínica usa: tipos completos (para criar o caso direto) e dias de trabalho (cálculo do prazo)
     batch.set(doc(db, 'labs', LAB, 'publicoClinica', 'info'), {
@@ -209,6 +292,15 @@ async function registrarPush(dados) {
           atualizadoEm: new Date().toISOString(),
         });
       } catch (e) { console.error('Erro ao salvar token push', e); }
+    });
+    // Tocar no aviso da barra → abre direto o trabalho (o carteiro manda o casoId junto)
+    await PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+      const d = (ev && ev.notification && ev.notification.data) || {};
+      const casoId = d.casoId || null;
+      if (casoId) {
+        window.__casoPushPendente = casoId;
+        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: casoId }));
+      }
     });
     await PushNotifications.register();
   } catch (e) { console.error('Push indisponível', e); }
@@ -439,12 +531,12 @@ function CloudRoot({ entrarNativo }) {
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
     getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); setAcesso('ok'); } })
+      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } })
       .catch(e => {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
+        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
       });
     return () => { ativo = false; };
   }, [usuario, tentativa]);
