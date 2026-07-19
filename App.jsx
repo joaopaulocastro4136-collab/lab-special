@@ -152,11 +152,13 @@ function emProducao(caso) {
 function aguardandoDentista(caso) {
   return (caso.anexos || []).some(a => a.aprovacao && a.aprovacao.status === 'pendente');
 }
-// Trabalho postado pelo dentista que o laboratório ainda não foi buscar:
-// sai da lista sozinho assim que alguma etapa é iniciada/concluída (produção começou)
+// Trabalho postado pelo dentista que o laboratório ainda não foi buscar.
+// Sai da lista quando: (1) alguém toca em "Foi pego ✓" (retiradoEm), OU
+// (2) alguma etapa é iniciada/concluída — começou a produção, então já foi pego
 function aguardandoRetirada(caso) {
   return caso.origem === 'clinica'
     && caso.status === 'Em Produção'
+    && !caso.retiradoEm
     && !(caso.etapas || []).some(e => e.concluida || e.inicioExec);
 }
 function progressoPrazo(caso) {
@@ -1208,6 +1210,12 @@ export default function App() {
     const base = listaBase || casos;
     return persistCasos(base.map(c => c.id === id ? { ...c, ...patch } : c));
   };
+  // "Foi pego ✓": confirma a retirada na clínica — o trabalho sai da caixa de retirada
+  const confirmarRetirada = (id) => {
+    const caso = casos.find(c => c.id === id);
+    updateCaso(id, { retiradoEm: agoraISO() });
+    criarNotificacao('novo', `Retirada confirmada: ${caso ? caso.paciente : 'trabalho'} já está com o laboratório. ✓`, id);
+  };
   // Edita os itens de um trabalho já criado: recalcula rótulo, valor e etapas,
   // SEM perder o progresso das etapas já iniciadas ou concluídas
   const salvarItensCaso = (id, novosItens) => {
@@ -1810,7 +1818,8 @@ export default function App() {
             dentistas={dentistas} filtroDentista={filtroDentista} setFiltroDentista={setFiltroDentista}
             filtroRapido={filtroRapido} onLimparFiltroRapido={() => setFiltroRapido(null)}
             getEndereco={(nome) => enderecoDe(dentistas, nome)}
-            onSelect={goToDetalhe} />
+            onSelect={goToDetalhe}
+            onConfirmarRetirada={confirmarRetirada} />
         )}
         {view === 'dia' && (
           <DiaView
@@ -1857,6 +1866,7 @@ export default function App() {
             onAtualizarAnexo={(anexoId, patch) => atualizarAnexoMeta(selectedCaso.id, anexoId, patch)}
             onAbrirSeletorUsuario={() => setSeletorUsuarioAberto(true)}
             onEntregarProva={() => entregarProva(selectedCaso.id)}
+            onConfirmarRetirada={() => confirmarRetirada(selectedCaso.id)}
             ehGestor={ehGestor}
             onSalvarValor={(v) => updateCaso(selectedCaso.id, { valor: v })}
             tiposTrabalho={tiposTrabalho}
@@ -2248,7 +2258,7 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
   );
 }
 
-function CasoCard({ caso, onClick, endereco }) {
+function CasoCard({ caso, onClick, endereco, onConfirmarRetirada }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -2257,6 +2267,7 @@ function CasoCard({ caso, onClick, endereco }) {
   const concluidas = caso.etapas?.filter(e => e.concluida).length || 0;
   const totalEtapas = caso.etapas?.length || 0;
   const esperandoDentista = aguardandoDentista(caso);
+  const naRetirada = aguardandoRetirada(caso) && onConfirmarRetirada;
   return (
     <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0"
       style={{
@@ -2290,6 +2301,16 @@ function CasoCard({ caso, onClick, endereco }) {
           <span className="text-xs" style={{ color: caso.status === 'Pronto' ? VERDE : '#A8A29E', fontWeight: caso.status === 'Pronto' ? 700 : 400 }}>{caso.status}</span>
         </div>
       </div>
+      {/* Trabalho aguardando busca na clínica: botão confirma que já foi pego */}
+      {naRetirada && (
+        <span role="button" tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onConfirmarRetirada(caso.id); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onConfirmarRetirada(caso.id); } }}
+          className="flex items-center justify-center gap-1.5 mt-2.5 px-3 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+          style={{ background: '#2563EB', color: '#fff', boxShadow: '0 10px 22px -14px rgba(37,99,235,0.8)' }}>
+          <Inbox size={13} /> Foi pego ✓ — confirmar retirada
+        </span>
+      )}
       {!caso.naClinica && !caso.provaPendente && <BarraProgresso caso={caso} compacta />}
       {(caso.naClinica || caso.provaPendente) && endereco && (
         <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
@@ -2764,7 +2785,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   );
 }
 
-function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect }) {
+function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect, onConfirmarRetirada }) {
   const filtros = ['Todos', ...STATUS_LIST];
   return (
     <div>
@@ -2809,7 +2830,7 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
         <div className="text-center py-10 text-stone-400 text-sm">Nenhum caso encontrado.</div>
       ) : (
         <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
-          {casos.map(c => <CasoCard key={c.id} caso={c} endereco={getEndereco ? getEndereco(c.dentista) : ''} onClick={() => onSelect(c.id)} />)}
+          {casos.map(c => <CasoCard key={c.id} caso={c} endereco={getEndereco ? getEndereco(c.dentista) : ''} onClick={() => onSelect(c.id)} onConfirmarRetirada={onConfirmarRetirada} />)}
         </div>
       )}
     </div>
@@ -4786,7 +4807,7 @@ function IdCopiavel({ id }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -4800,6 +4821,27 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
       <button onClick={onVoltar} className="flex items-center gap-1 text-sm text-stone-500 mb-4 font-medium">
         <ChevronLeft size={16} /> Voltar
       </button>
+
+      {/* Faixa azul: trabalho postado pela clínica esperando o laboratório ir buscar */}
+      {aguardandoRetirada(caso) && (
+        <div className="mb-4 px-4 py-3 rounded-2xl" style={{ background: '#E8F0FE' }}>
+          <div className="flex items-center gap-2">
+            <Inbox size={17} style={{ color: '#2563EB' }} />
+            <span className="text-sm font-bold flex-1" style={{ color: '#1D4ED8' }}>Aguardando retirada na clínica</span>
+            <button onClick={onConfirmarRetirada} className="px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1" style={{ background: '#2563EB' }}>
+              <Check size={13} /> Foi pego
+            </button>
+          </div>
+          {endereco && (
+            <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold bg-white" style={{ color: '#1A73E8' }}>
+              <MapPin size={13} className="flex-shrink-0" />
+              <span className="flex-1 min-w-0 truncate">{endereco}</span>
+              <span className="flex-shrink-0 font-bold">Abrir no Maps →</span>
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Faixa vermelha: trabalho travado esperando o dentista aprovar arquivo(s) */}
       {aguardandoDentista(caso) && (
