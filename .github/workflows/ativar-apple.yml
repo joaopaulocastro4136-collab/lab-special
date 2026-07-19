@@ -5,6 +5,10 @@ name: Ativar Sign In with Apple
 
 on:
   workflow_dispatch:
+    inputs:
+      script:
+        description: 'Script a rodar (ativar-apple.mjs ou checar-apple.mjs)'
+        default: 'ativar-apple.mjs'
 
 jobs:
   ativar:
@@ -20,4 +24,4 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-        run: node ativar-apple.mjs
+        run: node ${{ github.event.inputs.script || 'ativar-apple.mjs' }}
