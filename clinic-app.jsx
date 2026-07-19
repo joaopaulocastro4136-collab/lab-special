@@ -1982,6 +1982,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
   // Itens do trabalho em edição (trabalhos antigos sem lista viram 1 item com o tipo atual)
   const itensDoCaso = () => ((caso.itens && caso.itens.length) ? caso.itens : [{ nome: caso.tipoTrabalho, quantidade: caso.quantidade || 1 }]).map(i => ({ nome: i.nome, quantidade: i.quantidade || 1 }));
   const [itensE, setItensE] = useState(itensDoCaso);
+  const [dentesE, setDentesE] = useState(caso.dentes || []);
+  const [gengivaE, setGengivaE] = useState(caso.gengiva || []);
   const [tipoAdd, setTipoAdd] = useState('');
   const [qtdAdd, setQtdAdd] = useState(1);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
@@ -2004,6 +2006,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     pacE !== caso.paciente
     || obsE !== semPrefixoQtd(caso.observacoes)
     || JSON.stringify(itensE) !== JSON.stringify(itensDoCaso())
+    || JSON.stringify(dentesE) !== JSON.stringify(caso.dentes || [])
+    || JSON.stringify(gengivaE) !== JSON.stringify(caso.gengiva || [])
   );
   const tentarFechar = () => {
     if (alterouAlgo) setAvisoSalvar(true);
@@ -2026,6 +2030,8 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
     setPacE(caso.paciente);
     setObsE(semPrefixoQtd(caso.observacoes));
     setItensE(itensDoCaso());
+    setDentesE(caso.dentes || []);
+    setGengivaE(caso.gengiva || []);
     setTipoAdd('');
     setQtdAdd(1);
     setConfirmandoExclusao(false);
@@ -2065,6 +2071,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
       const patch = {
         paciente: pacE.trim(),
         observacoes: (umSo && itensFinal[0].quantidade > 1 ? `Quantidade: ${itensFinal[0].quantidade} unidades. ` : '') + obsE.trim(),
+        dentes: dentesE, gengiva: gengivaE,
         dataHora: new Date().toISOString(),
       };
       if (mudouItens) {
@@ -2332,6 +2339,10 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
                 <div style={{ fontSize: 11, color: '#A8A29E', marginBottom: 10 }}>Valor a combinar com o laboratório.</div>
               );
             })()}
+            <div style={{ fontSize: 11, color: '#A8A29E', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '2px 0 6px' }}>Dentes do trabalho</div>
+            <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '10px 10px 8px', marginBottom: 10 }}>
+              <Odontograma dentes={dentesE} gengiva={gengivaE} aoMudar={({ dentes: d, gengiva: g }) => { setDentesE(d); setGengivaE(g); }} />
+            </div>
             <textarea value={obsE} onChange={e => setObsE(e.target.value)} placeholder="Observações..."
               style={{ width: '100%', minHeight: 70, padding: '11px 13px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 14, fontFamily: FONTE, outline: 'none', resize: 'vertical', marginBottom: 10 }} />
             <div style={{ display: 'flex', gap: 8 }}>
@@ -2474,6 +2485,13 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
               })}
             </div>
             <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 10, textAlign: 'center' }}>Toque na foto para ampliar • no vídeo para assistir • no 3D para girar a peça</div>
+          </div>
+        )}
+
+        {(((caso.dentes || []).length > 0) || ((caso.gengiva || []).length > 0)) && (
+          <div style={{ background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>🦷 Dentes do trabalho</div>
+            <Odontograma dentes={caso.dentes || []} gengiva={caso.gengiva || []} />
           </div>
         )}
 
@@ -2665,6 +2683,85 @@ function desenharListaEnvios({ dentista, casos }) {
   return cv.toDataURL('image/jpeg', 0.92);
 }
 
+// ─── Odontograma: arcada com a numeração FDI (11-18, 21-28, 31-38, 41-48).
+// O dentista toca nos dentes do trabalho (dourado) e pode marcar gengiva (anel rosa).
+const ODONTO_SUP = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+const ODONTO_INF = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+const ROSA_GENGIVA = '#D96B8F';
+
+function dentesDoArco(lista, cx, cy, rx, ry, baixo) {
+  return lista.map((num, i) => {
+    const t = ((168 - i * (156 / (lista.length - 1))) * Math.PI) / 180;
+    return { num, x: cx + rx * Math.cos(t), y: baixo ? cy + ry * Math.sin(t) : cy - ry * Math.sin(t) };
+  });
+}
+
+function Odontograma({ dentes = [], gengiva = [], aoMudar }) {
+  const [modo, setModo] = useState('dente');
+  const interativo = !!aoMudar;
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  const tocar = (num) => {
+    if (!interativo) return;
+    if (modo === 'dente') {
+      const tem = dentes.includes(num);
+      aoMudar({ dentes: tem ? dentes.filter(d => d !== num) : [...dentes, num].sort((a, b) => a - b), gengiva });
+    } else {
+      const tem = gengiva.includes(num);
+      aoMudar({ dentes, gengiva: tem ? gengiva.filter(d => d !== num) : [...gengiva, num].sort((a, b) => a - b) });
+    }
+  };
+  const chip = (ativo, cor, corFundo) => ({ flex: 1, padding: '9px 6px', borderRadius: 11, fontFamily: FONTE, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: ativo ? `1.5px solid ${cor}` : '1px solid #E7E5E4', background: ativo ? corFundo : '#FAF9F7', color: ativo ? cor : '#78716C' });
+  return (
+    <div>
+      {interativo && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <button onClick={() => setModo('dente')} style={chip(modo === 'dente', '#7A6234', 'rgba(184,147,90,0.14)')}>
+            <span style={{ width: 12, height: 12, borderRadius: 6, background: GOLD, flexShrink: 0 }} /> Dentes
+          </button>
+          <button onClick={() => setModo('gengiva')} style={chip(modo === 'gengiva', ROSA_GENGIVA, 'rgba(217,107,143,0.1)')}>
+            <span style={{ width: 12, height: 12, borderRadius: 6, border: `2.5px solid ${ROSA_GENGIVA}`, boxSizing: 'border-box', flexShrink: 0 }} /> Gengiva
+          </button>
+        </div>
+      )}
+      <svg viewBox="0 0 340 402" style={{ width: '100%', display: 'block', touchAction: 'manipulation' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB" style={{ userSelect: 'none' }}>ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num} onClick={() => tocar(p.num)} style={{ cursor: interativo ? 'pointer' : 'default' }}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? INK : '#8A8580'} style={{ userSelect: 'none' }}>{p.num}</text>
+              {interativo && <circle cx={p.x} cy={p.y} r="18" fill="rgba(0,0,0,0)" />}
+            </g>
+          );
+        })}
+      </svg>
+      {(dentes.length > 0 || gengiva.length > 0) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 6 }}>
+          <div style={{ flex: 1, fontSize: 11.5, color: '#57534E', lineHeight: 1.6 }}>
+            {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+            {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+          </div>
+          {interativo && (
+            <button onClick={() => aoMudar({ dentes: [], gengiva: [] })}
+              style={{ border: '1px solid #E7E5E4', background: '#fff', borderRadius: 9, padding: '5px 10px', fontSize: 11, fontWeight: 700, color: '#78716C', cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>Limpar</button>
+          )}
+        </div>
+      )}
+      {interativo && dentes.length === 0 && gengiva.length === 0 && (
+        <div style={{ fontSize: 11, color: '#A8A29E', lineHeight: 1.5, marginTop: 2 }}>Toque nos dentes que entram no trabalho. No modo <b style={{ color: ROSA_GENGIVA }}>Gengiva</b>, marque onde a prótese leva gengiva.</div>
+      )}
+    </div>
+  );
+}
+
 function NovoPedido({ dentista, info, aoEnviar }) {
   const tipos = info.tipos;
   const [paciente, setPaciente] = useState('');
@@ -2672,6 +2769,8 @@ function NovoPedido({ dentista, info, aoEnviar }) {
   const [qtd, setQtd] = useState(1);
   const [itens, setItens] = useState([]);
   const [obs, setObs] = useState('');
+  const [dentes, setDentes] = useState([]); // odontograma: dentes do trabalho (FDI)
+  const [gengiva, setGengiva] = useState([]); // odontograma: onde a prótese leva gengiva
   const [fotos, setFotos] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
@@ -2765,9 +2864,10 @@ function NovoPedido({ dentista, info, aoEnviar }) {
         anexos, etapas, naClinica: false, provaPendente: false,
         quantidade: umSo ? itensFinal[0].quantidade : 1,
         valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
+        dentes, gengiva,
         origem: 'clinica', dataHora: new Date().toISOString(),
       });
-      setPaciente(''); setTipo(''); setQtd(1); setItens([]); setObs(''); setFotos([]);
+      setPaciente(''); setTipo(''); setQtd(1); setItens([]); setObs(''); setFotos([]); setDentes([]); setGengiva([]);
       aoEnviar();
     } catch (e) {
       console.error(e);
@@ -2842,9 +2942,16 @@ function NovoPedido({ dentista, info, aoEnviar }) {
         </div>
       </div>
 
-      {/* Passo 3 — anexos */}
+      {/* Passo 3 — odontograma: quais dentes e onde tem gengiva */}
       <div style={cartaoSec}>
-        <Passo n="3">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <div style={{ position: 'absolute', left: -14, bottom: -16, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={52} color={INK} /></div>
+        <Passo n="3">Dentes do trabalho <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <Odontograma dentes={dentes} gengiva={gengiva} aoMudar={({ dentes: d, gengiva: g }) => { setDentes(d); setGengiva(g); }} />
+      </div>
+
+      {/* Passo 4 — anexos */}
+      <div style={cartaoSec}>
+        <Passo n="4">Anexos <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
           {[
             [Camera, 'Foto', camRef],
@@ -2884,9 +2991,9 @@ function NovoPedido({ dentista, info, aoEnviar }) {
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={addFoto} />
       <input ref={arqRef} type="file" style={{ display: 'none' }} onChange={addArquivo} />
 
-      {/* Passo 4 — observações */}
+      {/* Passo 5 — observações */}
       <div style={cartaoSec}>
-        <Passo n="4">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
+        <Passo n="5">Observações <span style={{ color: '#A8A29E', letterSpacing: 0, textTransform: 'none' }}>(opcional)</span></Passo>
         <textarea style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }} value={obs} onChange={e => setObs(e.target.value)} placeholder="Cor, dente(s), instruções..." />
       </div>
 

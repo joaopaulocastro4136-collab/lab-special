@@ -4249,6 +4249,50 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   );
 }
 
+// ─── Odontograma (leitura): mostra os dentes marcados pelo dentista no pedido da clínica ───
+// Dourado = dente do trabalho; anel rosa = onde a prótese leva gengiva. Numeração FDI.
+const ODONTO_SUP = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+const ODONTO_INF = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+const ROSA_GENGIVA = '#D96B8F';
+
+function dentesDoArco(lista, cx, cy, rx, ry, baixo) {
+  return lista.map((num, i) => {
+    const t = ((168 - i * (156 / (lista.length - 1))) * Math.PI) / 180;
+    return { num, x: cx + rx * Math.cos(t), y: baixo ? cy + ry * Math.sin(t) : cy - ry * Math.sin(t) };
+  });
+}
+
+function OdontogramaLeitura({ dentes = [], gengiva = [] }) {
+  const posicoes = [
+    ...dentesDoArco(ODONTO_SUP, 170, 172, 148, 138, false),
+    ...dentesDoArco(ODONTO_INF, 170, 228, 148, 138, true),
+  ];
+  return (
+    <div>
+      <svg viewBox="0 0 340 402" style={{ width: '100%', maxWidth: 360, display: 'block', margin: '0 auto' }}>
+        <line x1="30" y1="200" x2="310" y2="200" stroke="#E7E5E4" strokeWidth="1" strokeDasharray="3 4" />
+        <text x="170" y="193" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB">ARCO SUPERIOR</text>
+        <text x="170" y="213" textAnchor="middle" fontSize="8.5" fontWeight="800" letterSpacing="1.4" fill="#B6B1AB">ARCO INFERIOR</text>
+        {posicoes.map(p => {
+          const selD = dentes.includes(p.num);
+          const selG = gengiva.includes(p.num);
+          return (
+            <g key={p.num}>
+              {selG && <circle cx={p.x} cy={p.y} r="16.4" fill="none" stroke={ROSA_GENGIVA} strokeWidth="3.4" />}
+              <circle cx={p.x} cy={p.y} r="12.6" fill={selD ? GOLD : '#fff'} stroke={selD ? '#8A6B3A' : '#D6D3D1'} strokeWidth={selD ? 1.6 : 1.1} />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={selD ? '#1C1B19' : '#8A8580'}>{p.num}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="text-xs mt-1.5" style={{ color: '#57534E', lineHeight: 1.6 }}>
+        {dentes.length > 0 && <div><b style={{ color: '#7A6234' }}>Dentes:</b> {dentes.join(', ')}</div>}
+        {gengiva.length > 0 && <div><b style={{ color: ROSA_GENGIVA }}>Gengiva:</b> {gengiva.join(', ')}</div>}
+      </div>
+    </div>
+  );
+}
+
 function ObservacoesEditaveis({ caso, onSalvar }) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(caso.observacoes || '');
@@ -4498,6 +4542,13 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
             </div>
           )}
         </div>
+
+        {(((caso.dentes || []).length > 0) || ((caso.gengiva || []).length > 0)) && (
+          <div className="mt-4 pt-4 border-t border-stone-100">
+            <div className="text-xs text-stone-400 mb-2">🦷 Dentes do trabalho (marcados pelo dentista)</div>
+            <OdontogramaLeitura dentes={caso.dentes || []} gengiva={caso.gengiva || []} />
+          </div>
+        )}
 
         <ObservacoesEditaveis caso={caso} onSalvar={onSalvarObs} />
       </div>

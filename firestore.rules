@@ -40,13 +40,13 @@ service cloud.firestore {
         && resource.data.dentista == nomeDentista()
         && (
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['paciente', 'observacoes', 'quantidade', 'valor', 'anexos', 'dataHora'])
+            .hasOnly(['paciente', 'observacoes', 'dentes', 'gengiva', 'quantidade', 'valor', 'anexos', 'dataHora'])
           ||
           (resource.data.origem == 'clinica'
             && resource.data.status == 'Em Produção'
             && request.resource.data.status == 'Em Produção'
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['tipoTrabalho', 'itens', 'etapas', 'prazo', 'paciente', 'observacoes', 'quantidade', 'valor', 'anexos', 'dataHora']))
+                 .hasOnly(['tipoTrabalho', 'itens', 'etapas', 'prazo', 'paciente', 'observacoes', 'dentes', 'gengiva', 'quantidade', 'valor', 'anexos', 'dataHora']))
         );
       // Dentista pode EXCLUIR o próprio trabalho enviado pela clínica,
       // enquanto ainda estiver em produção
