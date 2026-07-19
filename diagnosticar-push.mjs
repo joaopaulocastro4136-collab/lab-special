@@ -94,10 +94,25 @@ const acessoKV = await (await fetch(`${BASE}/labs/principal/kv/acesso`, { header
 const emailsAcesso = (acessoKV.fields?.emails?.arrayValue?.values || []).map(v => v.stringValue);
 console.log('\n══ ACESSO AO LAB (kv/acesso) ══\n  ' + (emailsAcesso.join(', ') || 'vazio'));
 
+// 3d. Canal reserva e telemetria do app
+console.log('\n══ AVISOS DE APROVAÇÃO (canal reserva) ══');
+const avs = await (await fetch(`${BASE}/labs/principal/avisosAprovacao?pageSize=20`, { headers: H })).json();
+const avList = (avs.documents || []).map(d => d.fields || {});
+avList.sort((a, b) => String(valor(b.em)).localeCompare(String(valor(a.em))));
+for (const f of avList.slice(0, 10)) console.log(`  ${valor(f.em)} | dentista="${valor(f.dentista)}" | paciente=${valor(f.paciente)} | anexo=${valor(f.anexoNome)}`);
+if (!avList.length) console.log('  (nenhum — o Lab ainda não pediu aprovação pela versão nova)');
+
+console.log('\n══ TELEMETRIA DO APP (logsApp) ══');
+const lgs = await (await fetch(`${BASE}/labs/principal/logsApp?pageSize=40`, { headers: H })).json();
+const lgList = (lgs.documents || []).map(d => d.fields || {});
+lgList.sort((a, b) => String(valor(b.em)).localeCompare(String(valor(a.em))));
+for (const f of lgList.slice(0, 15)) console.log(`  ${valor(f.em)} | ${valor(f.acao)} | caso=${valor(f.casoId)} | ${valor(f.resultado)}`);
+if (!lgList.length) console.log('  (sem registros ainda)');
+
 // 4. Logs recentes do carteiro (aoMudarCaso e aoCriarCaso)
 console.log('\n══ LOGS DO CARTEIRO (últimas 24h) ══');
 const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-for (const fn of ['aomudarcaso', 'aocriarcaso']) {
+for (const fn of ['aomudarcaso', 'aocriarcaso', 'aopediraprovacao']) {
   console.log(`--- ${fn} ---`);
   const lr = await (await fetch('https://logging.googleapis.com/v2/entries:list', {
     method: 'POST', headers: H,

@@ -117,13 +117,23 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
   for (const a of (depois.anexos || [])) {
     const statusNovo = a.aprovacao && a.aprovacao.status;
     const statusVelho = mapaAntes[a.id] && mapaAntes[a.id].aprovacao && mapaAntes[a.id].aprovacao.status;
-    if (statusNovo === 'pendente' && statusVelho !== 'pendente' && depois.dentista) {
-      await notificar('clinica', depois.dentista, 'Aprovação solicitada 👍', `O laboratório pediu sua aprovação: "${a.nome}" — ${depois.paciente}. Abra para ver e aprovar.`, { casoId });
-    }
+    // (o aviso de aprovação pendente agora sai pelo canal reserva avisosAprovacao,
+    //  gravado pelo Lab junto com o pedido — não notifica daqui pra não duplicar)
     if (statusNovo === 'aprovado' && statusVelho !== 'aprovado') {
       await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
     }
   }
+});
+
+// ─── Canal reserva do pedido de aprovação ───
+// O Lab grava um doc em avisosAprovacao a cada pedido; aqui a notificação
+// dispara SEMPRE, mesmo se a gravação do caso falhar por qualquer motivo.
+exports.aoPedirAprovacao = onDocumentCreated({ ...OPCOES, document: 'labs/principal/avisosAprovacao/{id}' }, async (event) => {
+  const d = event.data && event.data.data();
+  if (!d || !d.dentista) return;
+  await notificar('clinica', d.dentista, 'Aprovação solicitada 👍',
+    `O laboratório pediu sua aprovação: "${d.anexoNome || 'arquivo'}" — ${d.paciente || ''}. Abra para ver e aprovar.`,
+    d.casoId ? { casoId: d.casoId } : undefined);
 });
 
 // ─── Cobrador: verifica todo dia de manhã se há pagamento vencido ───

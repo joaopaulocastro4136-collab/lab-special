@@ -50,10 +50,20 @@ function instalarIA() {
 // Grava UM caso direto na nuvem (usado pelo pedido de aprovação — precisa
 // chegar com certeza, é ele que dispara o aviso no celular do dentista)
 function instalarNuvemCasos() {
+  const novoIdN = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   window.nuvemCasos = {
     async salvarCaso(caso) {
       await setDoc(docCaso(caso.id), caso);
       espelhoCasos.set(caso.id, JSON.stringify(caso));
+    },
+    // Canal RESERVA do pedido de aprovação: um doc próprio que a nuvem observa
+    // e dispara a notificação — mesmo que a gravação do caso falhe.
+    async avisarAprovacao(dados) {
+      await setDoc(doc(db, 'labs', LAB, 'avisosAprovacao', novoIdN()), { ...dados, em: new Date().toISOString() });
+    },
+    // Telemetria: registra o que aconteceu no aparelho (pra diagnóstico)
+    logar(dados) {
+      setDoc(doc(db, 'labs', LAB, 'logsApp', novoIdN()), { ...dados, em: new Date().toISOString() }).catch(() => { });
     },
   };
 }
