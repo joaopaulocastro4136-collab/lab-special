@@ -1331,9 +1331,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   // (sai daqui quando o Lab toca em "Foi pego" ou inicia a produção)
   const aguardandoRetirada = (c) => c.origem === 'clinica' && c.status === 'Em Produção'
     && !c.naClinica && !c.retiradoEm && !(c.etapas || []).some(e => e.concluida || e.inicioExec);
-  const paraRetirada = emAndamento.filter(aguardandoRetirada);
+  // Prova devolvida pelo dentista: também está esperando o laboratório buscar
+  const devolvidoAguardando = (c) => c.naClinica && c.retornoSolicitado && c.status !== 'Entregue';
+  const paraRetirada = casos.filter(c => aguardandoRetirada(c) || devolvidoAguardando(c));
   // Na clínica: prova que o laboratório entregou e está com o dentista agora
-  const naClinicaLista = casos.filter(c => c.naClinica && c.status !== 'Entregue');
+  // (quando devolve, sai daqui e entra na caixa Retirada)
+  const naClinicaLista = casos.filter(c => c.naClinica && !c.retornoSolicitado && c.status !== 'Entregue');
   const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c) && !c.naClinica);
   const prontos = casos.filter(c => c.status === 'Pronto');
   const todasEntregas = casos.filter(c => c.status === 'Entregue');
@@ -1784,7 +1787,14 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               ‹ Voltar
             </button>
             {filtroSecao === 'retirada' && (
-              <Secao titulo={`Aguardando retirada (${paraRetirada.length})`} cor="#1D4ED8" itens={paraRetirada} vazio="Nenhum trabalho esperando o laboratório buscar." />
+              <Secao titulo={`Aguardando retirada (${paraRetirada.length})`} cor="#1D4ED8" itens={paraRetirada}
+                vazio="Nenhum trabalho esperando o laboratório buscar."
+                rodapeItem={(c) => c.naClinica && c.retornoSolicitado ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#EDE9FE', color: '#5B21B6', fontSize: 12, fontWeight: 800 }}>
+                    ↩ Prova devolvida — o laboratório foi avisado para buscar
+                  </div>
+                ) : null}
+              />
             )}
             {filtroSecao === 'producao' && (
               <Secao titulo={`Em produção (${emProducaoSo.length})`} cor="#B54708" itens={emProducaoSo} vazio="Nenhum trabalho em produção no momento." />
