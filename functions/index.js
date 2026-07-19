@@ -126,10 +126,16 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
 // A chave chega por variável de ambiente (functions/.env, escrita pelo robô de
 // publicação a partir do segredo GEMINI_API_KEY do GitHub — nunca vai pro git).
 
+// Escala de cor odontológica (VITA) que o dentista escolhe no app
 const TONS_DENTE = {
-  claro: 'a bright whitened "Hollywood white" (BL1 dental shade), while still looking like real natural enamel',
-  natural: 'a healthy natural white (A1 dental shade), with realistic enamel translucency',
-  escuro: 'a discreet, slightly warmer natural ivory (A2-A3 dental shade), realistic and understated',
+  bl: 'a very bright bleached "Hollywood white" (VITA BL1 bleach shade) — clearly and strongly whitened, yet still looking like real polished enamel, never chalky or fake',
+  b1: 'a bright natural white (VITA B1 shade) — luminous and clean, the brightest tone that still reads as natural teeth',
+  a1: 'a healthy classic natural white (VITA A1 shade) — realistic enamel translucency with a subtle warm undertone',
+  a2: 'a warm natural ivory (VITA A2 shade) — noticeably yellower, like healthy natural teeth that were never bleached',
+  // nomes antigos (apps anteriores) continuam funcionando
+  claro: 'a bright whitened "Hollywood white" (VITA BL1 bleach shade), while still looking like real natural enamel',
+  natural: 'a healthy natural white (VITA A1 shade), with realistic enamel translucency',
+  escuro: 'a discreet, slightly warmer natural ivory (VITA A2-A3 shade), realistic and understated',
 };
 
 exports.transformarSorriso = onCall(
@@ -139,7 +145,7 @@ exports.transformarSorriso = onCall(
     const chave = (process.env.GEMINI_API_KEY || '').trim();
     if (!chave) throw new HttpsError('failed-precondition', 'A IA Special ainda está sendo ativada pelo laboratório.');
     const foto = String((request.data && request.data.foto) || '');
-    const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'natural';
+    const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'a1';
     if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
     if (foto.length > 6000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
 

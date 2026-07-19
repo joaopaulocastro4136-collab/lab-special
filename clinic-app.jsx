@@ -487,11 +487,19 @@ function Panorama({ dentista, dados, total, proxima, atrasadosN }) {
 // A foto vai com segurança para a Cloud Function do laboratório, que usa IA
 // generativa para redesenhar os dentes — alinhamento, simetria, proporção e o
 // tom escolhido — e devolve a foto transformada.
+// Escala de cor odontológica (VITA): do branqueado ao natural mais amarelado
 const TONS_IA = [
-  { rotulo: 'Mais claro', valor: 'claro', cor: '#FDFDFB' },
-  { rotulo: 'Natural', valor: 'natural', cor: '#F2ECDC' },
-  { rotulo: 'Mais escuro', valor: 'escuro', cor: '#E3D5B8' },
+  { rotulo: 'BL', valor: 'bl', cor: '#FDFDFC', desc: 'super branco — clareamento máximo (Hollywood)' },
+  { rotulo: 'B1', valor: 'b1', cor: '#F5F0E2', desc: 'branco natural, luminoso e crível' },
+  { rotulo: 'A1', valor: 'a1', cor: '#EFE3C9', desc: 'natural clássico, levemente quente' },
+  { rotulo: 'A2', valor: 'a2', cor: '#E3D0A6', desc: 'mais amarelado — tom natural sem clareamento' },
 ];
+// Transformações antigas do histórico usavam outros nomes de tom
+function rotuloTom(v) {
+  const t = TONS_IA.find(x => x.valor === v);
+  if (t) return t.rotulo;
+  return { claro: 'Mais claro', natural: 'Natural', escuro: 'Mais escuro' }[v] || v || 'A1';
+}
 
 async function transformarSorrisoNaNuvem(fotoDataURL, tom) {
   const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
@@ -536,7 +544,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
-  const [tom, setTom] = useState('natural');
+  const [tom, setTom] = useState('a1');
   const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null); // null = carregando
@@ -689,7 +697,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.paciente}</span>
                   <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-                    {formatDateBR(s.data)} • tom {(TONS_IA.find(t => t.valor === s.tom) || {}).rotulo || 'natural'}
+                    {formatDateBR(s.data)} • cor {rotuloTom(s.tom)}
                   </span>
                 </span>
                 <span style={{ color: GOLD, fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
@@ -705,7 +713,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
               <button onClick={() => setVerSim(null)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>‹</button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{verSim.paciente}</div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • tom {(TONS_IA.find(t => t.valor === verSim.tom) || {}).rotulo || 'natural'}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • cor {rotuloTom(verSim.tom)}</div>
               </div>
             </div>
             <div style={{ borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
@@ -746,7 +754,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
             )}
 
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Tom dos dentes</div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Cor dos dentes</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {TONS_IA.map(n => (
                 <button key={n.valor} onClick={() => resultado ? gerar(n.valor) : setTom(n.valor)} disabled={processando}
@@ -756,8 +764,11 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
                 </button>
               ))}
             </div>
+            <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
+              {(TONS_IA.find(t => t.valor === tom) || {}).desc}
+            </div>
             {resultado && !processando && (
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 7 }}>Toque em outro tom para gerar de novo com ele</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor para gerar de novo com ela</div>
             )}
 
             {!resultado && (
