@@ -1216,6 +1216,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   // (o detalhe aberto trata o gesto primeiro)
   useGestoVoltar(() => {
     if (extratoVer) { setExtratoVer(null); return; }
+    if (filtroSecao) { setFiltroSecao(null); return; } // tela de lista aberta → deslizar volta pra home
     if (aba !== 'trabalhos') { setAba('trabalhos'); return; }
     return false;
   });
@@ -1326,6 +1327,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   };
 
   const emAndamento = casos.filter(c => c.status === 'Em Produção' || c.status === 'Acabamento');
+  // Aguardando retirada: enviado pela clínica e o laboratório ainda não pegou
+  // (sai daqui quando o Lab toca em "Foi pego" ou inicia a produção)
+  const aguardandoRetirada = (c) => c.origem === 'clinica' && c.status === 'Em Produção'
+    && !c.retiradoEm && !(c.etapas || []).some(e => e.concluida || e.inicioExec);
+  const paraRetirada = emAndamento.filter(aguardandoRetirada);
+  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c));
   const prontos = casos.filter(c => c.status === 'Pronto');
   const todasEntregas = casos.filter(c => c.status === 'Entregue');
   const entregues = todasEntregas.slice(0, 20);
@@ -1512,7 +1519,8 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
 
   // Panorama da tela inicial: dados do gráfico + caixinhas de situação abaixo dele
   const dadosPanorama = [
-    { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emAndamento.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'retirada', rotulo: 'Aguardando retirada', curto: 'Retirada', n: paraRetirada.length, cor: '#2563EB', corClara: '#60A5FA' },
+    { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emProducaoSo.length, cor: '#D96F0E', corClara: '#F5A54A' },
     { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
     { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
   ];
@@ -1521,9 +1529,9 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const panorama = (
     <Panorama dentista={dentista} dados={dadosPanorama} total={casos.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
   );
-  // Caixinhas logo abaixo do gráfico: toca e vê só aquela lista (toca de novo p/ ver tudo)
+  // Caixinhas logo abaixo do gráfico: toca e a lista abre numa tela própria (Voltar retorna)
   const caixinhasSituacao = (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
       {dadosPanorama.map(d => {
         const ativa = filtroSecao === d.chave;
         return (
@@ -1743,7 +1751,29 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             {aba === 'financeiro' && 'Financeiro'}
           </div>
         )}
-        {aba === 'trabalhos' && (
+        {/* Caixa tocada → a lista abre numa TELA PRÓPRIA, deslizando da direita (Voltar retorna) */}
+        {aba === 'trabalhos' && filtroSecao && (
+          <div key={filtroSecao} style={{ animation: 'telaSecaoAbre 0.3s cubic-bezier(0.2, 0.8, 0.3, 1)' }}>
+            <style>{`@keyframes telaSecaoAbre { from { opacity: 0; transform: translateX(46px); } to { opacity: 1; transform: none; } }`}</style>
+            <button onClick={() => setFiltroSecao(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 14, padding: '9px 16px 9px 11px', borderRadius: 999, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 8px 20px -16px rgba(28,27,25,0.4)' }}>
+              ‹ Voltar
+            </button>
+            {filtroSecao === 'retirada' && (
+              <Secao titulo={`Aguardando retirada (${paraRetirada.length})`} cor="#1D4ED8" itens={paraRetirada} vazio="Nenhum trabalho esperando o laboratório buscar." />
+            )}
+            {filtroSecao === 'producao' && (
+              <Secao titulo={`Em produção (${emProducaoSo.length})`} cor="#B54708" itens={emProducaoSo} vazio="Nenhum trabalho em produção no momento." />
+            )}
+            {filtroSecao === 'prontos' && (
+              <Secao titulo={`Prontos para entrega (${prontos.length})`} cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
+            )}
+            {filtroSecao === 'entregues' && (
+              <Secao titulo={`Entregues (${todasEntregas.length})`} itens={todasEntregas.slice(0, 40)} vazio="Nenhuma entrega registrada ainda." />
+            )}
+          </div>
+        )}
+        {aba === 'trabalhos' && !filtroSecao && (
           <>
             {/* Caixas de aprovação em destaque: toca e já cai no arquivo p/ ver e aprovar */}
             {aprovacoesPendentes.map(({ caso: cx, anexo: ax }) => (
@@ -1778,26 +1808,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             {termoBusca !== '' && (
               <Secao titulo={`Resultados da busca (${resultadosBusca.length})`} cor="#7A6234" itens={resultadosBusca} vazio="Nenhum trabalho encontrado — confira o nome ou o ID." />
             )}
-            {/* Caixa tocada → a lista abre deslizando; sem caixa tocada, a tela fica limpa (sem rolagem comprida) */}
-            {termoBusca === '' && filtroSecao && (
-              <div key={filtroSecao} style={{ animation: 'secaoAbre 0.3s cubic-bezier(0.2, 0.8, 0.3, 1)' }}>
-                <style>{`@keyframes secaoAbre { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
-                {filtroSecao === 'producao' && (
-                  <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
-                )}
-                {filtroSecao === 'prontos' && (
-                  <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
-                )}
-                {filtroSecao === 'entregues' && (
-                  <Secao titulo="Entregues" itens={todasEntregas.slice(0, 40)} vazio="Nenhuma entrega registrada ainda." />
-                )}
-                <button onClick={() => setFiltroSecao(null)}
-                  style={{ width: '100%', padding: 12, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, marginBottom: 18 }}>
-                  ✕ Fechar lista
-                </button>
-              </div>
-            )}
-            {termoBusca === '' && !filtroSecao && <>
+            {termoBusca === '' && <>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textAlign: 'center', margin: '-4px 0 14px' }}>
               Toque numa caixa acima para abrir a lista
             </div>
