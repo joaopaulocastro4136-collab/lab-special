@@ -84,6 +84,12 @@ service cloud.firestore {
       allow read: if ehDentista();
     }
 
+    // IA Special: histórico de transformações de sorriso do próprio dentista
+    match /labs/principal/iaSimulacoes/{id} {
+      allow read, delete: if ehDentista() && resource.data.dentista == nomeDentista();
+      allow create: if ehDentista() && request.resource.data.dentista == nomeDentista();
+    }
+
     // Pedidos feitos pela clínica
     match /labs/principal/solicitacoes/{id} {
       allow read: if ehDentista() && resource.data.dentista == nomeDentista();

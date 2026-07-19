@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/special-lab-test-mode-9jrxb1]
-    paths: ['functions/**', '.github/workflows/functions.yml', 'abrir-porta-funcao.mjs']
+    paths: ['functions/**', '.github/workflows/functions.yml', 'abrir-porta-funcao.mjs', 'firestore.rules']
 
 jobs:
   deploy:
@@ -54,8 +54,8 @@ jobs:
           printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" | tr -d '\r' > functions/.env
           echo "Chave entregue via functions/.env (não vai para o git) ✓"
 
-      - name: Publica as funções
-        run: npx firebase-tools deploy --only functions --project laboratorio-special --non-interactive --force
+      - name: Publica as funções e as regras do banco
+        run: npx firebase-tools deploy --only functions,firestore:rules --project laboratorio-special --non-interactive --force
 
       - name: Abre a porta da IA (invocação pública, com login checado dentro da função)
         run: node abrir-porta-funcao.mjs

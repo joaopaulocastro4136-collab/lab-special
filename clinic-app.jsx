@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
-  getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
+  getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -508,14 +508,78 @@ function mensagemErroIA(e) {
   return 'Não consegui transformar agora. Verifique a internet e tente de novo.';
 }
 
-function IASpecial({ aoFechar, aoAvisar }) {
+// Comparador antes/depois: arrasta o dedo (ou o mouse) em qualquer ponto da foto
+// — funciona no iPhone de verdade (nada de controle invisível que só pega no pino)
+function ComparadorImagens({ antes, depois, corte, setCorte }) {
+  const mover = (clientX, el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0) setCorte(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)));
+  };
+  return (
+    <div style={{ position: 'relative', touchAction: 'none', cursor: 'ew-resize', userSelect: 'none' }}
+      onTouchStart={e => mover(e.touches[0].clientX, e.currentTarget)}
+      onTouchMove={e => mover(e.touches[0].clientX, e.currentTarget)}
+      onMouseDown={e => mover(e.clientX, e.currentTarget)}
+      onMouseMove={e => { if (e.buttons === 1) mover(e.clientX, e.currentTarget); }}>
+      <img src={depois} alt="Depois" draggable={false} style={{ display: 'block', width: '100%', pointerEvents: 'none' }} />
+      <img src={antes} alt="Antes" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)`, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.6)', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.45)' }}>⇄</div>
+      </div>
+      <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>ANTES</span>
+      <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>DEPOIS ✨</span>
+    </div>
+  );
+}
+
+function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [foto, setFoto] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
   const [tom, setTom] = useState('natural');
   const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
+  const [paciente, setPaciente] = useState('');
+  const [historico, setHistorico] = useState(null); // null = carregando
+  const [verSim, setVerSim] = useState(null); // simulação salva aberta do histórico
   const inputRef = useRef(null);
-  useGestoVoltar(aoFechar);
+  useGestoVoltar(() => {
+    if (verSim) { setVerSim(null); return; }
+    if (foto) { setFoto(null); setResultado(null); return; }
+    aoFechar();
+  });
+
+  // Histórico do dentista: cada transformação fica salva na nuvem
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', dentista)));
+        if (!ativo) return;
+        const lista = [];
+        snap.forEach(d => lista.push(d.data()));
+        setHistorico(lista.sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 40));
+      } catch (e) { console.error('histórico IA', e); if (ativo) setHistorico([]); }
+    })();
+    return () => { ativo = false; };
+  }, [dentista]);
+
+  const salvarSimulacao = async (antesDataURL, depoisDataURL, tomUsado) => {
+    try {
+      const nome = paciente.trim() || 'Paciente';
+      const [antesUp, depoisUp] = await Promise.all([
+        subirArquivo(dataURLparaBlob(antesDataURL, 'image/jpeg'), `ia-antes-${novoId()}.jpg`),
+        subirArquivo(dataURLparaBlob(depoisDataURL, depoisDataURL.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'), `ia-depois-${novoId()}.jpg`),
+      ]);
+      const sim = {
+        id: novoId(), dentista, paciente: nome, tom: tomUsado, data: todayISO(),
+        antesUrl: antesUp.url, antesCaminho: antesUp.caminho,
+        depoisUrl: depoisUp.url, depoisCaminho: depoisUp.caminho,
+      };
+      await setDoc(doc(db, 'labs', LAB, 'iaSimulacoes', sim.id), sim);
+      setHistorico(h => [sim, ...(h || [])].slice(0, 40));
+      aoAvisar('Transformação salva no histórico ✓');
+    } catch (e) { console.error('salvar simulação', e); }
+  };
 
   const escolherFoto = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -523,6 +587,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
     if (!file) return;
     try {
       const dataURL = await comprimirImagem(file);
+      setVerSim(null);
       setFoto(dataURL);
       setResultado(null);
       setCorte(50);
@@ -538,6 +603,7 @@ function IASpecial({ aoFechar, aoAvisar }) {
       const out = await transformarSorrisoNaNuvem(foto, alvo);
       setResultado(out);
       setCorte(50);
+      salvarSimulacao(foto, out, alvo); // guarda no histórico em segundo plano
     } catch (e) {
       console.error('IA Special', e);
       aoAvisar(mensagemErroIA(e));
@@ -587,44 +653,85 @@ function IASpecial({ aoFechar, aoAvisar }) {
           </div>
         </div>
 
-        {!foto && (
+        {!foto && !verSim && (
           <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '2px 2px 7px' }}>Nova transformação</div>
+            <input value={paciente} onChange={e => setPaciente(e.target.value)} placeholder="Nome do paciente"
+              style={{ width: '100%', padding: '13px 14px', borderRadius: 13, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14.5, fontWeight: 700, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
             <button onClick={() => inputRef.current && inputRef.current.click()}
-              style={{ width: '100%', borderRadius: 22, border: '1.5px dashed rgba(184,147,90,0.6)', background: 'rgba(184,147,90,0.07)', padding: '44px 20px', cursor: 'pointer', fontFamily: FONTE, textAlign: 'center' }}>
-              <div style={{ width: 66, height: 66, borderRadius: 33, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', boxShadow: '0 14px 30px -12px rgba(184,147,90,0.8)' }}>
-                <Camera size={28} color={INK} />
+              style={{ width: '100%', borderRadius: 20, border: '1.5px dashed rgba(184,147,90,0.6)', background: 'rgba(184,147,90,0.07)', padding: '28px 20px', cursor: 'pointer', fontFamily: FONTE, textAlign: 'center' }}>
+              <div style={{ width: 58, height: 58, borderRadius: 29, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', boxShadow: '0 14px 30px -12px rgba(184,147,90,0.8)' }}>
+                <Camera size={25} color={INK} />
               </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 16 }}>Adicionar foto do sorriso</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 6, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria.<br />Quanto mais nítido o sorriso, melhor o resultado.</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: '#fff', marginTop: 13 }}>Adicionar foto do sorriso</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.55)', marginTop: 5, lineHeight: 1.5 }}>Tire uma foto ou escolha da galeria — quanto mais nítida, melhor.</div>
             </button>
-            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-              {[['📸', 'Foto do paciente sorrindo'], ['✨', 'A IA redesenha: forma, simetria e alinhamento'], ['🎨', 'Você escolhe o tom da cor']].map(([ic, tx]) => (
-                <div key={tx} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 20 }}>{ic}</div>
-                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600, marginTop: 6, lineHeight: 1.4 }}>{tx}</div>
-                </div>
-              ))}
+
+            {/* Histórico: cada transformação fica guardada com o paciente */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '20px 2px 9px' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Histórico</span>
+              {historico && historico.length > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 800, color: GOLD, background: 'rgba(184,147,90,0.18)', borderRadius: 999, padding: '2px 8px' }}>{historico.length}</span>
+              )}
             </div>
+            {historico === null && (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', padding: '8px 2px' }}>Carregando histórico...</div>
+            )}
+            {historico && historico.length === 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '16px 14px', fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                Suas transformações aparecem aqui. Coloque o nome do paciente, adicione a foto e transforme — fica tudo salvo pra mostrar depois. ✨
+              </div>
+            )}
+            {historico && historico.map(s => (
+              <button key={s.id} onClick={() => { setCorte(50); setVerSim(s); }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: 9, marginBottom: 8, cursor: 'pointer', fontFamily: FONTE, textAlign: 'left' }}>
+                <img src={s.depoisUrl} alt={s.paciente} style={{ width: 52, height: 52, borderRadius: 11, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(184,147,90,0.4)' }} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.paciente}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                    {formatDateBR(s.data)} • tom {(TONS_IA.find(t => t.valor === s.tom) || {}).rotulo || 'natural'}
+                  </span>
+                </span>
+                <span style={{ color: GOLD, fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
+              </button>
+            ))}
           </div>
         )}
 
-        {foto && (
+        {/* Transformação salva aberta do histórico */}
+        {verSim && (
+          <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+              <button onClick={() => setVerSim(null)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{verSim.paciente}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • tom {(TONS_IA.find(t => t.valor === verSim.tom) || {}).rotulo || 'natural'}</div>
+              </div>
+            </div>
+            <div style={{ borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
+              <ComparadorImagens antes={verSim.antesUrl} depois={verSim.depoisUrl} corte={corte} setCorte={setCorte} />
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 10 }}>Arraste sobre a foto para comparar o antes e depois</div>
+            <button onClick={async () => {
+              try {
+                const resp = await fetch(verSim.depoisUrl);
+                const blob = await resp.blob();
+                const file = new File([blob], `sorriso-${verSim.paciente}.jpg`, { type: blob.type || 'image/jpeg' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: `Sorriso de ${verSim.paciente}` }); return; }
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `sorriso-${verSim.paciente}.jpg`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              } catch (e) { if (e && e.name !== 'AbortError') aoAvisar('Não consegui compartilhar.'); }
+            }} style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Share2 size={16} /> Compartilhar
+            </button>
+          </div>
+        )}
+
+        {foto && !verSim && (
           <div style={{ animation: 'iaSurgir 0.35s ease both' }}>
             <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
-              {/* depois (embaixo) + antes (por cima, cortada no divisor) */}
-              <img src={resultado || foto} alt="Sorriso" style={{ display: 'block', width: '100%' }} />
-              {resultado && (
-                <>
-                  <img src={foto} alt="Antes" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)` }} />
-                  <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${corte}%`, width: 2.5, background: '#fff', boxShadow: '0 0 12px rgba(0,0,0,0.6)', transform: 'translateX(-50%)' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 34, height: 34, borderRadius: 17, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: INK, boxShadow: '0 6px 16px rgba(0,0,0,0.45)' }}>⇄</div>
-                  </div>
-                  <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px' }}>ANTES</span>
-                  <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px' }}>DEPOIS ✨</span>
-                  <input type="range" min="0" max="100" value={corte} onChange={e => setCorte(Number(e.target.value))}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'ew-resize', touchAction: 'none' }} />
-                </>
-              )}
+              {!resultado && <img src={foto} alt="Sorriso" style={{ display: 'block', width: '100%' }} />}
+              {resultado && <ComparadorImagens antes={foto} depois={resultado} corte={corte} setCorte={setCorte} />}
               {processando && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,14,12,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', left: 0, right: 0, height: 3, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`, animation: 'iaVarredura 2.2s ease-in-out infinite', boxShadow: `0 0 18px ${GOLD}` }} />
@@ -1413,7 +1520,7 @@ function App({ dentista, email, prazoPagamento }) {
       </div>
 
       <PuxarAtualizar aoAtualizar={recarregarInfo} />
-      {iaAberta && <IASpecial aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
+      {iaAberta && <IASpecial dentista={dentista} aoFechar={() => setIaAberta(false)} aoAvisar={mostrarToast} />}
       {detalhe && <DetalheCaso caso={casos.find(c => c.id === detalhe.id) || detalhe} infoLab={info} aoAvisar={mostrarToast} aoFechar={() => setDetalhe(null)} />}
 
       {toast && (
