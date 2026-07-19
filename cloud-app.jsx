@@ -8,14 +8,42 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
-  getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc,
+  getDocs, getDoc, writeBatch, onSnapshot, deleteDoc, setDoc, query, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import App from './App.jsx';
 import logoMarca from './logo-special.png';
 
 // ─── Armazém de arquivos (Firebase Storage): anexos vão como binário puro ───
 // Muito mais rápido que guardar no banco (sem limite de 1MB, sem inflar 33% em texto)
+// ─── Ponte da IA Special (a mesma IA do Special Clinic, agora no Lab) ───
+// O App.jsx não importa Firebase; a IA fala com a nuvem por aqui.
+function instalarIA() {
+  const funcoes = getFunctions(fbApp, 'southamerica-east1');
+  window.iaNuvem = {
+    async transformar(fotoDataURL, tom) {
+      const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
+      const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+      return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
+    },
+    async perguntar({ pergunta, foto, historico }) {
+      const chamar = httpsCallable(funcoes, 'perguntarIA', { timeout: 60000 });
+      const r = await chamar({ pergunta, foto, historico });
+      return r.data.resposta;
+    },
+    async listarSimulacoes() {
+      const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', 'Laboratório Special')));
+      const lista = [];
+      snap.forEach(d => lista.push(d.data()));
+      return lista.sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 40);
+    },
+    async salvarSimulacao(sim) {
+      await setDoc(doc(db, 'labs', LAB, 'iaSimulacoes', sim.id), sim);
+    },
+  };
+}
+
 function instalarArquivos() {
   const st = getStorage();
   window.arquivos = {
@@ -448,12 +476,12 @@ function CloudRoot({ entrarNativo }) {
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
     getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); setAcesso('ok'); } })
+      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); setAcesso('ok'); } })
       .catch(e => {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
+        else { instalarStorage(); instalarArquivos(); instalarIA(); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
       });
     return () => { ativo = false; };
   }, [usuario, tentativa]);

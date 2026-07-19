@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import VisorSTL from './visor-stl.jsx';
-import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle } from 'lucide-react';
+import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
 
 const INK = '#1C1B19';
 const GOLD = '#B8935A';
@@ -922,6 +923,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
+  const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
+  const [perguntasAbertas, setPerguntasAbertas] = useState(false); // chat de perguntas à IA
   const [origemDetalhe, setOrigemDetalhe] = useState('lista');
 
   const usuarioAtivo = funcionarios.find(f => f.id === usuarioAtivoId) || null;
@@ -1536,6 +1539,8 @@ export default function App() {
 
   // Deslizar da borda esquerda: fecha o que estiver por cima ou volta uma tela
   useGestoVoltar(() => {
+    if (iaAberta) { setIaAberta(false); return; }
+    if (perguntasAbertas) { setPerguntasAbertas(false); return; }
     if (imprimindoCasoId) { setImprimindoCasoId(null); return; }
     if (seletorUsuarioAberto) { setSeletorUsuarioAberto(false); return; }
     if (view === 'detalhe') { setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista'); setConfirmandoExclusao(false); return; }
@@ -1713,6 +1718,8 @@ export default function App() {
         </div>
       )}
 
+      {iaAberta && <IASpecialLab aoFechar={() => setIaAberta(false)} />}
+      {perguntasAbertas && <PerguntasIALab aoFechar={() => setPerguntasAbertas(false)} nomeUsuario={typeof usuarioAtivo === 'string' ? usuarioAtivo : (usuarioAtivo && usuarioAtivo.nome) || ''} />}
       {seletorUsuarioAberto && (
         <SeletorUsuario funcionarios={funcionarios} usuarioAtivoId={usuarioAtivoId}
           onTrocar={trocarUsuario} onFechar={() => setSeletorUsuarioAberto(false)}
@@ -1727,6 +1734,8 @@ export default function App() {
           <>
           <PedidosClinica solicitacoes={solicitacoes} onAceitar={aceitarSolicitacao} onRecusar={recusarSolicitacao} />
           <DashboardView
+            onAbrirIA={() => setIaAberta(true)}
+            onAbrirPerguntas={() => setPerguntasAbertas(true)}
             producaoAtiva={producaoAtiva.length} prontos={prontos.length}
             naClinica={naClinicaLista.length} provasLevar={provasPendentes.length}
             atrasados={atrasados.length}
@@ -2036,10 +2045,59 @@ function BadgeClinica() {
   );
 }
 
-function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje }) {
+function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   return (
     <div>
-      <div className="text-sm text-stone-400 mb-4 capitalize">{hojeExtenso()}</div>
+      {/* Cabeçalho-herói da marca: preto + dourado + estrela em marca d'água */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, marginBottom: 14, padding: '20px 18px 18px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
+        <div style={{ position: 'absolute', top: -70, right: -70, width: 210, height: 210, borderRadius: '50%', background: 'radial-gradient(circle, rgba(184,147,90,0.22), transparent 65%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', right: 12, bottom: 0, opacity: 0.08, pointerEvents: 'none' }}><EstrelaLogo size={62} color={GOLD} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <EstrelaLogo size={11} color={GOLD} />
+          <span style={{ color: '#fff', fontWeight: 300, fontSize: 11.5, letterSpacing: '0.32em' }}>SPECIAL</span>
+          <span style={{ color: GOLD, fontWeight: 700, fontSize: 9.5, letterSpacing: '0.3em' }}>LAB</span>
+        </div>
+        <div style={{ color: '#fff', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', marginTop: 14, lineHeight: 1.15 }}>
+          {saudacao}{usuarioAtivo ? `, ${String(typeof usuarioAtivo === 'string' ? usuarioAtivo : usuarioAtivo.nome || '').split(' ')[0]}` : ''}!
+        </div>
+        <div style={{ color: GOLD, fontSize: 12.5, fontWeight: 700, marginTop: 4, textTransform: 'capitalize' }}>{hojeExtenso()}</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 15 }}>
+          {[
+            ['Em produção', producaoAtiva, '#F5A54A'],
+            ['Para hoje', paraHoje, '#E0BC85'],
+            ['Atrasados', atrasados, atrasados > 0 ? '#F87171' : '#4ADE80'],
+          ].map(([rot, val, cor]) => (
+            <div key={rot} style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 11px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 4, background: cor, boxShadow: `0 0 6px ${cor}66`, flexShrink: 0 }} />
+                <span style={{ fontSize: 8.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rot}</span>
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 3 }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* IA Special no laboratório: transformação de sorriso + perguntas técnicas */}
+      <div className="flex gap-2.5 mb-4">
+        <button onClick={onAbrirIA}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', textAlign: 'left', border: '1px solid rgba(184,147,90,0.45)', borderRadius: 18, padding: '14px 14px', background: 'linear-gradient(135deg, #2B2620, #1C1B19)', cursor: 'pointer', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <div style={{ position: 'absolute', right: -10, top: -12, opacity: 0.12, pointerEvents: 'none' }}><EstrelaLogo size={44} color={GOLD} /></div>
+          <Sparkles size={18} color={GOLD} />
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', marginTop: 8 }}>IA Special</div>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2, lineHeight: 1.4 }}>Transformação de sorriso com IA</div>
+        </button>
+        <button onClick={onAbrirPerguntas}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', textAlign: 'left', border: '1px solid #E8D5B0', borderRadius: 18, padding: '14px 14px', background: '#fff', cursor: 'pointer', boxShadow: '0 14px 30px -20px rgba(122,98,52,0.45)' }}>
+          <div style={{ position: 'absolute', right: -10, top: -12, opacity: 0.07, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></div>
+          <MessageCircle size={18} color={GOLD} />
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: INK, marginTop: 8 }}>Perguntas</div>
+          <div style={{ fontSize: 10.5, color: '#78716C', marginTop: 2, lineHeight: 1.4 }}>Próteses, implantes e técnicas — com foto</div>
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4 mb-4 lg:mb-6">
         <StatCard label="Em produção" value={producaoAtiva} color={GOLD} icon={Hammer} onClick={() => onFiltro('producao')} />
         <StatCard label="Para hoje" value={paraHoje} color="#EA580C" icon={CalendarClock} sub={paraHoje > 0 ? `≈ ${formatHoras(horasHoje)} de serviço` : null} onClick={() => onFiltro('hoje')} />
