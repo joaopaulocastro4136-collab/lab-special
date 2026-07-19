@@ -1,0 +1,36 @@
+# Ativa o "Sign In with Apple" no Apple Developer e regenera os perfis de
+# distribuição dos dois apps, commitando os novos .mobileprovision no repositório.
+name: Ativar Sign In with Apple
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ativar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Liga a capacidade e regenera os perfis na Apple
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node ativar-apple.mjs
+      - name: Commita os perfis novos
+        run: |
+          git config user.name "robo-special"
+          git config user.email "robo@laboratorio-special.app"
+          git add ios/LabSpecial_AppStore.mobileprovision clinic-native/ios/SpecialClinic_AppStore.mobileprovision
+          if git diff --cached --quiet; then
+            echo "Perfis não mudaram — nada a commitar"
+          else
+            git commit -m "Perfis de distribuição regenerados com Sign In with Apple"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
