@@ -8,7 +8,7 @@ on:
       versao:
         description: "Versão visível (ex.: 1.0)"
         required: false
-        default: "5.3"
+        default: "5.9"
 
 jobs:
   build:

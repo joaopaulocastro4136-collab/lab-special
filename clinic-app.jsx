@@ -282,7 +282,11 @@ async function registrarPush(dados) {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     let perm = await PushNotifications.checkPermissions();
     if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
-    if (perm.receive !== 'granted') return;
+    if (perm.receive !== 'granted') {
+      // Notificações desligadas nos Ajustes do iPhone → avisa na tela, senão ninguém descobre
+      window.dispatchEvent(new CustomEvent('push-sem-permissao'));
+      return;
+    }
     await PushNotifications.addListener('registration', async (t) => {
       try {
         await setDoc(doc(db, 'labs', LAB, 'pushTokens', t.value), {
@@ -1185,6 +1189,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const [aba, setAba] = useState('trabalhos');
   const [detalhe, setDetalhe] = useState(null);
   const [toast, setToast] = useState(null);
+  const [pushBloqueado, setPushBloqueado] = useState(false); // notificações desligadas nos Ajustes do iPhone
   const [meusDados, setMeusDados] = useState(false);
   const [sinoAberto, setSinoAberto] = useState(false);
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
@@ -1227,6 +1232,13 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   useEffect(() => {
     registrarPush({ tipo: 'clinica', dentista, email: email || '' });
   }, [dentista]);
+
+  // Permissão de notificação negada nos Ajustes → mostra o aviso vermelho na tela
+  useEffect(() => {
+    const ouvir = () => setPushBloqueado(true);
+    window.addEventListener('push-sem-permissao', ouvir);
+    return () => window.removeEventListener('push-sem-permissao', ouvir);
+  }, []);
 
   // Tocar na notificação da barra → abre direto o trabalho (casoId vem no aviso).
   // Se o app estava fechado, o id fica guardado e abre assim que os casos carregarem.
@@ -2241,6 +2253,18 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
       {toast && (
         <div style={{ position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, background: INK, color: '#fff', borderRadius: 14, padding: '12px 18px', fontSize: 13, fontWeight: 700, boxShadow: '0 14px 34px rgba(0,0,0,0.35)', maxWidth: '90%', fontFamily: FONTE }}>
           {toast}
+        </div>
+      )}
+
+      {pushBloqueado && (
+        <div style={{ position: 'fixed', top: 'calc(8px + env(safe-area-inset-top))', left: 12, right: 12, zIndex: 9500, background: '#B3261E', color: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 14px 34px rgba(0,0,0,0.35)', fontFamily: FONTE, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.35, flex: 1 }}>
+            As notificações estão desligadas no iPhone. Abra Ajustes → Notificações → Special Clinic e ative os avisos.
+          </div>
+          <button onClick={() => setPushBloqueado(false)}
+            style={{ border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', borderRadius: 10, padding: '8px 12px', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: FONTE, flexShrink: 0 }}>
+            OK
+          </button>
         </div>
       )}
 
