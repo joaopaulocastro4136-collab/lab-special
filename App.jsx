@@ -1842,7 +1842,8 @@ export default function App() {
             pagamentos={pagamentos}
             dentistas={dentistas}
             onSetPrazoPagamento={(nome, texto) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, prazoPagamento: texto || null } : d) })}
-            onSetDiasPagamento={(nome, dias) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, diasPagamento: dias ?? null } : d) })}
+            onSetDiasPagamento={(nome, dias) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, diasPagamento: dias ?? null, dataPagamento: null } : d) })}
+            onSetDataPagamento={(nome, data) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) } : d) })}
             onRegistrarPagamento={registrarPagamento}
             onRemoverPagamento={removerPagamento}
             onSelect={goToDetalhe}
@@ -4859,7 +4860,7 @@ function EntregasView({ casos, provasLevar, provasNaClinica, getEndereco, getTel
 
 // ─── Finanças (só gestor): entradas, valores e comissões ───
 // Combinado de pagamento do dentista (aparece para ele no Special Clinic)
-function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias }) {
+function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtual, onSalvarData }) {
   const [texto, setTexto] = useState(atual || '');
   const [salvo, setSalvo] = useState(false);
   return (
@@ -4872,25 +4873,37 @@ function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias }) {
           {salvo ? '✓' : 'Salvar'}
         </button>
       </div>
-      {/* Vencimento automático: N dias após a entrega. Cada trabalho entregue ganha
-          data de vencimento no app do dentista — e fica VERMELHO quando passa sem baixa. */}
-      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Vencimento: dias para pagar após a entrega <span className="font-normal text-stone-400">(fica vermelho no app dele se passar)</span>:</div>
+      {/* Vencimento automático — DUAS formas de combinar (uma exclui a outra):
+          • PRAZO: N dias após cada entrega  • DATA: um dia marcado pro pagamento
+          Nos dois casos, passou sem baixa → fica VERMELHO no app do dentista
+          e o robô da nuvem manda notificação de atraso todo dia de manhã. */}
+      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Vencimento: prazo em dias após a entrega <span className="font-normal text-stone-400">(fica vermelho no app dele se passar)</span>:</div>
       <div className="flex gap-1.5 flex-wrap">
         {[[null, 'Sem prazo'], [2, '2 dias'], [5, '5 dias'], [7, '7 dias'], [15, '15 dias'], [30, '30 dias']].map(([n, rot]) => (
           <button key={rot} onClick={() => onSalvarDias(n)}
             className="px-3 py-2 rounded-xl text-xs font-bold"
-            style={(diasAtual ?? null) === n
+            style={!dataAtual && (diasAtual ?? null) === n
               ? { background: INK, color: GOLD, border: `1px solid ${INK}` }
               : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
             {rot}
           </button>
         ))}
       </div>
+      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Ou uma data marcada para o pagamento:</div>
+      <div className="flex items-center gap-2">
+        <input type="date" value={dataAtual || ''} onChange={e => onSalvarData(e.target.value || null)}
+          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
+          style={dataAtual ? { background: INK, color: GOLD, border: `1px solid ${INK}`, colorScheme: 'dark' } : { background: '#fff', color: '#57534E', border: '1px solid #E7E5E4' }} />
+        {dataAtual && (
+          <button onClick={() => onSalvarData(null)} className="px-3 py-2.5 rounded-xl text-xs font-bold" style={{ background: '#fff', color: '#B42318', border: '1px solid #F5B5B5' }}>Limpar</button>
+        )}
+      </div>
+      {dataAtual && <div className="text-xs mt-1.5" style={{ color: '#7A6234' }}>Combinado: pagamento até <b>{dataAtual.split('-').reverse().join('/')}</b> — passou sem baixa, fica vermelho e o dentista é notificado.</div>}
     </div>
   );
 }
 
-function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSetPrazoPagamento, onSetDiasPagamento, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
+function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSetPrazoPagamento, onSetDiasPagamento, onSetDataPagamento, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dentistaCobranca, setDentistaCobranca] = useState(null);
   const [valorPagamento, setValorPagamento] = useState('');
@@ -5114,7 +5127,9 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
                       atual={(dentistas || []).find(x => x.nome === d.nome)?.prazoPagamento}
                       onSalvar={(texto) => onSetPrazoPagamento(d.nome, texto)}
                       diasAtual={(dentistas || []).find(x => x.nome === d.nome)?.diasPagamento ?? null}
-                      onSalvarDias={(n) => onSetDiasPagamento(d.nome, n)} />
+                      onSalvarDias={(n) => onSetDiasPagamento(d.nome, n)}
+                      dataAtual={(dentistas || []).find(x => x.nome === d.nome)?.dataPagamento || null}
+                      onSalvarData={(data) => onSetDataPagamento(d.nome, data)} />
                     {/* Registrar pagamento */}
                     <div className="rounded-xl p-3" style={{ background: '#F5F4F0' }}>
                       <div className="text-xs font-bold mb-2" style={{ color: INK }}>Registrar pagamento recebido:</div>

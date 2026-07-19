@@ -296,10 +296,12 @@ async function registrarPush(dados) {
     // Tocar no aviso da barra → abre direto o trabalho (o carteiro manda o casoId junto)
     await PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
       const d = (ev && ev.notification && ev.notification.data) || {};
-      const casoId = d.casoId || null;
-      if (casoId) {
-        window.__casoPushPendente = casoId;
-        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: casoId }));
+      if (d.casoId) {
+        window.__casoPushPendente = d.casoId;
+        window.dispatchEvent(new CustomEvent('abrir-caso-push', { detail: d.casoId }));
+      } else if (d.abrirAba) {
+        window.__abaPushPendente = d.abrirAba;
+        window.dispatchEvent(new CustomEvent('abrir-aba-push', { detail: d.abrirAba }));
       }
     });
     await PushNotifications.register();
@@ -1172,7 +1174,7 @@ function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
   );
 }
 
-function App({ dentista, email, prazoPagamento, diasPagamento }) {
+function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) {
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
   const [pagamentosLab, setPagamentosLab] = useState([]); // pagamentos registrados pelo laboratório (data + valor)
@@ -1241,6 +1243,20 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
     return () => window.removeEventListener('abrir-caso-push', ouvir);
   }, [casos]);
 
+  // Aviso de pagamento atrasado tocado → abre direto o Financeiro
+  useEffect(() => {
+    const abrirAba = (ab) => {
+      if (!ab) return;
+      window.__abaPushPendente = null;
+      setIaAberta(false); setPerguntasAbertas(false); setSinoAberto(false); setDetalhe(null);
+      setAba(ab);
+    };
+    const ouvir = (e) => abrirAba(e.detail);
+    window.addEventListener('abrir-aba-push', ouvir);
+    if (window.__abaPushPendente) abrirAba(window.__abaPushPendente);
+    return () => window.removeEventListener('abrir-aba-push', ouvir);
+  }, []);
+
   useEffect(() => {
     const q1 = query(collection(db, 'labs', LAB, 'casos'), where('dentista', '==', dentista));
     const un1 = onSnapshot(q1, snap => {
@@ -1308,6 +1324,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
   // trabalho entregue. Os pagamentos quitam as entregas mais antigas primeiro; o que
   // sobrar sem baixa e passar da data fica VERMELHO (vencido).
   const diasPagamentoN = (diasPagamento === null || diasPagamento === undefined || diasPagamento === '') ? null : Number(diasPagamento);
+  const dataPagamentoStr = dataPagamento || null; // data marcada pro pagamento (vale pras entregas até essa data)
   const situacaoPag = {}; // id → { pago } ou { vence, diasV }
   {
     let restante = totalPago;
@@ -1318,9 +1335,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
         if (restante >= (c.valor || 0) - 0.005) {
           restante = Math.round((restante - (c.valor || 0)) * 100) / 100;
           situacaoPag[c.id] = { pago: true };
-        } else if (c.dataSaida && diasPagamentoN !== null) {
-          const vence = addDias(c.dataSaida, diasPagamentoN);
-          situacaoPag[c.id] = { pago: false, vence, diasV: diasRestantes(vence) };
+        } else if (c.dataSaida && (dataPagamentoStr || diasPagamentoN !== null)) {
+          const vence = (dataPagamentoStr && c.dataSaida <= dataPagamentoStr)
+            ? dataPagamentoStr
+            : (diasPagamentoN !== null ? addDias(c.dataSaida, diasPagamentoN) : null);
+          if (vence) situacaoPag[c.id] = { pago: false, vence, diasV: diasRestantes(vence) };
+          else situacaoPag[c.id] = { pago: false };
         } else {
           situacaoPag[c.id] = { pago: false };
         }
@@ -1976,9 +1996,9 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
                   {saldo < 0 ? `Você tem ${formatReais(-saldo)} de crédito` : 'Tudo em dia com o laboratório ✓'}
                 </div>
               )}
-              {(prazoPagamento || diasPagamentoN !== null) && (
+              {(prazoPagamento || diasPagamentoN !== null || dataPagamentoStr) && (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 11, background: 'rgba(184,147,90,0.16)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 999, padding: '7px 12px', fontSize: 11.5, color: GOLD, fontWeight: 700 }}>
-                  <CalendarClock size={13} /> Combinado: {diasPagamentoN !== null ? `pagar até ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : prazoPagamento}
+                  <CalendarClock size={13} /> Combinado: {dataPagamentoStr ? `pagamento até ${formatDateBR(dataPagamentoStr)}` : diasPagamentoN !== null ? `pagar até ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : prazoPagamento}
                 </div>
               )}
               {totalVencido > 0 && (
@@ -2011,8 +2031,8 @@ function App({ dentista, email, prazoPagamento, diasPagamento }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#B42318' }}>Pagamento vencido</div>
                     <div style={{ fontSize: 11.5, color: '#7F1D1D', marginTop: 2, lineHeight: 1.45 }}>
-                      {entregasVencidas.length === 1 ? '1 trabalho passou' : `${entregasVencidas.length} trabalhos passaram`} do prazo combinado
-                      {diasPagamentoN !== null ? ` de ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : ''}
+                      {entregasVencidas.length === 1 ? '1 trabalho passou' : `${entregasVencidas.length} trabalhos passaram`} do combinado
+                      {dataPagamentoStr ? ` (pagamento até ${formatDateBR(dataPagamentoStr)})` : diasPagamentoN !== null ? ` de ${diasPagamentoN} ${diasPagamentoN === 1 ? 'dia' : 'dias'} após a entrega` : ''}
                       {vencidoDesde ? ` — desde ${formatDateBR(vencidoDesde)}` : ''}.
                     </div>
                   </div>
@@ -3408,6 +3428,7 @@ function Raiz() {
   const [nomeDentista, setNomeDentista] = useState('');
   const [prazoPag, setPrazoPag] = useState('');
   const [diasPag, setDiasPag] = useState(null);
+  const [dataPag, setDataPag] = useState(null);
   const [entrando, setEntrando] = useState(false);
   const [abrindo, setAbrindo] = useState(true);
   const [tentativa, setTentativa] = useState(0);
@@ -3428,7 +3449,7 @@ function Raiz() {
     getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
       .then(s => {
         if (!ativo) return;
-        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setEstado('ok'); }
+        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok'); }
         else setEstado('negado');
       })
       .catch(() => { if (ativo) setEstado('negado'); });
@@ -3501,7 +3522,7 @@ function Raiz() {
     );
   }
 
-  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} /></>;
+  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} dataPagamento={dataPag} /></>;
 }
 
 document.title = 'Special Clinic';

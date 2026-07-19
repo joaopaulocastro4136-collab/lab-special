@@ -9,6 +9,7 @@
 // Android: pelo Firebase Cloud Messaging.
 
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -123,6 +124,67 @@ exports.aoMudarCaso = onDocumentUpdated({ ...OPCOES, document: 'labs/principal/c
       await notificar('lab', null, 'Arquivo aprovado ✓', `${depois.dentista} aprovou "${a.nome}" (${depois.paciente}).`, { casoId });
     }
   }
+});
+
+// ─── Cobrador: verifica todo dia de manhã se há pagamento vencido ───
+// Usa o combinado de cada dentista (data marcada OU dias após a entrega, gravado
+// em dentistasAcesso pelo Lab). Pagamentos registrados quitam as entregas mais
+// antigas primeiro (mesma conta do app). Se sobrou valor vencido sem baixa:
+//   • dentista recebe push "Pagamento em atraso — por favor, regularize"
+//     (tocar no aviso abre direto o Financeiro do Special Clinic)
+//   • laboratório recebe um resumo de quem está em atraso
+exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZone: 'America/Recife' }, async () => {
+  const db = admin.firestore();
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().split('T')[0]; // dia em Recife (UTC-3)
+  const fmt = (v) => 'R$ ' + v.toFixed(2).replace('.', ',');
+  const somaDias = (iso, n) => {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().split('T')[0];
+  };
+  const acessos = await db.collection('labs/principal/dentistasAcesso').get();
+  const vistos = new Set();
+  const atrasados = [];
+  for (const docAcesso of acessos.docs) {
+    const cfg = docAcesso.data();
+    const nome = cfg.nome;
+    if (!nome || vistos.has(nome)) continue;
+    vistos.add(nome);
+    const temDias = Number.isFinite(cfg.diasPagamento);
+    const temData = typeof cfg.dataPagamento === 'string' && cfg.dataPagamento;
+    if (!temDias && !temData) continue; // sem combinado → sem cobrança automática
+    const casosSnap = await db.collection('labs/principal/casos')
+      .where('dentista', '==', nome).where('status', '==', 'Entregue').get();
+    const entregues = [];
+    casosSnap.forEach((d) => {
+      const c = d.data();
+      if ((c.valor || 0) > 0 && c.dataSaida) entregues.push(c);
+    });
+    entregues.sort((a, b) => String(a.dataSaida).localeCompare(String(b.dataSaida)));
+    const fin = await db.doc('labs/principal/financeiroClinica/' + nome.replace(/\//g, '-')).get();
+    let restante = (fin.exists && fin.data().totalPago) || 0;
+    let vencido = 0;
+    for (const c of entregues) {
+      if (restante >= c.valor - 0.005) { restante -= c.valor; continue; }
+      let vence = null;
+      if (temData && c.dataSaida <= cfg.dataPagamento) vence = cfg.dataPagamento;
+      else if (temDias) vence = somaDias(c.dataSaida, cfg.diasPagamento);
+      if (vence && vence < hoje) vencido += c.valor;
+    }
+    vencido = Math.round(vencido * 100) / 100;
+    if (vencido > 0) {
+      atrasados.push({ nome, vencido });
+      await notificar('clinica', nome, '🔴 Pagamento em atraso',
+        `Há ${fmt(vencido)} vencido com o Laboratório Special. Por favor, regularize — toque aqui para abrir o Financeiro e pagar via Pix.`,
+        { abrirAba: 'financeiro' });
+    }
+  }
+  if (atrasados.length > 0) {
+    const lista = atrasados.map((a) => `${a.nome} (${fmt(a.vencido)})`).join(', ');
+    await notificar('lab', null, '💰 Pagamentos em atraso',
+      `${atrasados.length === 1 ? '1 dentista está' : atrasados.length + ' dentistas estão'} com pagamento vencido: ${lista}.`);
+  }
+  console.log(`cobrança: ${atrasados.length} dentista(s) em atraso`);
 });
 
 // ─── IA Special: transformador de sorriso (Special Clinic) ───
