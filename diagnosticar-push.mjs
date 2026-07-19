@@ -114,6 +114,34 @@ for (const d of todosDocs) {
   }
 }
 
+// 3b3. Cofre ANTIGO dos casos (kv/casos-laboratorio): se ainda existir, algum app
+// de geração antiga pode estar lendo/gravando nele em vez da coleção atual
+console.log('\n══ COFRE ANTIGO (kv/casos-laboratorio) ══');
+try {
+  const kvCasos = await (await fetch(`${BASE}/labs/principal/kv/casos-laboratorio`, { headers: H })).json();
+  if (kvCasos.error) {
+    console.log('  não existe (ok — só a coleção atual é usada)');
+  } else {
+    const nChunks = kvCasos.fields?.chunks ? parseInt(valor(kvCasos.fields.chunks), 10) : 0;
+    let texto = '';
+    if (nChunks > 0) {
+      for (let i = 0; i < nChunks; i++) {
+        const p = await (await fetch(`${BASE}/labs/principal/kv/casos-laboratorio__c${i}`, { headers: H })).json();
+        texto += (p.fields?.v && valor(p.fields.v)) || '';
+      }
+    } else {
+      texto = (kvCasos.fields?.v && valor(kvCasos.fields.v)) || '';
+    }
+    console.log(`  EXISTE! ${nChunks > 0 ? nChunks + ' pedaços' : 'doc único'} | ${Math.round(texto.length / 1024)} KB`);
+    try {
+      const arr = JSON.parse(texto);
+      console.log(`  contém ${arr.length} trabalho(s):`);
+      for (const c of arr.slice(0, 30)) console.log(`    id=${c.id} | paciente="${c.paciente}" | status=${c.status} | dentista=${c.dentista} | entrada=${c.dataEntrada}`);
+      if (arr.length > 30) console.log(`    ... e mais ${arr.length - 30}`);
+    } catch (e) { console.log('  (não consegui interpretar o conteúdo: ' + String(e).slice(0, 80) + ')'); }
+  }
+} catch (e) { console.log('  erro ao consultar: ' + String(e).slice(0, 100)); }
+
 // 3c. E-mails com acesso ao Lab (regras de gravação)
 const acessoKV = await (await fetch(`${BASE}/labs/principal/kv/acesso`, { headers: H })).json();
 const emailsAcesso = (acessoKV.fields?.emails?.arrayValue?.values || []).map(v => v.stringValue);
