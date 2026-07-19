@@ -1186,6 +1186,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const [meusDados, setMeusDados] = useState(false);
   const [sinoAberto, setSinoAberto] = useState(false);
   const [filtroSecao, setFiltroSecao] = useState(null); // caixinha tocada abaixo do gráfico: mostra só aquela seção
+  const [buscaCasos, setBuscaCasos] = useState(''); // busca da tela inicial: paciente, tipo ou ID
   const [iaAberta, setIaAberta] = useState(false);
   const [perguntasAbertas, setPerguntasAbertas] = useState(false);
   const [extratoVer, setExtratoVer] = useState(null); // extrato aberto pra VER antes de decidir compartilhar
@@ -1585,6 +1586,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
     );
   };
 
+  const termoBusca = buscaCasos.trim().toLowerCase();
+  const resultadosBusca = termoBusca === '' ? [] : casos.filter(c =>
+    String(c.paciente || '').toLowerCase().includes(termoBusca)
+    || String(c.tipoTrabalho || '').toLowerCase().includes(termoBusca)
+    || String(c.id || '').toLowerCase().includes(termoBusca));
+
   const Secao = ({ titulo, cor, itens, vazio }) => (
     <div style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: cor || '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 2px 8px' }}>{titulo}</div>
@@ -1744,6 +1751,20 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             ))}
             {panorama}
             {caixinhasSituacao}
+            {/* Busca rápida: paciente, tipo de trabalho ou ID */}
+            <div style={{ position: 'relative', marginBottom: 14 }}>
+              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><Estrela size={11} color={buscaCasos ? GOLD : '#C9C4BC'} /></span>
+              <input value={buscaCasos} onChange={e => setBuscaCasos(e.target.value)} placeholder="Buscar por paciente ou ID..."
+                style={{ width: '100%', padding: '13px 40px 13px 36px', borderRadius: 14, border: buscaCasos ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: '#fff', fontSize: 13.5, fontWeight: 600, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)' }} />
+              {buscaCasos && (
+                <button onClick={() => setBuscaCasos('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, borderRadius: 13, border: 'none', background: '#F0EFEC', color: '#78716C', fontSize: 13, fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
+              )}
+            </div>
+            {termoBusca !== '' && (
+              <Secao titulo={`Resultados da busca (${resultadosBusca.length})`} cor="#7A6234" itens={resultadosBusca} vazio="Nenhum trabalho encontrado — confira o nome ou o ID." />
+            )}
+            {termoBusca === '' && <>
             {bannerIA}
             {bannerPerguntas}
             {enviadosHoje.length > 0 && (
@@ -1773,6 +1794,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
                 Mostrar tudo
               </button>
             )}
+            </>}
           </>
         )}
         {aba === 'novo' && (
@@ -2618,6 +2640,11 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
             <div style={{ fontSize: 12.5, color: GOLD, fontWeight: 700, marginTop: 3 }}>
               {caso.tipoTrabalho}{(caso.quantidade || 1) > 1 ? ` × ${caso.quantidade}` : ''}{caso.material ? ` • ${caso.material}` : ''}
             </div>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(String(caso.id)); aoAvisar && aoAvisar('ID do trabalho copiado ✓'); } catch (e) { } }}
+              title="Copiar ID"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 11px', fontSize: 10, color: GOLD, fontWeight: 800, cursor: 'pointer', fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.05em' }}>
+              ID {String(caso.id).toUpperCase()} ⧉
+            </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
               {caso.prazo && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '6px 11px', fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700 }}>

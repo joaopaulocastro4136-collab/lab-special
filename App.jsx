@@ -1546,11 +1546,14 @@ export default function App() {
 
   const selectedCaso = casos.find(c => c.id === selectedId);
   const casosFiltrados = casos
-    .filter(c => (busca === '' || c.paciente.toLowerCase().includes(busca.toLowerCase()) || c.dentista.toLowerCase().includes(busca.toLowerCase())))
+    .filter(c => (busca === '' || c.paciente.toLowerCase().includes(busca.toLowerCase()) || c.dentista.toLowerCase().includes(busca.toLowerCase()) || String(c.id).toLowerCase().includes(busca.trim().toLowerCase())))
     .filter(c => filtroStatus === 'Todos' || c.status === filtroStatus)
     .filter(c => filtroDentista === 'Todos' || c.dentista === filtroDentista)
     .filter(c => !filtroRapido || FILTROS_RAPIDOS[filtroRapido].teste(c))
-    .sort((a, b) => a.prazo.localeCompare(b.prazo));
+    // Para retirada: ordem de CHEGADA (o que acabou de entrar vem primeiro); demais listas por prazo
+    .sort((a, b) => filtroRapido === 'retirada'
+      ? String(b.id).localeCompare(String(a.id))
+      : a.prazo.localeCompare(b.prazo));
 
   const emAndamento = casos.filter(c => c.status !== 'Entregue');
   const producaoAtiva = emAndamento.filter(emProducao);
@@ -2640,7 +2643,7 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
         <div className="absolute left-3 top-0 bottom-0 flex items-center pointer-events-none">
           <Search size={16} className="text-stone-400" />
         </div>
-        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar paciente ou dentista..." className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" />
+        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" />
       </div>
       {dentistas && dentistas.length > 0 && (
         <div className="relative mb-3">
@@ -4426,6 +4429,22 @@ function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
   );
 }
 
+// ID do trabalho, copiável num toque — pra identificar e buscar rapidinho
+function IdCopiavel({ id }) {
+  const [ok, setOk] = useState(false);
+  const copiar = async (e) => {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(String(id)); setOk(true); setTimeout(() => setOk(false), 1600); } catch (err) { }
+  };
+  return (
+    <button onClick={copiar} title="Copiar ID"
+      className="inline-flex items-center gap-1 mt-1 px-2 py-1 rounded-lg text-[10px] font-bold"
+      style={{ background: ok ? '#DCF3E4' : '#F5F4F0', color: ok ? '#166B3A' : '#78716C', border: `1px solid ${ok ? '#A7E3BC' : '#E7E5E4'}`, fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.04em' }}>
+      {ok ? 'ID copiado ✓' : `ID ${String(id).toUpperCase()} ⧉`}
+    </button>
+  );
+}
+
 function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
@@ -4500,6 +4519,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
           <div className="min-w-0">
             <h2 className="text-lg font-extrabold truncate" style={{ color: INK }}>{caso.paciente}</h2>
             <div className="text-sm text-stone-500 truncate">{caso.dentista}</div>
+            <IdCopiavel id={caso.id} />
             {endereco && !caso.naClinica && (
               <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs mt-0.5" style={{ color: '#1A73E8' }}>
                 <MapPin size={11} className="flex-shrink-0" /><span className="truncate">{endereco}</span>
