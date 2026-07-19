@@ -127,6 +127,9 @@ const auth = ehIosNativo
   : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
 
+// Botão "Sair da conta" dentro do app (Ajustes) usa esta ponte
+if (typeof window !== 'undefined') window.sairDaConta = () => signOut(auth);
+
 const colCasos = () => collection(db, 'labs', LAB, 'casos');
 const docCaso = (id) => doc(db, 'labs', LAB, 'casos', id);
 const docKV = (key) => doc(db, 'labs', LAB, 'kv', key);

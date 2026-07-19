@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import VisorSTL from './visor-stl.jsx';
-import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle } from 'lucide-react';
+import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut } from 'lucide-react';
 import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
 
 const INK = '#1C1B19';
@@ -3799,6 +3799,15 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           })}
         </div>
       </div>
+
+      {/* Sair da conta Google deste aparelho (só existe na versão em nuvem) */}
+      {typeof window !== 'undefined' && window.sairDaConta && (
+        <button onClick={() => { if (confirm('Sair da conta neste aparelho? Você volta para a tela de entrada.')) window.sairDaConta(); }}
+          className="w-full mt-4 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 bg-white"
+          style={{ color: '#B42318', border: '1px solid #F5B5B5' }}>
+          <LogOut size={16} /> Sair da conta
+        </button>
+      )}
     </div>
   );
 }
