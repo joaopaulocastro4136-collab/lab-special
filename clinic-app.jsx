@@ -1824,10 +1824,13 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             )}
             {/* Como ver a fila: por urgência (lista) ou agrupada por data de entrega (agenda) */}
             {naoEntregues.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                {[['lista', '☰ Lista'], ['datas', '📅 Por data']].map(([m, rot]) => (
+              <div style={{ display: 'flex', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 15, padding: 4, marginBottom: 12, boxShadow: '0 10px 24px -18px rgba(28,27,25,0.3)' }}>
+                {[['lista', 'Lista'], ['datas', 'Calendário']].map(([m, rot]) => (
                   <button key={m} onClick={() => setPrevisaoModo(m)}
-                    style={{ flex: 1, padding: '10px 6px', borderRadius: 12, fontFamily: FONTE, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', border: previsaoModo === m ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: previsaoModo === m ? 'rgba(184,147,90,0.12)' : '#fff', color: previsaoModo === m ? '#7A6234' : '#78716C' }}>
+                    style={{ flex: 1, padding: '11px 6px', borderRadius: 12, border: 'none', fontFamily: FONTE, fontSize: 12.5, fontWeight: 800, letterSpacing: '0.05em', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, transition: 'background 0.2s',
+                      background: previsaoModo === m ? 'linear-gradient(135deg, #24221E, #1C1B19)' : 'transparent',
+                      color: previsaoModo === m ? GOLD : '#8A8580' }}>
+                    {previsaoModo === m && <Estrela size={10} color={GOLD} />}
                     {rot}
                   </button>
                 ))}
@@ -1879,15 +1882,19 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               };
               return (
                 <>
-                  <div style={{ ...cartao, padding: 14 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-                      <button onClick={() => mudarMes(-1)} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid #E7E5E4', background: '#FAF9F7', color: '#78716C', fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>‹</button>
-                      <div style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: 800, color: INK }}>{NOMES_MESES[mmC - 1]} de {anoC}</div>
-                      <button onClick={() => mudarMes(1)} style={{ width: 32, height: 32, borderRadius: 16, border: '1px solid #E7E5E4', background: '#FAF9F7', color: '#78716C', fontSize: 14, cursor: 'pointer', fontFamily: FONTE }}>›</button>
+                  <div style={{ ...cartao, position: 'relative', overflow: 'hidden', padding: 15 }}>
+                    <div style={{ position: 'absolute', right: -16, top: -18, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={62} color={INK} /></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <button onClick={() => mudarMes(-1)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid #E8D5B0', background: '#fff', color: '#7A6234', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}>‹</button>
+                      <div style={{ flex: 1, textAlign: 'center' }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: INK, letterSpacing: '0.02em' }}>{NOMES_MESES[mmC - 1]}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#A8A29E', marginLeft: 6 }}>{anoC}</span>
+                      </div>
+                      <button onClick={() => mudarMes(1)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid #E8D5B0', background: '#fff', color: '#7A6234', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}>›</button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 5 }}>
                       {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-                        <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: '#B6B1AB', letterSpacing: '0.05em' }}>{d}</div>
+                        <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: '#B8935A', letterSpacing: '0.08em' }}>{d}</div>
                       ))}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
