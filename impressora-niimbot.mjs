@@ -139,6 +139,20 @@ async function perguntar(cmd, dados, respostaCmd, tentativas = 20) {
   return null;
 }
 
+// Conta os pixels pretos em cada terço da linha (a B1 exige esses números no
+// cabeçalho de cada linha da imagem; sem eles a máquina recebe mas não imprime).
+const HEAD_PIXELS = 384;
+function contarPartes(linha) {
+  const chunk = Math.floor(HEAD_PIXELS / 8 / 3); // 16 bytes por terço
+  const partes = [0, 0, 0];
+  linha.forEach((v, byteN) => {
+    const idx = Math.floor(byteN / chunk);
+    if (idx > 2) return;
+    for (let bit = 0; bit < 8; bit++) if (v & (1 << bit)) partes[idx]++;
+  });
+  return partes;
+}
+
 // Converte o canvas da etiqueta (fundo branco, tinta preta) nos bits da máquina:
 // largura 384 pontos (48 mm na cabeça), 1 bit por ponto, "1" = preto.
 function canvasParaLinhas(canvas) {
@@ -177,25 +191,34 @@ export async function imprimirDireto(canvasEtiqueta) {
 async function _imprimir(canvasEtiqueta) {
   const { linhas, largura, altura } = canvasParaLinhas(canvasEtiqueta);
 
-  await perguntar(CMD.DENSIDADE, [3], CMD.DENSIDADE + 1);
-  await perguntar(CMD.TIPO_ROTULO, [1], CMD.TIPO_ROTULO + 1);
-  await perguntar(CMD.INICIAR, [1], CMD.INICIAR + 1);
-  await perguntar(CMD.PAGINA, [1], CMD.PAGINA + 1);
-  await perguntar(CMD.DIMENSAO, [altura >> 8, altura & 0xff, largura >> 8, largura & 0xff], CMD.DIMENSAO + 1);
+  // ── Início (receita da B1) ──
+  await enviar(CMD.DENSIDADE, [3]);              // densidade 3
+  await dorme(20);
+  await enviar(CMD.TIPO_ROTULO, [1]);            // rótulo com espaçamento
+  await dorme(20);
+  // printStart da B1: 1 página, 7 bytes (páginas + reservado + cor)
+  await enviar(CMD.INICIAR, [0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  await dorme(60);
 
+  // ── Página ──
+  await enviar(CMD.PAGINA, []);                  // pageStart: SEM dados na B1
+  await dorme(20);
+  // tamanho da página da B1: linhas, colunas E cópias (6 bytes) — 1 cópia
+  await enviar(CMD.DIMENSAO, [altura >> 8, altura & 0xff, largura >> 8, largura & 0xff, 0x00, 0x01]);
+  await dorme(20);
+
+  // ── Linhas da imagem (com a contagem de pixels pretos por terço) ──
   for (let y = 0; y < linhas.length; y++) {
-    await enviar(CMD.LINHA, new Uint8Array([y >> 8, y & 0xff, 0, 0, 0, 1, ...linhas[y]]));
-    if (y % 40 === 39) await dorme(60); // respiro pra fila do Bluetooth não engasgar
+    const p = contarPartes(linhas[y]);
+    await enviar(CMD.LINHA, new Uint8Array([y >> 8, y & 0xff, p[0], p[1], p[2], 1, ...linhas[y]]));
+    if (y % 20 === 19) await dorme(35); // respiro pra fila do Bluetooth não engasgar
   }
 
-  await perguntar(CMD.FIM_PAGINA, [1], CMD.FIM_PAGINA + 1);
-  await dorme(400);
-  // encerra — a máquina só aceita quando terminou de imprimir
-  for (let i = 0; i < 30; i++) {
-    const ok = await perguntar(CMD.FIM, [1], CMD.FIM + 1, 8);
-    if (ok && ok.dados[0]) return true;
-    await dorme(200);
-  }
+  // ── Fim ──
+  await enviar(CMD.FIM_PAGINA, []);              // pageEnd: SEM dados na B1
+  await dorme(500);
+  await enviar(CMD.FIM, []);                     // printEnd: SEM dados na B1
+  await dorme(300);
   return true;
 }
 
