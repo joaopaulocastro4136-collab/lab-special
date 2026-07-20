@@ -32,5 +32,14 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
 
+      - name: Preserva o APK que já está no ar (o deploy apaga o que não estiver na pasta)
+        run: |
+          if curl -sfL -o dist-web/LabSpecial.apk https://laboratorio-special.web.app/LabSpecial.apk; then
+            echo "APK atual preservado ($(du -h dist-web/LabSpecial.apk | cut -f1))"
+          else
+            echo "aviso: APK não está no ar — siga sem ele (rode a fábrica 'APK Android → Site' para publicar)"
+            rm -f dist-web/LabSpecial.apk
+          fi
+
       - name: Publica os sites (lab e clinic)
         run: npx firebase-tools deploy --only hosting --project laboratorio-special --non-interactive --force

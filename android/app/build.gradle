@@ -7,8 +7,9 @@ android {
         applicationId "com.laboratorio.special"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 17
-        versionName "4.0"
+        // A fábrica na nuvem passa a versão por variável de ambiente; o padrão vale pro build local
+        versionCode ((System.getenv("LAB_VERSION_CODE") ?: "18") as Integer)
+        versionName (System.getenv("LAB_VERSION_NAME") ?: "7.3")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,9 +20,10 @@ android {
     signingConfigs {
         release {
             // Senha fica FORA do repositório: variável de ambiente LAB_KS_SENHA
-            // (ou arquivo senha-atual.txt ao lado do keystore, só nesta máquina)
+            // (ou arquivo senha-atual.txt ao lado do keystore, só na máquina local).
+            // O caminho do keystore também pode vir por variável (fábrica na nuvem).
             def senhaKs = System.getenv("LAB_KS_SENHA") ?: new File("C:/Users/cafeg/AppData/Local/lab-android/senha-atual.txt").text.trim()
-            storeFile file("C:/Users/cafeg/AppData/Local/lab-android/lab-special.keystore")
+            storeFile file(System.getenv("LAB_KS_ARQUIVO") ?: "C:/Users/cafeg/AppData/Local/lab-android/lab-special.keystore")
             storePassword senhaKs
             keyAlias "labspecial"
             keyPassword senhaKs
