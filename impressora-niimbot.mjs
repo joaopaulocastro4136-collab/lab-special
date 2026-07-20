@@ -35,16 +35,22 @@ function aoReceber(valor) {
   }
 }
 
+// Acha o serviço da NIIMBOT e as características de escrita e de resposta.
+// Na B1 podem ser a MESMA característica (notify + write) ou DUAS separadas,
+// e a escrita pode ser "sem resposta" ou "com resposta" — trata todos os casos.
 async function acharCanal(deviceId) {
   const servicos = await BleClient.getServices(deviceId);
   for (const s of servicos) {
     if ((s.uuid || '').length < 5) continue;
+    let escrita = null, semResposta = false, resposta = null;
     for (const c of (s.characteristics || [])) {
       const p = c.properties || {};
-      if (p.notify && p.writeWithoutResponse) return { servico: s.uuid, canal: c.uuid };
+      if (!escrita && (p.writeWithoutResponse || p.write)) { escrita = c.uuid; semResposta = !!p.writeWithoutResponse; }
+      if (!resposta && (p.notify || p.indicate)) resposta = c.uuid;
     }
+    if (escrita) return { servico: s.uuid, canal: escrita, semResposta, canalResposta: resposta || escrita, temNotify: !!resposta };
   }
-  throw new Error('Não achei o canal de impressão no aparelho conectado.');
+  throw new Error('conectou, mas não achei o canal de impressão da máquina');
 }
 
 // Acha a NIIMBOT sozinha: escaneia por alguns segundos e pega a 1ª cujo nome
@@ -83,9 +89,10 @@ export async function conectarImpressora() {
   }
 
   await BleClient.connect(alvo.deviceId, () => { aparelho = null; });
-  const { servico, canal } = await acharCanal(alvo.deviceId);
-  await BleClient.startNotifications(alvo.deviceId, servico, canal, aoReceber);
-  aparelho = { deviceId: alvo.deviceId, servico, canal, nome: alvo.nome };
+  const { servico, canal, semResposta, canalResposta, temNotify } = await acharCanal(alvo.deviceId);
+  let temAviso = false;
+  if (temNotify) { try { await BleClient.startNotifications(alvo.deviceId, servico, canalResposta, aoReceber); temAviso = true; } catch (e) { /* segue sem aviso */ } }
+  aparelho = { deviceId: alvo.deviceId, servico, canal, semResposta, temAviso, nome: alvo.nome };
   return aparelho;
 }
 
@@ -93,13 +100,17 @@ const dorme = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function enviar(cmd, dados) {
   const pk = pacote(cmd, dados);
-  await BleClient.writeWithoutResponse(aparelho.deviceId, aparelho.servico, aparelho.canal,
-    new DataView(pk.buffer));
+  const dv = new DataView(pk.buffer);
+  if (aparelho.semResposta) await BleClient.writeWithoutResponse(aparelho.deviceId, aparelho.servico, aparelho.canal, dv);
+  else await BleClient.write(aparelho.deviceId, aparelho.servico, aparelho.canal, dv);
 }
 
-async function perguntar(cmd, dados, respostaCmd, tentativas = 25) {
+// Manda o comando e espera a confirmação da máquina. Se a máquina não estiver
+// notificando (sem canal de aviso), não trava: espera um tiquinho e segue.
+async function perguntar(cmd, dados, respostaCmd, tentativas = 20) {
   recebidos = [];
   await enviar(cmd, dados);
+  if (!aparelho.temAviso) { await dorme(120); return null; }
   for (let i = 0; i < tentativas; i++) {
     const r = recebidos.find(p => p.cmd === respostaCmd);
     if (r) return r;
@@ -131,8 +142,19 @@ function canvasParaLinhas(canvas) {
 }
 
 // Imprime o canvas da etiqueta. Conecta se ainda não estiver conectada.
+// Cada passo carimba onde estamos, pra mensagem de erro dizer onde travou.
 export async function imprimirDireto(canvasEtiqueta) {
-  await conectarImpressora();
+  let passo = 'procurar/conectar a impressora';
+  try {
+    await conectarImpressora();
+    passo = 'preparar a impressão';
+    return await _imprimir(canvasEtiqueta);
+  } catch (e) {
+    const detalhe = String((e && e.message) || e);
+    throw new Error(`falhou em: ${passo} — ${detalhe}`);
+  }
+}
+async function _imprimir(canvasEtiqueta) {
   const { linhas, largura, altura } = canvasParaLinhas(canvasEtiqueta);
 
   await perguntar(CMD.DENSIDADE, [3], CMD.DENSIDADE + 1);
