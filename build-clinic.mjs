@@ -17,6 +17,7 @@ const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta name="description" content="Special Clinic — acompanhe seus trabalhos no Laboratório Special em tempo real, envie casos com fotos e aprove provas.">
 <title>Special Clinic</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">

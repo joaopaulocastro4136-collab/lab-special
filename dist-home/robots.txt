@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://labspecial.web.app/sitemap.xml
