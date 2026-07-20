@@ -39,7 +39,8 @@ function falha(msg, resp) {
 
 // 1. Acha o app
 const apps = await api('GET', `/v1/apps?filter[bundleId]=${BUNDLE}`);
-const app = apps.dados && apps.dados.data && apps.dados.data[0];
+// O filtro da Apple casa por PREFIXO (special também devolve specialclinic) — casamento exato aqui
+const app = ((apps.dados && apps.dados.data) || []).find(a => a.attributes.bundleId === BUNDLE);
 if (!app) falha('app não encontrado no App Store Connect', apps);
 console.log(`App: ${app.attributes.name} (${app.id})`);
 
