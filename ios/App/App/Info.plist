@@ -35,6 +35,8 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>O Bluetooth é usado para imprimir etiquetas dos trabalhos na impressora NIIMBOT.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>A câmera é usada para fotografar e filmar os trabalhos protéticos.</string>
 	<key>NSMicrophoneUsageDescription</key>
