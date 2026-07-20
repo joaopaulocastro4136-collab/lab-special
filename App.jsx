@@ -83,6 +83,42 @@ const TIPOS_PADRAO = [
 
 function todayISO() { return new Date().toISOString().split('T')[0]; }
 function agoraISO() { return new Date().toISOString(); }
+// Linha do tempo de LOCAL do trabalho (laboratório × clínica). Cada mudança
+// carimba a data/hora; assim a ficha mostra quanto tempo ficou em cada lugar.
+function registrarLocal(caso, local) {
+  const mov = Array.isArray(caso.movimentos) ? [...caso.movimentos] : [];
+  const ultimo = mov[mov.length - 1];
+  if (ultimo && ultimo.local === local) return mov; // já está nesse local
+  mov.push({ local, em: agoraISO() });
+  return mov;
+}
+// Soma o tempo (em ms) que o trabalho passou no laboratório e na clínica.
+function temposLabClinica(caso) {
+  const inicio = caso.dataProducao || caso.dataEntrada;
+  if (!inicio) return { lab: 0, clinica: 0 };
+  const fimData = caso.status === 'Entregue' ? (caso.dataSaida || caso.dataFinalizado) : caso.dataFinalizado;
+  const fimMs = fimData ? new Date(fimData + 'T23:59:59').getTime() : Date.now();
+  // começa no laboratório na data de produção, depois aplica cada movimento
+  const pontos = [{ local: 'lab', em: inicio + 'T08:00:00' }, ...((caso.movimentos) || [])];
+  let lab = 0, clinica = 0;
+  for (let i = 0; i < pontos.length; i++) {
+    const de = new Date(pontos[i].em).getTime();
+    const ate = i + 1 < pontos.length ? new Date(pontos[i + 1].em).getTime() : fimMs;
+    const dur = Math.max(0, ate - de);
+    if (pontos[i].local === 'clinica') clinica += dur; else lab += dur;
+  }
+  return { lab, clinica };
+}
+// Formata uma duração em ms como "3d 4h" / "5h" / "20min"
+function formatDuracao(ms) {
+  if (!ms || ms < 60000) return '—';
+  const min = Math.floor(ms / 60000);
+  const dias = Math.floor(min / (60 * 24));
+  const horas = Math.floor((min % (60 * 24)) / 60);
+  if (dias > 0) return `${dias}d${horas > 0 ? ` ${horas}h` : ''}`;
+  if (horas > 0) return `${horas}h`;
+  return `${min}min`;
+}
 function mesAtualISO() { return todayISO().slice(0, 7); }
 function addDias(iso, dias) {
   // Data vazia/inválida (ex.: campo de data apagado no formulário) não pode derrubar o app —
@@ -307,7 +343,18 @@ function etapaAtual(caso) {
 }
 function etapasDoTipo(tipo) {
   if (tipo?.etapas?.length) return tipo.etapas;
-  return [{ nome: 'Execução', horas: tipo?.tempoHoras ?? 2, prova: false }];
+  return [{ nome: 'Execução', horas: tipo?.tempoHoras ?? 2, dias: tipo?.prazoDias ?? 2, prova: false }];
+}
+// Prazo (em dias) de um tipo = soma dos dias das etapas. Se nenhuma etapa tiver
+// dias configurado, cai no prazoDias antigo do tipo (compatível com o que já existe).
+function diasDoTipo(tipo) {
+  const etapas = etapasDoTipo(tipo);
+  const soma = etapas.reduce((s, e) => s + (Number(e.dias) || 0), 0);
+  return soma > 0 ? soma : (tipo?.prazoDias ?? 5);
+}
+// Soma dos dias de prazo de vários itens (o trabalho leva a soma de todos)
+function diasDeItens(tiposTrabalho, nomes) {
+  return (nomes || []).reduce((s, nome) => s + diasDoTipo(tiposTrabalho.find(t => t.nome === nome)), 0);
 }
 // Cada item leva as PRÓPRIAS etapas, marcadas com o nome do item (etapa.item) —
 // assim a agenda mostra o tempo de cada item separado e a carga do dia não é subestimada
@@ -1278,7 +1325,7 @@ export default function App() {
     const tipo = tiposTrabalho.find(t => t.nome === s.tipoTrabalho);
     const etapas = etapasDoTipo(tipo).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     const hoje = todayISO();
-    const prazo = proximoDiaUtil(addDias(hoje, tipo?.prazoDias ?? 5), diasTrabalho);
+    const prazo = proximoDiaUtil(addDias(hoje, diasDoTipo(tipo)), diasTrabalho);
     const novo = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       paciente: s.paciente, dentista: s.dentista, tipoTrabalho: s.tipoTrabalho,
@@ -1353,7 +1400,7 @@ export default function App() {
   const confirmarRetirada = (id) => {
     const caso = casos.find(c => c.id === id);
     if (caso && caso.naClinica) {
-      updateCaso(id, { naClinica: false, provaPendente: false, retornoSolicitado: null });
+      updateCaso(id, { naClinica: false, provaPendente: false, retornoSolicitado: null, movimentos: registrarLocal(caso, 'lab') });
       criarNotificacao('novo', `Retorno confirmado: ${caso.paciente} voltou da clínica para o laboratório. ✓`, id);
     } else {
       updateCaso(id, { retiradoEm: agoraISO() });
@@ -1495,7 +1542,7 @@ export default function App() {
     const etapa = caso.etapas[indice];
     const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, inicioExec: agoraISO(), funcionario: usuarioAtivo?.nome || null, funcionarioId: usuarioAtivo?.id || null } : e);
     // Iniciar uma etapa = o trabalho está na bancada → retorno automático da clínica/fila de entrega
-    updateCaso(casoId, { etapas: novasEtapas, naClinica: false, provaPendente: false });
+    updateCaso(casoId, { etapas: novasEtapas, naClinica: false, provaPendente: false, movimentos: estavaFora ? registrarLocal(caso, 'lab') : caso.movimentos });
     if (estavaFora) {
       criarNotificacao('retorno', `${caso.paciente} (${caso.tipoTrabalho}) retornou ao laboratório — "${etapa.nome}" iniciada${usuarioAtivo ? ` por ${usuarioAtivo.nome}` : ''}.`, casoId);
     } else if (primeiraAtividade) {
@@ -1577,7 +1624,7 @@ export default function App() {
     const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
     const indo = !caso.naClinica;
-    updateCaso(casoId, { naClinica: indo, provaPendente: false, retornoSolicitado: null });
+    updateCaso(casoId, { naClinica: indo, provaPendente: false, retornoSolicitado: null, movimentos: registrarLocal(caso, indo ? 'clinica' : 'lab') });
     const nome = `${caso.paciente} (${caso.tipoTrabalho})`;
     if (indo) {
       const et = etapaAtual(caso);
@@ -1590,7 +1637,7 @@ export default function App() {
   const entregarProva = (casoId) => {
     const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
-    updateCaso(casoId, { provaPendente: false, naClinica: true });
+    updateCaso(casoId, { provaPendente: false, naClinica: true, movimentos: registrarLocal(caso, 'clinica') });
     criarNotificacao('clinica', `${caso.paciente} (${caso.tipoTrabalho}) entregue na clínica de ${caso.dentista} para prova.`, casoId);
   };
   const adiarUmDia = (id) => {
@@ -2059,7 +2106,7 @@ export default function App() {
             onAddDentista={(d) => persistConfig({ dentistas: [...dentistas, d] })}
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(n) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== n) })}
-            onAddTipo={(nome, dias) => persistConfig({ tiposTrabalho: [...tiposTrabalho, { nome, prazoDias: dias, tempoHoras: 2, comissao: 0, valor: 0, etapas: [{ nome: 'Execução', horas: 2, prova: false }] }] })}
+            onAddTipo={(nome, dias) => persistConfig({ tiposTrabalho: [...tiposTrabalho, { nome, prazoDias: dias, tempoHoras: 2, comissao: 0, valor: 0, etapas: [{ nome: 'Execução', horas: 2, dias: dias || 1, prova: false }] }] })}
             onUpdateTipo={(nome, patch) => persistConfig({ tiposTrabalho: tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t) })}
             onRemoveTipo={(nome) => persistConfig({ tiposTrabalho: tiposTrabalho.filter(t => t.nome !== nome) })}
             onSetHorasDia={(h) => persistConfig({ horasDia: h })}
@@ -3135,9 +3182,10 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
   const etapasPreview = itens.length ? etapasDeItens(tiposTrabalho, itens.map(i => i.nome)) : [];
   const valorTotal = itens.reduce((s, i) => s + (tiposTrabalho.find(t => t.nome === i.nome)?.valor || 0) * i.quantidade, 0);
   // Prazo do trabalho = prazo do item mais demorado
+  // Prazo = SOMA dos dias das etapas de todos os itens (cada etapa tem seus dias de prazo)
   const prazoDiasCalc = itens.length
-    ? Math.max(...itens.map(i => tiposTrabalho.find(t => t.nome === i.nome)?.prazoDias ?? 5))
-    : (tipoAtual?.prazoDias ?? 5);
+    ? diasDeItens(tiposTrabalho, itens.map(i => i.nome))
+    : diasDoTipo(tipoAtual);
 
   useEffect(() => {
     if (!prazoEditadoManual) {
@@ -3377,7 +3425,7 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
         {itens.length > 0 && !prazoEditadoManual && prazo && (
           <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl mt-2" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
             <Timer size={14} />
-            <span>Prazo calculado: {prazoDiasCalc} dias (item mais demorado) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
+            <span>Prazo: {prazoDiasCalc} dias (soma das etapas) → entrega em <b>{formatDateBR(prazo)}</b> • Serviço total: <b>{formatHoras(etapasPreview.reduce((s, e) => s + (e.horas || 0), 0))}</b></span>
           </div>
         )}
       </div>
@@ -3414,6 +3462,7 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
   const [valor, setValor] = useState(tipo.valor ?? 0);
   const [novoNome, setNovoNome] = useState('');
   const [novasHoras, setNovasHoras] = useState('1');
+  const [novosDias, setNovosDias] = useState('1');
   const [salvo, setSalvo] = useState(false);
 
   useEffect(() => {
@@ -3429,10 +3478,12 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
   const addEtapa = () => {
     const nome = novoNome.trim();
     const horas = parseFloat(String(novasHoras).replace(',', '.'));
+    const dias = parseFloat(String(novosDias).replace(',', '.'));
     if (!nome || isNaN(horas) || horas <= 0) return;
-    setEtapasDraft([...etapas, { nome, horas, prova: false }]);
+    setEtapasDraft([...etapas, { nome, horas, dias: isNaN(dias) || dias < 0 ? 1 : dias, prova: false }]);
     setNovoNome('');
     setNovasHoras('1');
+    setNovosDias('1');
     setSalvo(false);
   };
 
@@ -3473,9 +3524,12 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
             <div className="flex items-center gap-2">
               <span className="text-xs text-stone-400 w-4 flex-shrink-0">{i + 1}.</span>
               <span className="text-xs font-medium flex-1 min-w-0 truncate" style={{ color: INK }}>{e.nome}</span>
-              <InputNumero className="px-1.5 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '46px' }}
+              <InputNumero className="px-1.5 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '42px' }}
                 valor={e.horas} min={0.25} onValor={v => { setEtapasDraft(etapas.map((et, j) => j === i ? { ...et, horas: v } : et)); setSalvo(false); }} />
-              <span className="text-xs text-stone-400 flex-shrink-0">h</span>
+              <span className="text-xs text-stone-400 flex-shrink-0" title="horas de trabalho">h</span>
+              <InputNumero className="px-1.5 py-1 rounded-lg border text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '42px', borderColor: '#D6C6A8' }}
+                valor={e.dias ?? 1} min={0} onValor={v => { setEtapasDraft(etapas.map((et, j) => j === i ? { ...et, dias: v } : et)); setSalvo(false); }} />
+              <span className="text-xs flex-shrink-0" style={{ color: GOLD }} title="dias de prazo">d</span>
               <button onClick={() => { setEtapasDraft(etapas.map((et, j) => j === i ? { ...et, prova: !et.prova } : et)); setSalvo(false); }}
                 className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-xs font-bold flex-shrink-0"
                 style={e.prova ? { background: ROXO_SOFT, color: ROXO } : { background: '#F0EFEC', color: '#A8A29E' }}>
@@ -3502,10 +3556,14 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
       })}
       <div className="flex items-center gap-2 mt-2 pt-2 border-t border-stone-200">
         <input className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-stone-200 text-xs outline-none bg-white" value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Nova etapa (ex.: Plano de cera)" onKeyDown={e => e.key === 'Enter' && addEtapa()} />
-        <input type="text" inputMode="decimal" className="px-1.5 py-1.5 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '46px' }} value={novasHoras}
+        <input type="text" inputMode="decimal" className="px-1.5 py-1.5 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '42px' }} value={novasHoras}
           onFocus={e => { const el = e.target; requestAnimationFrame(() => el.select()); }}
           onChange={e => setNovasHoras(e.target.value.replace(/[^\d.,]/g, ''))} />
-        <span className="text-xs text-stone-400 flex-shrink-0">h</span>
+        <span className="text-xs text-stone-400 flex-shrink-0" title="horas">h</span>
+        <input type="text" inputMode="decimal" className="px-1.5 py-1.5 rounded-lg border text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '42px', borderColor: '#D6C6A8' }} value={novosDias}
+          onFocus={e => { const el = e.target; requestAnimationFrame(() => el.select()); }}
+          onChange={e => setNovosDias(e.target.value.replace(/[^\d.,]/g, ''))} />
+        <span className="text-xs flex-shrink-0" style={{ color: GOLD }} title="dias">d</span>
         <button onClick={addEtapa} className="p-1.5 rounded-lg text-white flex-shrink-0" style={{ background: INK }}><Plus size={13} /></button>
       </div>
 
@@ -3522,7 +3580,7 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
       </div>
       {alterado && <div className="text-xs font-semibold mt-2" style={{ color: '#EA580C' }}>⚠ Há alterações não salvas neste tipo de trabalho.</div>}
       {salvo && !alterado && <div className="text-xs font-semibold mt-2" style={{ color: VERDE }}>✓ Alterações salvas com sucesso!</div>}
-      <p className="text-xs text-stone-400 mt-2">A <b>média real</b> vem dos tempos cronometrados pela equipe — use-a para deixar as estimativas cada vez mais precisas.</p>
+      <p className="text-xs text-stone-400 mt-2"><b style={{ color: INK }}>h</b> = horas de trabalho (tempo gasto no lab) · <b style={{ color: GOLD }}>d</b> = dias de prazo da etapa (soma vira a previsão de entrega). A <b>média real</b> vem dos tempos cronometrados pela equipe.</p>
     </div>
   );
 }
@@ -5191,6 +5249,19 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
               <div className="font-medium" style={{ color: INK }}>{formatDateBR(caso.dataSaida)}</div>
             </div>
           )}
+          {(() => {
+            const t = temposLabClinica(caso);
+            return (<>
+              <div>
+                <div className="text-xs text-stone-400 mb-0.5">Tempo no laboratório</div>
+                <div className="font-bold" style={{ color: INK }}>🔧 {formatDuracao(t.lab)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-stone-400 mb-0.5">Tempo na clínica</div>
+                <div className="font-bold" style={{ color: ROXO }}>🦷 {formatDuracao(t.clinica)}</div>
+              </div>
+            </>);
+          })()}
         </div>
 
         {(((caso.dentes || []).length > 0) || ((caso.gengiva || []).length > 0)) && (
@@ -6201,6 +6272,11 @@ function desenharFicha(caso, dentistaInfo, ehGestor) {
   celula(PAD + meia, y, meia, L, `Finalizado: ${caso.dataFinalizado ? formatDateBR(caso.dataFinalizado) : '—'}`); y += L;
   celula(PAD, y, meia, L, `Entregue: ${caso.dataSaida ? formatDateBR(caso.dataSaida) : '—'}`);
   celula(PAD + meia, y, meia, L, ehGestor && caso.valor > 0 ? `Valor do serviço: ${formatReais(caso.valor)}` : ''); y += L;
+  {
+    const tmp = temposLabClinica(caso);
+    celula(PAD, y, meia, L, `Tempo no laboratório: ${formatDuracao(tmp.lab)}`);
+    celula(PAD + meia, y, meia, L, `Tempo na clínica: ${formatDuracao(tmp.clinica)}`); y += L;
+  }
 
   if (etapas.length > 0) {
     y += 56;

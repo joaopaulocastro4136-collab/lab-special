@@ -302,7 +302,7 @@ async function sincronizarAcesso(configJson) {
         nome: t.nome,
         prazoDias: t.prazoDias ?? 5,
         valor: t.valor ?? 0,
-        etapas: (t.etapas || []).map(e => ({ nome: e.nome, horas: e.horas || 1, prova: !!e.prova })),
+        etapas: (t.etapas || []).map(e => ({ nome: e.nome, horas: e.horas || 1, dias: e.dias ?? 1, prova: !!e.prova })),
       })),
       diasTrabalho: cfg.diasTrabalho || [1, 2, 3, 4, 5, 6],
       chavePix: cfg.chavePix || null,

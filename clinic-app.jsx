@@ -5,6 +5,7 @@ import {
   getAuth, initializeAuth, indexedDBLocalPersistence,
   GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail,
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
@@ -59,6 +60,27 @@ function proximoDiaUtil(iso, diasTrabalho) {
   let tentativas = 0;
   while (!dias.includes(d.getDay()) && tentativas < 7) { d.setDate(d.getDate() + 1); tentativas++; }
   return d.toISOString().split('T')[0];
+}
+
+// Previsão de entrega de cada etapa: soma os "dias" das etapas a partir do início da produção.
+// Etapa já concluída fixa a data real (âncora); se uma etapa atrasa, as próximas deslizam a partir de hoje.
+function previsaoEtapas(caso, diasTrabalho) {
+  const dt = (diasTrabalho && diasTrabalho.length > 0) ? diasTrabalho : [1, 2, 3, 4, 5, 6];
+  const base = caso.dataProducao || caso.dataEntrada || todayISO();
+  const hoje = todayISO();
+  let cursor = base;
+  return (caso.etapas || []).map((e) => {
+    const dias = Number.isFinite(e.dias) ? e.dias : 1;
+    if (e.concluida && e.dataConclusao) {
+      cursor = e.dataConclusao;
+      return { data: e.dataConclusao, concluida: true, atrasada: false };
+    }
+    const previsto = proximoDiaUtil(addDias(cursor, dias), dt);
+    const atrasada = diasRestantes(previsto) < 0;
+    // atrasou sem concluir: as próximas etapas passam a contar a partir de hoje (previsão desliza)
+    cursor = atrasada ? proximoDiaUtil(hoje, dt) : previsto;
+    return { data: previsto, concluida: false, atrasada };
+  });
 }
 
 async function lerAnexo(anexoId) {
@@ -301,6 +323,57 @@ function BotaoGoogleEscuro({ onClick, carregando }) {
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
       {carregando ? 'Entrando...' : 'Continuar com Google'}
     </button>
+  );
+}
+
+// ─── Entrar com e-mail e senha: várias pessoas usam o mesmo aparelho, cada uma com seu login ───
+function BotaoEmailSenha({ onEntrar, onCriar, onEsqueci, carregando }) {
+  const [aberto, setAberto] = useState(false);
+  const [modo, setModo] = useState('entrar'); // 'entrar' | 'criar'
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 12, padding: '13px 14px', fontSize: 15, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box' };
+  if (!aberto) {
+    return (
+      <button onClick={() => setAberto(true)} disabled={carregando}
+        style={{ width: '100%', background: 'transparent', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE, marginTop: 11 }}>
+        <Mail size={17} strokeWidth={2.4} />
+        Entrar com e-mail e senha
+      </button>
+    );
+  }
+  const submeter = () => {
+    const e = email.trim().toLowerCase();
+    if (!e || !senha) { alert('Preencha o e-mail e a senha.'); return; }
+    if (senha.length < 6) { alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
+    if (modo === 'criar') onCriar(e, senha); else onEntrar(e, senha);
+  };
+  return (
+    <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 9, textAlign: 'left' }}>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 2 }}>
+        {['entrar', 'criar'].map(m => (
+          <button key={m} onClick={() => setModo(m)}
+            style={{ flex: 1, background: modo === m ? 'rgba(184,147,90,0.22)' : 'rgba(255,255,255,0.05)', color: modo === m ? GOLD : 'rgba(255,255,255,0.6)', border: `1px solid ${modo === m ? GOLD + '77' : 'rgba(255,255,255,0.16)'}`, borderRadius: 10, padding: '9px 0', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE }}>
+            {m === 'entrar' ? 'Já tenho conta' : 'Criar conta'}
+          </button>
+        ))}
+      </div>
+      <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" placeholder="Seu e-mail"
+        value={email} onChange={ev => setEmail(ev.target.value)} style={inputStyle} />
+      <input type="password" placeholder={modo === 'criar' ? 'Crie uma senha (mín. 6)' : 'Sua senha'}
+        value={senha} onChange={ev => setSenha(ev.target.value)}
+        onKeyDown={ev => { if (ev.key === 'Enter') submeter(); }} style={inputStyle} />
+      <button onClick={submeter} disabled={carregando}
+        style={{ width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', opacity: carregando ? 0.6 : 1, fontFamily: FONTE }}>
+        {carregando ? 'Aguarde...' : (modo === 'criar' ? 'Criar conta e entrar' : 'Entrar')}
+      </button>
+      {modo === 'entrar' && (
+        <button onClick={() => { const e = email.trim().toLowerCase(); if (!e) { alert('Digite seu e-mail acima para receber o link de redefinição.'); return; } onEsqueci(e); }}
+          style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, padding: '2px 0' }}>
+          Esqueci minha senha
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -2626,7 +2699,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         patch.etapas = [...mantidas, ...novas];
         // Prazo só é recalculado enquanto a produção não começou (depois, quem ajusta é o laboratório)
         if (producaoNaoComecou) {
-          const prazoDias = Math.max(...itensFinal.map(i => ((tipos.find(t => t.nome === i.nome) || {}).prazoDias) ?? 5));
+          const prazoDias = diasDeItens(tipos, itensFinal.map(i => i.nome));
           patch.prazo = proximoDiaUtil(addDias(todayISO(), prazoDias), infoLab.diasTrabalho);
         }
       }
@@ -2833,7 +2906,7 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
               <select value={tipoAdd} onChange={e => setTipoAdd(e.target.value)}
                 style={{ width: '100%', padding: '11px 13px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 13.5, fontFamily: FONTE, outline: 'none', marginBottom: 8, background: '#fff', color: tipoAdd ? INK : '#A8A29E' }}>
                 <option value="">＋ Adicionar item...</option>
-                {((infoLab && infoLab.tipos) || []).map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
+                {((infoLab && infoLab.tipos) || []).map(t => <option key={t.nome} value={t.nome}>{t.nome} ({diasDoTipo(t)} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
               </select>
             )}
             {tipoAdd && (
@@ -2930,22 +3003,32 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
         {(caso.etapas || []).length > 0 && caso.status !== 'Entregue' && (
           <div style={{ background: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, border: '1px solid #E7E5E4' }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Andamento da produção</div>
-            {caso.etapas.map((e, i) => {
-              const mostrarItem = e.item && (caso.itens || []).length > 1 && (i === 0 || caso.etapas[i - 1].item !== e.item);
-              return (
-                <div key={i}>
-                  {mostrarItem && (
-                    <div style={{ fontSize: 11, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 8, padding: '3px 8px', display: 'inline-block', margin: '6px 0 2px' }}>🦷 {e.item}</div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 10, background: e.concluida ? '#DCF3E4' : '#F0EFEC', color: e.concluida ? '#166B3A' : '#A8A29E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
-                      {e.concluida ? '✓' : i + 1}
-                    </span>
-                    <span style={{ color: e.concluida ? INK : '#78716C', fontWeight: e.concluida ? 700 : 500 }}>{e.nome}</span>
+            {(() => {
+              const prev = previsaoEtapas(caso, (infoLab && infoLab.diasTrabalho) || [1, 2, 3, 4, 5, 6]);
+              return caso.etapas.map((e, i) => {
+                const mostrarItem = e.item && (caso.itens || []).length > 1 && (i === 0 || caso.etapas[i - 1].item !== e.item);
+                const p = prev[i] || {};
+                return (
+                  <div key={i}>
+                    {mostrarItem && (
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 8, padding: '3px 8px', display: 'inline-block', margin: '6px 0 2px' }}>🦷 {e.item}</div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13 }}>
+                      <span style={{ width: 20, height: 20, borderRadius: 10, background: e.concluida ? '#DCF3E4' : (p.atrasada ? '#FDE2E1' : '#F0EFEC'), color: e.concluida ? '#166B3A' : (p.atrasada ? '#C0322B' : '#A8A29E'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                        {e.concluida ? '✓' : i + 1}
+                      </span>
+                      <span style={{ flex: 1, color: e.concluida ? INK : '#78716C', fontWeight: e.concluida ? 700 : 500 }}>{e.nome}</span>
+                      {p.data && (
+                        <span style={{ fontSize: 11.5, fontWeight: 700, color: e.concluida ? '#166B3A' : (p.atrasada ? '#C0322B' : '#7A6234'), flexShrink: 0 }}>
+                          {e.concluida ? '✓ ' : (p.atrasada ? '⚠ ' : '')}{formatDateBR(p.data)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
+            <div style={{ fontSize: 10.5, color: '#A8A29E', marginTop: 8, lineHeight: 1.5 }}>Datas são a previsão de conclusão de cada etapa. ✓ concluída • ⚠ atrasada.</div>
           </div>
         )}
 
@@ -3113,7 +3196,7 @@ function SeletorQtd({ qtd, setQtd }) {
 
 const formatReaisG = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
 
-const etapasBaseDoTipo = (t) => (t && t.etapas && t.etapas.length > 0) ? t.etapas : [{ nome: 'Execução', horas: 2, prova: false }];
+const etapasBaseDoTipo = (t) => (t && t.etapas && t.etapas.length > 0) ? t.etapas : [{ nome: 'Execução', horas: 2, dias: 1, prova: false }];
 // Cada item leva as PRÓPRIAS etapas, marcadas com o nome do item (etapa.item) —
 // assim o laboratório vê o tempo de cada item separado na agenda
 function etapasDeItens(tipos, nomes) {
@@ -3123,6 +3206,16 @@ function etapasDeItens(tipos, nomes) {
     etapasBaseDoTipo(t).forEach(e => saida.push({ ...e, item: nome }));
   });
   return saida;
+}
+// Prazo = soma dos "dias" das etapas do tipo (cai pro prazoDias antigo se ainda não tiver dias por etapa)
+function diasDoTipo(t) {
+  const et = (t && t.etapas) || [];
+  const comDias = et.filter(e => Number.isFinite(e.dias));
+  if (comDias.length > 0) return comDias.reduce((s, e) => s + e.dias, 0);
+  return (t && t.prazoDias) ?? 5;
+}
+function diasDeItens(tipos, nomes) {
+  return (nomes || []).reduce((s, nome) => s + diasDoTipo(tipos.find(t => t.nome === nome)), 0);
 }
 const rotuloItens = (itens) => (itens || []).map(i => (i.quantidade || 1) > 1 ? `${i.nome} ×${i.quantidade}` : i.nome).join(' + ');
 
@@ -3487,8 +3580,8 @@ function NovoPedido({ dentista, info, aoEnviar }) {
       const umSo = itensFinal.length === 1;
       const etapas = etapasDeItens(tipos, itensFinal.map(i => i.nome)).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
       const hoje = todayISO();
-      // Prazo do trabalho = prazo do item mais demorado
-      const prazoDias = Math.max(...itensFinal.map(i => ((tipos.find(t => t.nome === i.nome) || {}).prazoDias) ?? 5));
+      // Prazo do trabalho = soma dos dias das etapas de todos os itens
+      const prazoDias = diasDeItens(tipos, itensFinal.map(i => i.nome));
       const prazo = proximoDiaUtil(addDias(hoje, prazoDias), info.diasTrabalho);
       const id = novoId();
       const obsFinal = (umSo && itensFinal[0].quantidade > 1 ? `Quantidade: ${itensFinal[0].quantidade} unidades. ` : '') + obs.trim();
@@ -3528,7 +3621,7 @@ function NovoPedido({ dentista, info, aoEnviar }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           <select style={{ ...inputStyle, color: tipo ? INK : '#A8A29E' }} value={tipo} onChange={e => { setTipo(e.target.value); setErro(''); }}>
             <option value="">{itens.length > 0 ? 'Adicionar outro item...' : 'Escolha o item *'}</option>
-            {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({t.prazoDias || 5} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
+            {tipos.map(t => <option key={t.nome} value={t.nome}>{t.nome} ({diasDoTipo(t)} dias{t.valor > 0 ? ` • ${formatReaisG(t.valor)}` : ''})</option>)}
           </select>
           {tipo && (
             <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -3560,7 +3653,7 @@ function NovoPedido({ dentista, info, aoEnviar }) {
                   <div key={it.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderTop: idx > 0 ? '1px solid #EEECE7' : 'none' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                      <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${t.prazoDias || 5} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
+                      <div style={{ fontSize: 11.5, color: '#A8A29E' }}>{t ? `${diasDoTipo(t)} dias` : ''}{unit > 0 ? ` • ${formatReaisG(unit)} / un.` : ' • valor a combinar'}</div>
                     </div>
                     {unit > 0 && <div style={{ fontSize: 13.5, fontWeight: 800, color: '#166B3A' }}>{formatReaisG(unit * it.quantidade)}</div>}
                     <button onClick={() => removerItem(it.nome)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E', fontWeight: 800, cursor: 'pointer', lineHeight: '26px', padding: 0 }}>×</button>
@@ -3763,6 +3856,34 @@ function Raiz() {
     setEntrando(false);
   };
 
+  const traduzErroAuth = (code) => {
+    if (code === 'auth/invalid-email') return 'E-mail inválido.';
+    if (code === 'auth/weak-password') return 'A senha precisa ter pelo menos 6 caracteres.';
+    if (code === 'auth/email-already-in-use') return 'Este e-mail já tem conta. Use "Já tenho conta" para entrar.';
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'E-mail ou senha incorretos. Se ainda não tem conta, toque em "Criar conta".';
+    if (code === 'auth/too-many-requests') return 'Muitas tentativas. Aguarde um instante e tente de novo.';
+    return 'Não foi possível continuar (' + code + ').';
+  };
+
+  const entrarEmail = async (email, senha) => {
+    setEntrando(true);
+    try { await signInWithEmailAndPassword(auth, email, senha); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+    setEntrando(false);
+  };
+
+  const criarEmail = async (email, senha) => {
+    setEntrando(true);
+    try { await createUserWithEmailAndPassword(auth, email, senha); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+    setEntrando(false);
+  };
+
+  const esqueciSenha = async (email) => {
+    try { await sendPasswordResetEmail(auth, email); alert('Enviamos um link para redefinir a senha em ' + email + '. Confira sua caixa de entrada.'); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+  };
+
   const abertura = <Abertura visivel={abrindo} />;
 
   if (usuario === undefined) return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: 14 }}>Carregando...</div></TelaBase></>;
@@ -3773,6 +3894,7 @@ function Raiz() {
       <TelaLogin>
         <BotaoApple onClick={entrarApple} carregando={entrando} />
         <BotaoGoogleEscuro onClick={entrar} carregando={entrando} />
+        <BotaoEmailSenha onEntrar={entrarEmail} onCriar={criarEmail} onEsqueci={esqueciSenha} carregando={entrando} />
       </TelaLogin>
       </>
     );
