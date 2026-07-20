@@ -88,8 +88,8 @@ jobs:
           LAB_VERSION_NAME: ${{ github.event.inputs.versao || '7.3' }}
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          # O projeto veio do Windows (só tem gradlew.bat) — chama o wrapper direto pelo Java
+          java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain assembleRelease --no-daemon
           ls -la app/build/outputs/apk/release/
 
       - name: Publica o APK e o aviso de atualização no site
