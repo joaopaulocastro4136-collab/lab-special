@@ -1158,7 +1158,7 @@ export default function App() {
       status: 'Em Produção', dataSaida: null, dataProducao: hoje, dataFinalizado: null,
       anexos: s.anexos || [], etapas, naClinica: false, provaPendente: false,
     };
-    persistCasos([novo, ...casos]);
+    persistCasos([novo, ...casosVivos()]);
     persistSolicitacoes(solicitacoes.map(x => x.id === s.id ? { ...x, status: 'aceita', casoId: novo.id } : x));
     criarNotificacao('novo', `Pedido de ${s.dentista} aceito: ${s.paciente} (${s.tipoTrabalho}) entrou em produção.`, novo.id);
   };

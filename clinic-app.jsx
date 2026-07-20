@@ -3541,8 +3541,13 @@ function Raiz() {
 
   // Trocou de conta no mesmo aparelho? Volta pra "verificando" — senão a tela
   // do dentista anterior aparece (com o nome dele) enquanto o acesso da conta
-  // nova ainda está sendo conferido
+  // nova ainda está sendo conferido. Compara o uid pra não derrubar a sessão
+  // quando o Firebase só re-emite o MESMO usuário (renovação de token etc.)
+  const uidAnterior = useRef(undefined);
   useEffect(() => {
+    const uid = usuario ? usuario.uid : null;
+    if (uidAnterior.current === uid) return;
+    uidAnterior.current = uid;
     setEstado('verificando');
   }, [usuario]);
 
