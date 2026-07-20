@@ -3549,6 +3549,7 @@ function Raiz() {
   useEffect(() => {
     if (!usuario || !usuario.email) return;
     let ativo = true;
+    let timer = null;
     getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
       .then(s => {
         if (!ativo) return;
@@ -3556,12 +3557,13 @@ function Raiz() {
         else setEstado('negado');
       })
       .catch((e) => {
-        // Sem internet não é "acesso negado": mantém a tela de abertura e tenta de novo sozinho
+        // Sem internet não é "acesso negado": tenta de novo sozinho. Qualquer outro erro
+        // vai pra tela de acesso (que tem os botões de tentar de novo e trocar de conta)
         if (!ativo) return;
-        if (e && e.code === 'permission-denied') setEstado('negado');
-        else setTimeout(() => setTentativa(t => t + 1), 5000);
+        if (e && e.code === 'unavailable') timer = setTimeout(() => setTentativa(t => t + 1), 5000);
+        else setEstado('negado');
       });
-    return () => { ativo = false; };
+    return () => { ativo = false; clearTimeout(timer); };
   }, [usuario, tentativa]);
 
   useEffect(() => {

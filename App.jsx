@@ -82,9 +82,11 @@ function todayISO() { return new Date().toISOString().split('T')[0]; }
 function agoraISO() { return new Date().toISOString(); }
 function mesAtualISO() { return todayISO().slice(0, 7); }
 function addDias(iso, dias) {
-  // Data vazia/inválida (ex.: campo de data apagado no formulário) não pode derrubar o app
-  const d = new Date((iso || todayISO()) + 'T00:00:00');
-  if (isNaN(d.getTime())) return iso;
+  // Data vazia/inválida (ex.: campo de data apagado no formulário) não pode derrubar o app —
+  // devolve '' porque proximoDiaUtil e as telas já sabem lidar com data vazia
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
   d.setDate(d.getDate() + dias);
   return d.toISOString().split('T')[0];
 }
@@ -95,6 +97,7 @@ function proximoDiaUtil(iso, diasTrabalho) {
   if (!iso) return iso;
   const dias = (diasTrabalho && diasTrabalho.length > 0) ? diasTrabalho : DIAS_TRABALHO_PADRAO;
   const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso; // data fora do formato (dado antigo/importado) não pode derrubar o app
   let tentativas = 0;
   while (!dias.includes(d.getDay()) && tentativas < 7) {
     d.setDate(d.getDate() + 1);
@@ -1076,6 +1079,9 @@ export default function App() {
     setCasos(newCasos);
     return flashSave(() => window.storage.set('casos-laboratorio', JSON.stringify(newCasos)));
   };
+  // Toda ação que GRAVA parte da lista viva, nunca da lista do render em que o botão
+  // foi tocado — entre o toque e a gravação podem ter entrado casos novos de outra tela
+  const casosVivos = () => window.__casosVivos || casos;
   const persistConfig = (patch) => {
     const novo = {
       dentistas: patch.dentistas ?? dentistas,
@@ -1207,17 +1213,17 @@ export default function App() {
     const nomesItens = (dados.itens && dados.itens.length) ? dados.itens.map(i => i.nome) : [dados.tipoTrabalho];
     const etapas = etapasDeItens(tiposTrabalho, nomesItens).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: dados.anexos || [], etapas, naClinica: false, provaPendente: false };
-    persistCasos([novo, ...(window.__casosVivos || casos)]);
+    persistCasos([novo, ...casosVivos()]);
     setView('lista');
   };
   const updateCaso = (id, patch, listaBase) => {
-    const base = listaBase || window.__casosVivos || casos;
+    const base = listaBase || casosVivos();
     return persistCasos(base.map(c => c.id === id ? { ...c, ...patch } : c));
   };
   // Edita os itens de um trabalho já criado: recalcula rótulo, valor e etapas,
   // SEM perder o progresso das etapas já iniciadas ou concluídas
   const salvarItensCaso = (id, novosItens) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || !novosItens || novosItens.length === 0) return;
     const itensFinal = novosItens.map(i => {
       const t = tiposTrabalho.find(t => t.nome === i.nome);
@@ -1228,18 +1234,21 @@ export default function App() {
     const alvo = etapasDeItens(tiposTrabalho, itensFinal.map(i => i.nome));
     // Cada etapa pertence a um item — casa por item + nome da etapa.
     // Etapa antiga sem a tag "item" (caso aceito da clínica / migração) casa pelo nome,
-    // senão salvar itens duplicava as etapas do trabalho e zerava o progresso
+    // senão salvar itens duplicava as etapas do trabalho e zerava o progresso.
+    // Cada alvo é CONSUMIDO ao casar: dois itens com etapa de mesmo nome continuam contando dois.
     const chave = (e) => `${e.item || ''}|${e.nome}`;
-    const casa = (a, e) => chave(a) === chave(e) || (!e.item && a.nome === e.nome);
+    const alvosLivres = [...alvo];
+    const consome = (idx) => idx === -1 ? null : alvosLivres.splice(idx, 1)[0];
+    // 1º passo: casamento exato item|nome; 2º passo: etapa antiga sem tag pega um alvo livre de mesmo nome
+    const pares = (caso.etapas || []).map(e => ({ e, cfg: consome(alvosLivres.findIndex(a => chave(a) === chave(e))) }));
+    for (const p of pares) {
+      if (!p.cfg && !p.e.item) p.cfg = consome(alvosLivres.findIndex(a => a.nome === p.e.nome));
+    }
     // Mantém etapas com progresso (mesmo que o item tenha saído); atualiza config das não iniciadas; remove as não iniciadas que sobraram
-    const mantidas = (caso.etapas || [])
-      .filter(e => e.concluida || e.inicioExec || alvo.some(a => casa(a, e)))
-      .map(e => {
-        const cfg = alvo.find(a => casa(a, e));
-        return (cfg && !e.concluida && !e.inicioExec) ? { ...e, horas: cfg.horas, prova: cfg.prova } : e;
-      });
-    const novas = alvo
-      .filter(a => !mantidas.some(m => casa(a, m)))
+    const mantidas = pares
+      .filter(p => p.e.concluida || p.e.inicioExec || p.cfg)
+      .map(p => (p.cfg && !p.e.concluida && !p.e.inicioExec) ? { ...p.e, horas: p.cfg.horas, prova: p.cfg.prova } : p.e);
+    const novas = alvosLivres
       .map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     updateCaso(id, {
       itens: itensFinal,
@@ -1303,7 +1312,7 @@ export default function App() {
   };
 
   const updateStatus = (id, novoStatus) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || caso.status === novoStatus) return;
     // Trava: só finaliza com todas as etapas concluídas (vale também pro "Entregue" direto,
     // que pulava o "Pronto" e deixava o trabalho sem comissão e fora do fechamento do mês)
@@ -1315,8 +1324,9 @@ export default function App() {
     }
     const patch = { status: novoStatus };
     if (novoStatus === 'Em Produção' && !caso.dataProducao) patch.dataProducao = todayISO();
-    if (novoStatus === 'Pronto' || (pulouPronto && !caso.dataFinalizado)) {
-      patch.dataFinalizado = caso.dataFinalizado || todayISO();
+    if (novoStatus === 'Pronto' || pulouPronto) {
+      // No Entregue direto preserva a data de finalização original (se houver); sempre limpa as bandeiras
+      patch.dataFinalizado = novoStatus === 'Pronto' ? todayISO() : (caso.dataFinalizado || todayISO());
       patch.naClinica = false;
       patch.provaPendente = false;
     }
@@ -1338,7 +1348,7 @@ export default function App() {
 
   // ── Cronômetro de etapas ──
   const iniciarEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     const primeiraAtividade = !caso.etapas.some(e => e.concluida || e.inicioExec);
     const estavaFora = caso.naClinica || caso.provaPendente;
@@ -1354,12 +1364,12 @@ export default function App() {
     }
   };
   const cancelarEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, inicioExec: null } : e) });
   };
   const concluirEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     const etapa = caso.etapas[indice];
     let duracaoMin = null;
@@ -1414,13 +1424,13 @@ export default function App() {
     }
   };
   const desfazerEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, concluida: false, dataConclusao: null, duracaoMin: null } : e) });
   };
 
   const toggleClinica = (casoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
     const indo = !caso.naClinica;
     updateCaso(casoId, { naClinica: indo, provaPendente: false });
@@ -1434,13 +1444,13 @@ export default function App() {
   };
   // Confirma que a prova saiu do laboratório e foi entregue na clínica
   const entregarProva = (casoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
     updateCaso(casoId, { provaPendente: false, naClinica: true });
     criarNotificacao('clinica', `${caso.paciente} (${caso.tipoTrabalho}) entregue na clínica de ${caso.dentista} para prova.`, casoId);
   };
   const adiarUmDia = (id) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso) return;
     const baseData = diasRestantes(caso.prazo) < 0 ? todayISO() : caso.prazo;
     const novoPrazo = proximoDiaUtil(addDias(baseData, 1), diasTrabalho);
@@ -1460,7 +1470,7 @@ export default function App() {
 
   // Mover um trabalho para uma data escolhida no calendário (aba Datas)
   const mudarPrazoParaDia = (id, data) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || !data) return;
     const novoPrazo = proximoDiaUtil(data, diasTrabalho);
     updateCaso(id, { prazo: novoPrazo });
@@ -1468,7 +1478,7 @@ export default function App() {
   };
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (caso?.anexos?.length) {
       for (const a of caso.anexos) {
         // Formato novo (arquivo no Storage com caminho) e formato antigo (dataURL no banco)
@@ -1476,7 +1486,7 @@ export default function App() {
         else { try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ } }
       }
     }
-    const ok = await persistCasos((window.__casosVivos || casos).filter(c => c.id !== id));
+    const ok = await persistCasos(casosVivos().filter(c => c.id !== id));
     if (window.nuvemCasos && window.nuvemCasos.logar) {
       window.nuvemCasos.logar({ acao: 'excluir-caso', casoId: id, paciente: (caso && caso.paciente) || '', resultado: ok ? 'ok' : 'erro ao gravar', versao: versaoApp });
     }
@@ -1504,7 +1514,7 @@ export default function App() {
       await window.storage.set(`anexo-${anexoId}`, JSON.stringify({ nome, mime, dataURL }));
     }
     // Busca o caso na lista VIVA: o upload pode ter demorado minutos e a lista do render antigo está velha
-    const caso = (window.__casosVivos || casos).find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) throw new Error('Falha ao salvar');
     const ok = await updateCaso(casoId, { anexos: [...(caso.anexos || []), meta] });
     if (!ok) throw new Error('Falha ao salvar');
@@ -1517,7 +1527,7 @@ export default function App() {
     return r && r.value ? JSON.parse(r.value) : null;
   };
   const removeAnexo = async (casoId, anexoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     const anexo = (caso?.anexos || []).find(a => a.id === anexoId);
     if (anexo?.caminho && window.arquivos) window.arquivos.apagar(anexo.caminho);
     else { try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ } }
@@ -1534,7 +1544,7 @@ export default function App() {
     if (ehPedido && window.nuvemCasos && window.nuvemCasos.logar) {
       window.nuvemCasos.logar({ acao: 'toque-pedir-aprovacao', casoId, anexoId, versao: versaoApp });
     }
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) {
       if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: caso não encontrado', versao: versaoApp });
       return false;
@@ -1546,7 +1556,7 @@ export default function App() {
       return false;
     }
     const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
-    const novaLista = (window.__casosVivos || casos).map(c => c.id === casoId ? atualizado : c);
+    const novaLista = casosVivos().map(c => c.id === casoId ? atualizado : c);
     window.__casosVivos = novaLista;
     setCasos(novaLista);
     setSaveStatus('saving');

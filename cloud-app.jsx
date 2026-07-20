@@ -528,10 +528,11 @@ function CloudRoot({ entrarNativo }) {
     return onAuthStateChanged(auth, u => setUsuario(u));
   }, []);
 
-  // Trocou de conta (saiu p/ entrar com outra)? Zera o contador de reverificação,
-  // senão a tela "Acesso não liberado" da conta antiga fica aparecendo p/ a conta nova
+  // Trocou de conta (saiu p/ entrar com outra)? Zera o contador e volta pra "verificando" —
+  // senão a tela "Acesso não liberado" da conta antiga continua bombando o contador a cada 7s
+  // e a conta nova (autorizada) ainda veria a mensagem de bloqueio da antiga
   useEffect(() => {
-    if (!usuario) setTentativa(0);
+    if (!usuario) { setTentativa(0); setAcesso('verificando'); }
   }, [usuario]);
 
   // Verifica se o e-mail logado tem permissão (as regras do banco barram quem não tem)

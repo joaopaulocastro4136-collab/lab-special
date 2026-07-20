@@ -70,7 +70,8 @@ if (versao) {
     const muda = await api('PATCH', `/v1/appStoreVersions/${versao.id}`, {
       data: { type: 'appStoreVersions', id: versao.id, attributes: { versionString: versaoAlvo } },
     });
-    console.log(`Número da versão atualizado para ${versaoAlvo}:`, muda.status < 300 ? 'ok ✓' : `aviso (${muda.status}) ${JSON.stringify(muda.dados || {}).slice(0, 200)}`);
+    if (muda.status >= 300) falha(`não consegui mudar o número da versão para ${versaoAlvo} — sem isso o envio iria com o número errado`, muda);
+    console.log(`Número da versão atualizado para ${versaoAlvo} ✓`);
   }
 } else {
   const nova = await api('POST', '/v1/appStoreVersions', {
@@ -89,21 +90,38 @@ if (versao) {
 const anexa = await api('PATCH', `/v1/appStoreVersions/${versao.id}/relationships/build`, {
   data: { type: 'builds', id: build.id },
 });
-console.log('Build anexado à versão:', anexa.status < 300 ? 'ok ✓' : `aviso (${anexa.status}) ${JSON.stringify(anexa.dados || {}).slice(0, 200)}`);
+if (anexa.status >= 300) falha('não consegui anexar o build à versão de loja', anexa);
+console.log('Build anexado à versão ✓');
 
-// 6. Corrige a URL de suporte (regra 1.5) em todos os idiomas da ficha
+// 6. Corrige a URL de suporte (regra 1.5) em todos os idiomas da ficha —
+// era um dos motivos da reprovação: se falhar, não adianta enviar
 const locs = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreVersionLocalizations`);
 for (const loc of ((locs.dados && locs.dados.data) || [])) {
   const atualiza = await api('PATCH', `/v1/appStoreVersionLocalizations/${loc.id}`, {
     data: { type: 'appStoreVersionLocalizations', id: loc.id, attributes: { supportUrl: URL_SUPORTE } },
   });
-  console.log(`URL de suporte (${loc.attributes.locale}):`, atualiza.status < 300 ? 'ok ✓' : `aviso (${atualiza.status}) ${JSON.stringify(atualiza.dados || {}).slice(0, 200)}`);
+  if (atualiza.status >= 300) falha(`não consegui corrigir a URL de suporte (${loc.attributes.locale})`, atualiza);
+  console.log(`URL de suporte (${loc.attributes.locale}) ✓`);
 }
 
-// 7. Envia para a análise (reaproveita o envio aberto, se houver)
+// 7. Envio para a análise. Estados possíveis de um envio aberto:
+//   WAITING_FOR_REVIEW  → já está na fila da Apple; não dá pra mexer — pare e avise
+//   UNRESOLVED_ISSUES   → foi reprovado; cancela e abre um envio novo limpo
+//   READY_FOR_REVIEW    → aberto e ainda não enviado; reaproveita
 let envio = null;
 const envios = await api('GET', `/v1/reviewSubmissions?filter[app]=${app.id}&filter[state]=READY_FOR_REVIEW,WAITING_FOR_REVIEW,UNRESOLVED_ISSUES&limit=5`);
 envio = ((envios.dados && envios.dados.data) || [])[0];
+if (envio && envio.attributes.state === 'WAITING_FOR_REVIEW') {
+  falha('já existe um envio aguardando a análise da Apple — cancele-o no App Store Connect (ou aguarde a resposta) antes de reenviar');
+}
+if (envio && envio.attributes.state === 'UNRESOLVED_ISSUES') {
+  const cancela = await api('PATCH', `/v1/reviewSubmissions/${envio.id}`, {
+    data: { type: 'reviewSubmissions', id: envio.id, attributes: { canceled: true } },
+  });
+  if (cancela.status >= 300) falha('não consegui cancelar o envio reprovado anterior — cancele-o no App Store Connect e rode de novo', cancela);
+  console.log('Envio reprovado anterior cancelado ✓');
+  envio = null;
+}
 if (!envio) {
   const novo = await api('POST', '/v1/reviewSubmissions', {
     data: {
@@ -116,13 +134,17 @@ if (!envio) {
   envio = novo.dados.data;
   console.log('Envio para análise aberto ✓');
 } else {
-  console.log(`Envio já aberto (${envio.attributes.state}) — reaproveitando`);
+  console.log('Envio aberto (ainda não enviado) — reaproveitando ✓');
 }
 
-// 7b. Garante que a versão de loja está dentro do envio
-const itens = await api('GET', `/v1/reviewSubmissions/${envio.id}/items?limit=10`);
-const jaTem = ((itens.dados && itens.dados.data) || []).length > 0;
-if (!jaTem) {
+// 7b. Garante que a NOSSA versão de loja está dentro do envio
+const itens = await api('GET', `/v1/reviewSubmissions/${envio.id}/items?include=appStoreVersion&limit=10`);
+const listaItens = (itens.dados && itens.dados.data) || [];
+const itemDaVersao = listaItens.find(i => i.relationships?.appStoreVersion?.data?.id === versao.id);
+if (listaItens.length > 0 && !itemDaVersao) {
+  falha('o envio aberto contém OUTRA versão — cancele-o no App Store Connect e rode de novo');
+}
+if (!itemDaVersao) {
   const item = await api('POST', '/v1/reviewSubmissionItems', {
     data: {
       type: 'reviewSubmissionItems',
@@ -132,9 +154,10 @@ if (!jaTem) {
       },
     },
   });
-  console.log('Versão colocada no envio:', item.status < 300 ? 'ok ✓' : `aviso (${item.status}) ${JSON.stringify(item.dados || {}).slice(0, 300)}`);
+  if (item.status >= 300) falha('não consegui colocar a versão dentro do envio', item);
+  console.log('Versão colocada no envio ✓');
 } else {
-  console.log('Envio já contém a versão ✓');
+  console.log('Envio já contém esta versão ✓');
 }
 
 // 7c. Aperta o botão "Enviar"
