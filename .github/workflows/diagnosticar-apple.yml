@@ -1,0 +1,31 @@
+# Diagnóstico completo do "Entrar com Apple": provedor no Firebase, contas que
+# já entraram e registros de erro dos apps. CONSERTAR=sim liga o provedor se
+# estiver desligado. Rodar: aba Actions → "Diagnóstico do login Apple".
+name: Diagnóstico do login Apple
+
+on:
+  workflow_dispatch:
+    inputs:
+      consertar:
+        description: "Ligar o provedor Apple no Firebase se estiver desligado? (sim/nao)"
+        default: "sim"
+
+jobs:
+  diagnosticar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepara a credencial
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Roda o diagnóstico
+        env:
+          CONSERTAR: ${{ github.event.inputs.consertar || 'sim' }}
+        run: node diagnosticar-apple.mjs
