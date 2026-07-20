@@ -56,7 +56,9 @@ if (Capacitor.isNativePlatform()) {
 
 // ─── Auto-atualização: ao abrir, compara a versão instalada com a publicada no site ───
 async function verificarAtualizacao() {
-  if (!Capacitor.isNativePlatform()) return;
+  // Só no Android: o aviso baixa um APK — no iPhone/iPad a atualização é pela App Store
+  // (aparecer no iOS compara versionCode do APK com o build iOS e ainda viola as regras da Apple)
+  if (Capacitor.getPlatform() !== 'android') return;
   try {
     const { App: CapApp } = await import('@capacitor/app');
     const info = await CapApp.getInfo();

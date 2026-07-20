@@ -79,7 +79,9 @@ function logarAbertura(email) {
       acao: 'abriu-app',
       app: 'lab',
       versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev',
-      plataforma: typeof location !== 'undefined' && location.protocol === 'capacitor:' ? 'ios-app' : 'web',
+      plataforma: (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+        ? window.Capacitor.getPlatform() + '-app'  // 'ios-app' / 'android-app' (checar por protocol marcava Android como web)
+        : 'web',
       email: email || '',
     });
   } catch (e) { /* telemetria nunca derruba o app */ }
@@ -281,7 +283,8 @@ async function registrarPush(dados) {
     if (!Capacitor.isNativePlatform()) return;
     const { PushNotifications } = await import('@capacitor/push-notifications');
     let perm = await PushNotifications.checkPermissions();
-    if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
+    // Android 13+ devolve 'prompt-with-rationale' depois de um pedido dispensado — pede de novo
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await PushNotifications.requestPermissions();
     if (perm.receive !== 'granted') return;
     await PushNotifications.addListener('registration', async (t) => {
       try {
@@ -525,6 +528,12 @@ function CloudRoot({ entrarNativo }) {
     return onAuthStateChanged(auth, u => setUsuario(u));
   }, []);
 
+  // Trocou de conta (saiu p/ entrar com outra)? Zera o contador de reverificação,
+  // senão a tela "Acesso não liberado" da conta antiga fica aparecendo p/ a conta nova
+  useEffect(() => {
+    if (!usuario) setTentativa(0);
+  }, [usuario]);
+
   // Verifica se o e-mail logado tem permissão (as regras do banco barram quem não tem)
   useEffect(() => {
     if (!usuario) return;
@@ -584,7 +593,7 @@ function CloudRoot({ entrarNativo }) {
         await entrarNativo(auth);
       } catch (e) {
         console.error(e);
-        if (String(e).indexOf('canceled') === -1 && String(e).indexOf('cancelled') === -1) {
+        if (String(e).indexOf('canceled') === -1 && String(e).indexOf('cancelled') === -1 && String(e).indexOf('cancelado') === -1) {
           alert('Não foi possível entrar. Verifique a internet e tente de novo.');
         }
       }
