@@ -121,5 +121,6 @@ jobs:
           # commit primeiro (o APK copiado fica de fora — é só untracked), depois rebase e push
           git add dist-web/versao-apk.json
           git diff --cached --quiet || git commit -m "APK Android ${{ github.event.inputs.versao || '7.3' }} publicado (versao-apk.json)"
-          git pull --rebase
+          # --autostash: o `cap sync` deixa arquivos do Android modificados; guarda-os para o rebase não travar
+          git pull --rebase --autostash || true
           git push || true
