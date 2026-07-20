@@ -1,0 +1,27 @@
+# Ativa o "Sign In with Apple" no Apple Developer e regenera os perfis de
+# distribuição dos dois apps. Os novos .mobileprovision saem no log em base64
+# (perfil não é segredo — já fica commitado no repositório).
+name: Ativar Sign In with Apple
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: 'Script a rodar (ativar-apple.mjs ou checar-apple.mjs)'
+        default: 'ativar-apple.mjs'
+
+jobs:
+  ativar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Liga a capacidade e regenera os perfis na Apple
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node ${{ github.event.inputs.script || 'ativar-apple.mjs' }}

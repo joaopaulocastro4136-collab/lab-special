@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth, initializeAuth, indexedDBLocalPersistence,
-  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
 } from 'firebase/auth';
 import {
@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref as refArquivo, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2 } from 'lucide-react';
+import { Camera, Video, Image, FileText, LogOut, X, Download, Share2, Mail, CalendarClock, Bell, Sparkles, MessageCircle, Send, Maximize2, Inbox, Hammer, Stethoscope, Package, Flag } from 'lucide-react';
 import logoMarca from './logo-special.png';
 import VisorSTL from './visor-stl.jsx';
 
@@ -25,7 +25,9 @@ const firebaseConfig = {
   appId: '1:138572658603:web:76e4649e21d8d16aa804ee',
 };
 
-const LAB = 'principal';
+// O laboratório do dentista é descoberto no login (índice dentistasIndex/<e-mail>).
+// 'principal' é o laboratório original, usado como reserva para contas antigas.
+let LAB = (typeof localStorage !== 'undefined' && localStorage.getItem('specialClinicLabId')) || 'principal';
 const TAM_CHUNK = 900000;
 const INK = '#1C1B19';
 const GOLD = '#B8935A';
@@ -251,6 +253,54 @@ function TelaBase({ children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+// ─── Tela de entrada premium: preto com brilho dourado, marca centrada e botões Apple + Google ───
+function TelaLogin({ children }) {
+  return (
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(130% 55% at 50% -8%, #3B2E1B 0%, #1C1B19 52%, #121110 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 28px calc(40px + env(safe-area-inset-bottom))', fontFamily: FONTE, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -160, left: '50%', transform: 'translateX(-50%)', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 62%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', right: -36, bottom: -50, opacity: 0.05, pointerEvents: 'none' }}><Estrela size={200} /></div>
+      <div style={{ width: '100%', maxWidth: 340, textAlign: 'center', position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 11 }}>
+          <Estrela size={20} />
+          <span style={{ color: '#fff', fontWeight: 300, fontSize: 21, letterSpacing: '0.3em', paddingLeft: '0.1em' }}>SPECIAL</span>
+          <span style={{ color: GOLD, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.3em', border: `1px solid ${GOLD}66`, borderRadius: 999, padding: '3px 9px' }}>CLINIC</span>
+        </div>
+        <div style={{ width: 74, height: 74, borderRadius: 37, margin: '44px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(232,196,138,0.55)', background: 'rgba(184,147,90,0.10)', boxShadow: '0 0 40px rgba(184,147,90,0.35)' }}>
+          <Estrela size={30} />
+        </div>
+        <div style={{ color: '#fff', fontSize: 27, fontWeight: 800, marginTop: 22, letterSpacing: '-0.01em' }}>Bem-vindo, doutor</div>
+        <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, lineHeight: 1.55, marginTop: 10, marginBottom: 34 }}>
+          Acompanhe seus trabalhos no Laboratório Special e faça pedidos direto do consultório.
+        </div>
+        {children}
+        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 26, lineHeight: 1.5 }}>
+          Acesso exclusivo para dentistas parceiros do Laboratório Special.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BotaoApple({ onClick, carregando }) {
+  return (
+    <button onClick={onClick} disabled={carregando}
+      style={{ width: '100%', background: '#fff', color: '#000', border: 'none', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE, boxShadow: '0 14px 30px -18px rgba(255,255,255,0.45)' }}>
+      <svg width="17" height="20" viewBox="0 0 384 512" fill="#000"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+      {carregando ? 'Entrando...' : 'Continuar com Apple'}
+    </button>
+  );
+}
+
+function BotaoGoogleEscuro({ onClick, carregando }) {
+  return (
+    <button onClick={onClick} disabled={carregando}
+      style={{ width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE, marginTop: 11 }}>
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+      {carregando ? 'Entrando...' : 'Continuar com Google'}
+    </button>
   );
 }
 
@@ -1216,6 +1266,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   // (o detalhe aberto trata o gesto primeiro)
   useGestoVoltar(() => {
     if (extratoVer) { setExtratoVer(null); return; }
+    if (filtroSecao) { setFiltroSecao(null); return; } // tela de lista aberta → deslizar volta pra home
     if (aba !== 'trabalhos') { setAba('trabalhos'); return; }
     return false;
   });
@@ -1326,6 +1377,20 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   };
 
   const emAndamento = casos.filter(c => c.status === 'Em Produção' || c.status === 'Acabamento');
+  // Aguardando retirada: enviado pela clínica e o laboratório ainda não pegou
+  // (sai daqui quando o Lab toca em "Foi pego" ou inicia a produção)
+  const aguardandoRetirada = (c) => c.origem === 'clinica' && c.status === 'Em Produção'
+    && !c.naClinica && !c.retiradoEm && !(c.etapas || []).some(e => e.concluida || e.inicioExec);
+  // Prova devolvida pelo dentista: também está esperando o laboratório buscar
+  const devolvidoAguardando = (c) => c.naClinica && c.retornoSolicitado && c.status !== 'Entregue';
+  const paraRetirada = casos.filter(c => aguardandoRetirada(c) || devolvidoAguardando(c));
+  // A caminho: prova que saiu da bancada e está indo para a clínica
+  // (some daqui quando o laboratório marca "Entregue" → vai para "Na clínica")
+  const aCaminho = casos.filter(c => c.provaPendente && !c.naClinica && c.status !== 'Entregue');
+  // Na clínica: prova que o laboratório entregou e está com o dentista agora
+  // (quando devolve, sai daqui e entra na caixa Retirada)
+  const naClinicaLista = casos.filter(c => c.naClinica && !c.retornoSolicitado && c.status !== 'Entregue');
+  const emProducaoSo = emAndamento.filter(c => !aguardandoRetirada(c) && !c.naClinica && !(c.provaPendente && !c.naClinica));
   const prontos = casos.filter(c => c.status === 'Pronto');
   const todasEntregas = casos.filter(c => c.status === 'Entregue');
   const entregues = todasEntregas.slice(0, 20);
@@ -1512,7 +1577,10 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
 
   // Panorama da tela inicial: dados do gráfico + caixinhas de situação abaixo dele
   const dadosPanorama = [
-    { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emAndamento.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'retirada', rotulo: 'Aguardando retirada', curto: 'Retirada', n: paraRetirada.length, cor: '#2563EB', corClara: '#60A5FA' },
+    { chave: 'producao', rotulo: 'Em produção', curto: 'Em produção', n: emProducaoSo.length, cor: '#D96F0E', corClara: '#F5A54A' },
+    { chave: 'acaminho', rotulo: 'A caminho (prova)', curto: 'A caminho', n: aCaminho.length, cor: '#0E7490', corClara: '#22D3EE' },
+    { chave: 'clinica', rotulo: 'Na clínica (prova)', curto: 'Na clínica', n: naClinicaLista.length, cor: '#7C3AED', corClara: '#A78BFA' },
     { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
     { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
   ];
@@ -1521,17 +1589,22 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
   const panorama = (
     <Panorama dentista={dentista} dados={dadosPanorama} total={casos.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
   );
-  // Caixinhas logo abaixo do gráfico: toca e vê só aquela lista (toca de novo p/ ver tudo)
+  // Cartões grandes de situação (estilo do início do Lab): ícone colorido, número
+  // grandão e setinha — toca e a lista abre numa tela própria (Voltar retorna)
+  const ICONES_SITUACAO = { retirada: Inbox, producao: Hammer, acaminho: Send, clinica: Stethoscope, prontos: Package, entregues: Flag };
   const caixinhasSituacao = (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
       {dadosPanorama.map(d => {
-        const ativa = filtroSecao === d.chave;
+        const Icone = ICONES_SITUACAO[d.chave] || Inbox;
         return (
-          <button key={d.chave} onClick={() => setFiltroSecao(ativa ? null : d.chave)}
-            style={{ textAlign: 'left', background: ativa ? INK : '#fff', border: ativa ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', borderRadius: 16, padding: '12px 12px 11px', cursor: 'pointer', fontFamily: FONTE, boxShadow: ativa ? '0 14px 30px -16px rgba(28,27,25,0.7)' : '0 10px 26px -20px rgba(28,27,25,0.15)', transition: 'background 0.15s, border-color 0.15s' }}>
-            <span style={{ display: 'block', width: 9, height: 9, borderRadius: 5, background: `linear-gradient(135deg, ${d.corClara}, ${d.cor})`, boxShadow: `0 0 6px ${d.cor}55` }} />
-            <span style={{ display: 'block', fontSize: 21, fontWeight: 800, color: ativa ? '#fff' : INK, marginTop: 7, lineHeight: 1 }}>{d.n}</span>
-            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, color: ativa ? GOLD : '#78716C', marginTop: 4, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.curto}</span>
+          <button key={d.chave} onClick={() => setFiltroSecao(d.chave)}
+            style={{ textAlign: 'left', position: 'relative', background: '#fff', border: '1px solid #E7E5E4', borderRadius: 20, padding: '16px 16px 15px', cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 12px 30px -22px rgba(28,27,25,0.28)' }}>
+            <span style={{ position: 'absolute', top: 15, right: 15, color: '#D0C6B4', fontSize: 17, fontWeight: 300, lineHeight: 1 }}>→</span>
+            <span style={{ width: 42, height: 42, borderRadius: 21, background: `${d.cor}16`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icone size={20} color={d.cor} />
+            </span>
+            <span style={{ display: 'block', fontSize: 28, fontWeight: 800, color: INK, marginTop: 11, lineHeight: 1 }}>{d.n}</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#78716C', marginTop: 5, lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d.rotulo}</span>
           </button>
         );
       })}
@@ -1606,14 +1679,30 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
     || String(c.tipoTrabalho || '').toLowerCase().includes(termoBusca)
     || String(c.id || '').toLowerCase().includes(termoBusca));
 
-  const Secao = ({ titulo, cor, itens, vazio }) => (
+  const Secao = ({ titulo, cor, itens, vazio, rodapeItem }) => (
     <div style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: cor || '#78716C', letterSpacing: '0.08em', textTransform: 'uppercase', margin: '0 2px 8px' }}>{titulo}</div>
       {itens.length === 0
         ? <div style={{ fontSize: 12, color: '#A8A29E', padding: '4px 2px' }}>{vazio}</div>
-        : <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>{itens.map(c => <CasoCartao key={c.id} c={c} />)}</div>}
+        : <div style={{ display: 'grid', gridTemplateColumns: desktop ? '1fr 1fr' : '1fr', gap: desktop ? 10 : 0 }}>{itens.map(c => (
+            <div key={c.id}>
+              <CasoCartao c={c} />
+              {rodapeItem && rodapeItem(c)}
+            </div>
+          ))}</div>}
     </div>
   );
+  // Dentista avisa que a prova está pronta p/ voltar: o trabalho entra na caixa
+  // "Para retirada" do laboratório e a equipe recebe o aviso no celular
+  const solicitarRetorno = async (c) => {
+    try {
+      await updateDoc(doc(db, 'labs', LAB, 'casos', c.id), { retornoSolicitado: true, retornoEm: new Date().toISOString() });
+      mostrarToast('O laboratório foi avisado para buscar ✓');
+    } catch (e) {
+      console.error('solicitar retorno', e);
+      mostrarToast('Não consegui avisar — confira a internet e tente de novo.');
+    }
+  };
 
   return (
     <div style={{ maxWidth: desktop ? 'none' : 440, margin: '0 auto', minHeight: '100vh', background: '#F5F4F0', fontFamily: FONTE, paddingBottom: desktop ? 40 : 84 }}>
@@ -1743,7 +1832,63 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
             {aba === 'financeiro' && 'Financeiro'}
           </div>
         )}
-        {aba === 'trabalhos' && (
+        {/* Caixa tocada → a lista abre numa TELA PRÓPRIA, deslizando da direita (Voltar retorna) */}
+        {aba === 'trabalhos' && filtroSecao && (
+          <div key={filtroSecao} style={{ animation: 'telaSecaoAbre 0.3s cubic-bezier(0.2, 0.8, 0.3, 1)' }}>
+            <style>{`@keyframes telaSecaoAbre { from { opacity: 0; transform: translateX(46px); } to { opacity: 1; transform: none; } }`}</style>
+            <button onClick={() => setFiltroSecao(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 14, padding: '9px 16px 9px 11px', borderRadius: 999, border: '1px solid #E7E5E4', background: '#fff', color: INK, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 8px 20px -16px rgba(28,27,25,0.4)' }}>
+              ‹ Voltar
+            </button>
+            {filtroSecao === 'retirada' && (
+              <Secao titulo={`Aguardando retirada (${paraRetirada.length})`} cor="#1D4ED8" itens={paraRetirada}
+                vazio="Nenhum trabalho esperando o laboratório buscar."
+                rodapeItem={(c) => c.naClinica && c.retornoSolicitado ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#EDE9FE', color: '#5B21B6', fontSize: 12, fontWeight: 800 }}>
+                    ↩ Prova devolvida — o laboratório foi avisado para buscar
+                  </div>
+                ) : null}
+              />
+            )}
+            {filtroSecao === 'producao' && (
+              <Secao titulo={`Em produção (${emProducaoSo.length})`} cor="#B54708" itens={emProducaoSo} vazio="Nenhum trabalho em produção no momento." />
+            )}
+            {filtroSecao === 'acaminho' && (
+              <Secao titulo={`A caminho da clínica — prova (${aCaminho.length})`} cor="#0E7490" itens={aCaminho}
+                vazio="Nenhuma prova a caminho da sua clínica agora."
+                rodapeItem={() => (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#E0F5FA', color: '#155E70', fontSize: 12, fontWeight: 800 }}>
+                    🚗 Saiu do laboratório — chega em breve na sua clínica
+                  </div>
+                )}
+              />
+            )}
+            {filtroSecao === 'clinica' && (
+              <Secao titulo={`Na clínica — prova (${naClinicaLista.length})`} cor="#6D28D9" itens={naClinicaLista}
+                vazio="Nenhum trabalho em prova na sua clínica agora."
+                rodapeItem={(c) => c.retornoSolicitado
+                  ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, margin: '6px 0 12px', padding: '10px 13px', borderRadius: 12, background: '#EDE9FE', color: '#5B21B6', fontSize: 12, fontWeight: 800 }}>
+                      ✓ O laboratório foi avisado — aguardando a busca
+                    </div>
+                  )
+                  : (
+                    <button onClick={() => solicitarRetorno(c)}
+                      style={{ width: '100%', margin: '6px 0 12px', padding: 12, borderRadius: 12, border: 'none', background: '#7C3AED', color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, boxShadow: '0 10px 22px -14px rgba(124,58,237,0.8)' }}>
+                      ↩ Devolver ao laboratório — pronto para buscar
+                    </button>
+                  )}
+              />
+            )}
+            {filtroSecao === 'prontos' && (
+              <Secao titulo={`Prontos para entrega (${prontos.length})`} cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
+            )}
+            {filtroSecao === 'entregues' && (
+              <Secao titulo={`Entregues (${todasEntregas.length})`} itens={todasEntregas.slice(0, 40)} vazio="Nenhuma entrega registrada ainda." />
+            )}
+          </div>
+        )}
+        {aba === 'trabalhos' && !filtroSecao && (
           <>
             {/* Caixas de aprovação em destaque: toca e já cai no arquivo p/ ver e aprovar */}
             {aprovacoesPendentes.map(({ caso: cx, anexo: ax }) => (
@@ -1779,6 +1924,9 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               <Secao titulo={`Resultados da busca (${resultadosBusca.length})`} cor="#7A6234" itens={resultadosBusca} vazio="Nenhum trabalho encontrado — confira o nome ou o ID." />
             )}
             {termoBusca === '' && <>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#A8A29E', textAlign: 'center', margin: '-4px 0 14px' }}>
+              Toque numa caixa acima para abrir a lista
+            </div>
             {bannerIA}
             {bannerPerguntas}
             {enviadosHoje.length > 0 && (
@@ -1792,21 +1940,6 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
                   <Download size={18} />
                 </button>
               </div>
-            )}
-            {(!filtroSecao || filtroSecao === 'producao') && (
-              <Secao titulo="Em produção" cor="#B54708" itens={emAndamento} vazio="Nenhum trabalho em produção no momento." />
-            )}
-            {(!filtroSecao || filtroSecao === 'prontos') && (
-              <Secao titulo="Prontos para entrega" cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
-            )}
-            {(!filtroSecao || filtroSecao === 'entregues') && (
-              <Secao titulo={filtroSecao === 'entregues' ? 'Entregues' : 'Entregues recentemente'} itens={filtroSecao === 'entregues' ? todasEntregas.slice(0, 40) : entregues} vazio="Nenhuma entrega registrada ainda." />
-            )}
-            {filtroSecao && (
-              <button onClick={() => setFiltroSecao(null)}
-                style={{ width: '100%', padding: 12, borderRadius: 13, border: '1px solid #E7E5E4', background: '#fff', color: '#78716C', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, marginBottom: 18 }}>
-                Mostrar tudo
-              </button>
             )}
             </>}
           </>
@@ -3555,19 +3688,28 @@ function Raiz() {
     if (!usuario || !usuario.email) return;
     let ativo = true;
     let timer = null;
-    getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', usuario.email.toLowerCase()))
-      .then(s => {
+    const email = usuario.email.toLowerCase();
+    (async () => {
+      try {
+        // Em qual laboratório este dentista está cadastrado? (índice global)
+        try {
+          const idx = await getDoc(doc(db, 'dentistasIndex', email));
+          if (idx.exists() && idx.data().lab) LAB = idx.data().lab;
+        } catch (e) { /* sem índice — segue no laboratório salvo/principal */ }
+        const s = await getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', email));
         if (!ativo) return;
-        if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok'); }
-        else setEstado('negado');
-      })
-      .catch((e) => {
+        if (s.exists()) {
+          try { localStorage.setItem('specialClinicLabId', LAB); } catch (e) { }
+          setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok');
+        } else setEstado('negado');
+      } catch (e) {
         // Sem internet não é "acesso negado": tenta de novo sozinho. Qualquer outro erro
         // vai pra tela de acesso (que tem os botões de tentar de novo e trocar de conta)
         if (!ativo) return;
         if (e && e.code === 'unavailable') timer = setTimeout(() => setTentativa(t => t + 1), 5000);
         else setEstado('negado');
-      });
+      }
+    })();
     return () => { ativo = false; clearTimeout(timer); };
   }, [usuario, tentativa]);
 
@@ -3597,6 +3739,30 @@ function Raiz() {
     setEntrando(false);
   };
 
+  const entrarApple = async () => {
+    if (window.__appleEmAndamento) return; // toque duplo: o 2º pedido cancelaria o 1º (erro 1001)
+    window.__appleEmAndamento = true;
+    setEntrando(true);
+    try {
+      if (window.__entrarNativoApple) {
+        await window.__entrarNativoApple(auth); // tela nativa do iPhone (Face ID)
+      } else {
+        await signInWithPopup(auth, new OAuthProvider('apple.com'));
+      }
+    } catch (e) {
+      console.error('login apple', e);
+      const msg = String((e && e.code) || e);
+      // 1001 = a janelinha da Apple foi fechada sem concluir — cancelamento, não erro
+      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1 && msg.indexOf('1001') === -1) {
+        alert(msg.indexOf('operation-not-allowed') !== -1 || msg.indexOf('1000') !== -1
+          ? 'O login com Apple está sendo ativado — por enquanto, entre com o Google.'
+          : 'Não foi possível entrar com a Apple (' + msg + '). Tente de novo ou use o Google.');
+      }
+    }
+    window.__appleEmAndamento = false;
+    setEntrando(false);
+  };
+
   const abertura = <Abertura visivel={abrindo} />;
 
   if (usuario === undefined) return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: 14 }}>Carregando...</div></TelaBase></>;
@@ -3604,15 +3770,10 @@ function Raiz() {
   if (!usuario) {
     return (
       <>{abertura}
-      <TelaBase>
-        <button onClick={entrar} disabled={entrando} style={{ width: '100%', background: '#fff', color: INK, border: 'none', borderRadius: 14, padding: 14, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: entrando ? 0.6 : 1, fontFamily: FONTE }}>
-          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
-          {entrando ? 'Entrando...' : 'Entrar com Google'}
-        </button>
-        <div style={{ color: '#78716C', fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>
-          Acompanhe seus trabalhos no Laboratório Special e faça pedidos direto do consultório.
-        </div>
-      </TelaBase>
+      <TelaLogin>
+        <BotaoApple onClick={entrarApple} carregando={entrando} />
+        <BotaoGoogleEscuro onClick={entrar} carregando={entrando} />
+      </TelaLogin>
       </>
     );
   }
