@@ -118,6 +118,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
+          # commit primeiro (o APK copiado fica de fora — é só untracked), depois rebase e push
           git add dist-web/versao-apk.json
-          git diff --cached --quiet || (git commit -m "APK Android ${{ github.event.inputs.versao || '7.3' }} publicado (versao-apk.json)" && git push)
+          git diff --cached --quiet || git commit -m "APK Android ${{ github.event.inputs.versao || '7.3' }} publicado (versao-apk.json)"
+          git pull --rebase
+          git push || true
