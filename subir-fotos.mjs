@@ -36,7 +36,8 @@ function falha(msg, resp) {
 
 // 1. App e versão em preparação
 const apps = await api('GET', `/v1/apps?filter[bundleId]=${BUNDLE}`);
-const app = apps.dados?.data?.[0];
+// O filtro da Apple casa por PREFIXO (special também devolve specialclinic) — casamento exato aqui
+const app = (apps.dados?.data || []).find(a => a.attributes.bundleId === BUNDLE);
 if (!app) falha('app não encontrado');
 console.log(`App: ${app.attributes.name}`);
 const versoes = await api('GET', `/v1/apps/${app.id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,REJECTED,DEVELOPER_REJECTED,METADATA_REJECTED&limit=5`);
