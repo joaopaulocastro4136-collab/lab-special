@@ -10,6 +10,9 @@
         ],
         "clinic": [
           "special-clinic"
+        ],
+        "home": [
+          "labspecial"
         ]
       }
     }
