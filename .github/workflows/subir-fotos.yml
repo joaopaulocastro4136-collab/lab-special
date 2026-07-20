@@ -1,0 +1,27 @@
+# Sobe as fotos de loja (fotos-loja/) para a ficha da App Store do app escolhido.
+# Rodar: aba Actions → "Fotos → App Store" → Run workflow.
+name: Fotos → App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Qual app (lab ou clinic)"
+        default: "lab"
+
+jobs:
+  subir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sobe as fotos
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_ALVO: ${{ github.event.inputs.app || 'lab' }}
+        run: node subir-fotos.mjs
