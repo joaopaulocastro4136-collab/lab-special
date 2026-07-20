@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['dist-web/**', 'dist-clinic/**', '.github/workflows/hosting.yml']
+    paths: ['dist-web/**', 'dist-clinic/**', 'dist-home/**', '.github/workflows/hosting.yml']
 
 jobs:
   deploy:
@@ -48,3 +48,9 @@ jobs:
         run: |
           npx firebase-tools deploy --only hosting:lab,hosting:clinic --project laboratorio-special --non-interactive --force
           npx firebase-tools deploy --only hosting:home --project laboratorio-special --non-interactive --force || echo "::warning::não consegui publicar a página de apresentação (nome labspecial pode estar ocupado)"
+
+      - name: Avisa os buscadores (IndexNow — Bing/DuckDuckGo e parceiros)
+        run: |
+          curl -s "https://api.indexnow.org/indexnow?url=https://labspecial.web.app/&key=ac1680c465d52320f674ca854521ffff" || true
+          curl -s "https://www.bing.com/indexnow?url=https://labspecial.web.app/&key=ac1680c465d52320f674ca854521ffff" || true
+          echo "buscadores avisados ✓"
