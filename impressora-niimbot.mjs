@@ -5,6 +5,10 @@
 // dimensão → linhas da imagem (0x85) → fim da página → fim da impressão.
 import { BleClient } from '@capacitor-community/bluetooth-le';
 
+// A NIIMBOT anuncia o nome começando pela família (B1-…, B21-…, D11-…, etc.)
+const PREFIXOS = ['B1', 'B18', 'B21', 'B203', 'B3', 'B32', 'D11', 'D110', 'D101', 'Z401', 'K3', 'M2', 'NIIMBOT'];
+const ehNiimbot = (nome) => !!nome && PREFIXOS.some(p => nome.toUpperCase().startsWith(p));
+
 const CMD = {
   DENSIDADE: 0x21, TIPO_ROTULO: 0x23, INICIAR: 0x01, FIM: 0xf3,
   PAGINA: 0x03, FIM_PAGINA: 0xe3, DIMENSAO: 0x13, LINHA: 0x85, STATUS: 0xa3,
@@ -43,14 +47,45 @@ async function acharCanal(deviceId) {
   throw new Error('Não achei o canal de impressão no aparelho conectado.');
 }
 
+// Acha a NIIMBOT sozinha: escaneia por alguns segundos e pega a 1ª cujo nome
+// bate com a família da máquina — sem lista de escolha pro usuário.
+function acharNiimbotEscaneando(segundos = 6) {
+  return new Promise(async (resolve, reject) => {
+    let achou = null, parado = false;
+    const parar = async () => { if (!parado) { parado = true; try { await BleClient.stopLEScan(); } catch (e) {} } };
+    const t = setTimeout(async () => { await parar(); resolve(achou); }, segundos * 1000);
+    try {
+      await BleClient.requestLEScan({ allowDuplicates: false }, async (r) => {
+        const nome = (r.device && r.device.name) || r.localName || '';
+        if (!achou && ehNiimbot(nome)) {
+          achou = { deviceId: r.device.deviceId, nome };
+          clearTimeout(t);
+          await parar();
+          resolve(achou);
+        }
+      });
+    } catch (e) { clearTimeout(t); await parar(); reject(e); }
+  });
+}
+
 export async function conectarImpressora() {
   if (aparelho) return aparelho;
   await BleClient.initialize({ androidNeverForLocation: true });
-  const disp = await BleClient.requestDevice({});
-  await BleClient.connect(disp.deviceId, () => { aparelho = null; });
-  const { servico, canal } = await acharCanal(disp.deviceId);
-  await BleClient.startNotifications(disp.deviceId, servico, canal, aoReceber);
-  aparelho = { deviceId: disp.deviceId, servico, canal, nome: disp.name || 'impressora' };
+
+  // 1) tenta achar e conectar sozinha (sem lista)
+  let alvo = null;
+  try { alvo = await acharNiimbotEscaneando(6); } catch (e) { /* sem permissão de scan — cai pro seletor */ }
+
+  // 2) não achou pelo scan? abre o seletor JÁ FILTRADO só nas NIIMBOT
+  if (!alvo) {
+    const disp = await BleClient.requestDevice({ namePrefix: 'B' });
+    alvo = { deviceId: disp.deviceId, nome: disp.name || 'impressora' };
+  }
+
+  await BleClient.connect(alvo.deviceId, () => { aparelho = null; });
+  const { servico, canal } = await acharCanal(alvo.deviceId);
+  await BleClient.startNotifications(alvo.deviceId, servico, canal, aoReceber);
+  aparelho = { deviceId: alvo.deviceId, servico, canal, nome: alvo.nome };
   return aparelho;
 }
 

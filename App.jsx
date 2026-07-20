@@ -2038,7 +2038,11 @@ export default function App() {
             tiposTrabalho={tiposTrabalho}
             onSalvarItens={(novosItens) => salvarItensCaso(selectedCaso.id, novosItens)}
             onImprimir={() => setImprimindoCasoId(selectedCaso.id)}
-            onEtiqueta={async () => { if (await imprimirEtiqueta(selectedCaso)) mostrarAviso('Etiqueta impressa ✓'); }}
+            onEtiqueta={async () => {
+              const nativo = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+              if (nativo) mostrarAviso('Procurando a impressora NIIMBOT...');
+              if (await imprimirEtiqueta(selectedCaso)) mostrarAviso('Etiqueta impressa ✓');
+            }}
             confirmandoExclusao={confirmandoExclusao}
             setConfirmandoExclusao={setConfirmandoExclusao}
             onExcluir={() => deleteCaso(selectedCaso.id)}
