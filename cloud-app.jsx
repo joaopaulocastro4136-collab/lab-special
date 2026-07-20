@@ -558,10 +558,11 @@ function CloudRoot({ entrarNativo }) {
       if (!prontoRef.current) return; // ignora o snapshot inicial
       refreshPendente.current = true;
       clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
+      timerRef.current = setTimeout(function tentar() {
         const el = document.activeElement;
         const editando = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
-        if (editando) { timerRef.current = setTimeout(() => agendarAgora(), 5000); return; }
+        // Continua adiando enquanto o usuário digita — remontar no meio perdia o formulário inteiro
+        if (editando) { timerRef.current = setTimeout(tentar, 5000); return; }
         agendarAgora();
       }, 1800);
     };

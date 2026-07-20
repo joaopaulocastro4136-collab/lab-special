@@ -82,7 +82,9 @@ function todayISO() { return new Date().toISOString().split('T')[0]; }
 function agoraISO() { return new Date().toISOString(); }
 function mesAtualISO() { return todayISO().slice(0, 7); }
 function addDias(iso, dias) {
-  const d = new Date(iso + 'T00:00:00');
+  // Data vazia/inválida (ex.: campo de data apagado no formulário) não pode derrubar o app
+  const d = new Date((iso || todayISO()) + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso;
   d.setDate(d.getDate() + dias);
   return d.toISOString().split('T')[0];
 }
@@ -1017,6 +1019,7 @@ export default function App() {
             }
             return { ...c, provaPendente: c.provaPendente || false };
           });
+          window.__casosVivos = migrada;
           setCasos(migrada);
           // Persiste as migrações (prazos ajustados, provas sincronizadas) para não repetir a cada abertura
           if (JSON.stringify(migrada) !== JSON.stringify(lista)) {
@@ -1067,6 +1070,9 @@ export default function App() {
   };
 
   const persistCasos = (newCasos) => {
+    // Lista viva fora do React: ações demoradas (upload grande) terminam depois de
+    // outras gravações/remontagens — regravar a lista do render antigo apagava casos novos
+    window.__casosVivos = newCasos;
     setCasos(newCasos);
     return flashSave(() => window.storage.set('casos-laboratorio', JSON.stringify(newCasos)));
   };
@@ -1201,11 +1207,11 @@ export default function App() {
     const nomesItens = (dados.itens && dados.itens.length) ? dados.itens.map(i => i.nome) : [dados.tipoTrabalho];
     const etapas = etapasDeItens(tiposTrabalho, nomesItens).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: dados.anexos || [], etapas, naClinica: false, provaPendente: false };
-    persistCasos([novo, ...casos]);
+    persistCasos([novo, ...(window.__casosVivos || casos)]);
     setView('lista');
   };
   const updateCaso = (id, patch, listaBase) => {
-    const base = listaBase || casos;
+    const base = listaBase || window.__casosVivos || casos;
     return persistCasos(base.map(c => c.id === id ? { ...c, ...patch } : c));
   };
   // Edita os itens de um trabalho já criado: recalcula rótulo, valor e etapas,
@@ -1220,17 +1226,20 @@ export default function App() {
     });
     const umSo = itensFinal.length === 1;
     const alvo = etapasDeItens(tiposTrabalho, itensFinal.map(i => i.nome));
-    // Cada etapa pertence a um item — casa por item + nome da etapa
+    // Cada etapa pertence a um item — casa por item + nome da etapa.
+    // Etapa antiga sem a tag "item" (caso aceito da clínica / migração) casa pelo nome,
+    // senão salvar itens duplicava as etapas do trabalho e zerava o progresso
     const chave = (e) => `${e.item || ''}|${e.nome}`;
+    const casa = (a, e) => chave(a) === chave(e) || (!e.item && a.nome === e.nome);
     // Mantém etapas com progresso (mesmo que o item tenha saído); atualiza config das não iniciadas; remove as não iniciadas que sobraram
     const mantidas = (caso.etapas || [])
-      .filter(e => e.concluida || e.inicioExec || alvo.some(a => chave(a) === chave(e)))
+      .filter(e => e.concluida || e.inicioExec || alvo.some(a => casa(a, e)))
       .map(e => {
-        const cfg = alvo.find(a => chave(a) === chave(e));
+        const cfg = alvo.find(a => casa(a, e));
         return (cfg && !e.concluida && !e.inicioExec) ? { ...e, horas: cfg.horas, prova: cfg.prova } : e;
       });
     const novas = alvo
-      .filter(a => !mantidas.some(m => chave(m) === chave(a)))
+      .filter(a => !mantidas.some(m => casa(a, m)))
       .map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     updateCaso(id, {
       itens: itensFinal,
@@ -1296,16 +1305,18 @@ export default function App() {
   const updateStatus = (id, novoStatus) => {
     const caso = casos.find(c => c.id === id);
     if (!caso || caso.status === novoStatus) return;
-    // Trava: só finaliza com todas as etapas concluídas
-    if (novoStatus === 'Pronto' && !etapasCompletas(caso)) {
+    // Trava: só finaliza com todas as etapas concluídas (vale também pro "Entregue" direto,
+    // que pulava o "Pronto" e deixava o trabalho sem comissão e fora do fechamento do mês)
+    const pulouPronto = novoStatus === 'Entregue' && caso.status !== 'Pronto';
+    if ((novoStatus === 'Pronto' || pulouPronto) && !etapasCompletas(caso)) {
       const feitas = caso.etapas.filter(e => e.concluida).length;
       mostrarAviso(`Conclua todas as etapas antes de finalizar (${feitas}/${caso.etapas.length}).`);
       return;
     }
     const patch = { status: novoStatus };
     if (novoStatus === 'Em Produção' && !caso.dataProducao) patch.dataProducao = todayISO();
-    if (novoStatus === 'Pronto') {
-      patch.dataFinalizado = todayISO();
+    if (novoStatus === 'Pronto' || (pulouPronto && !caso.dataFinalizado)) {
+      patch.dataFinalizado = caso.dataFinalizado || todayISO();
       patch.naClinica = false;
       patch.provaPendente = false;
     }
@@ -1320,7 +1331,8 @@ export default function App() {
       const msgComissao = registrarComissoes(caso, caso.etapas || []);
       criarNotificacao('pronto', `${nome} foi finalizado${antesDoPrazo ? ' antes do prazo' : ''}!${msgComissao}`, id);
     } else if (novoStatus === 'Entregue') {
-      criarNotificacao('entregue', `${nome} foi entregue.`, id);
+      const msgComissao = pulouPronto ? registrarComissoes(caso, caso.etapas || []) : '';
+      criarNotificacao('entregue', `${nome} foi entregue.${msgComissao}`, id);
     }
   };
 
@@ -1459,10 +1471,12 @@ export default function App() {
     const caso = casos.find(c => c.id === id);
     if (caso?.anexos?.length) {
       for (const a of caso.anexos) {
-        try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ }
+        // Formato novo (arquivo no Storage com caminho) e formato antigo (dataURL no banco)
+        if (a.caminho && window.arquivos) { try { await window.arquivos.apagar(a.caminho); } catch (e) { /* já removido */ } }
+        else { try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ } }
       }
     }
-    const ok = await persistCasos(casos.filter(c => c.id !== id));
+    const ok = await persistCasos((window.__casosVivos || casos).filter(c => c.id !== id));
     if (window.nuvemCasos && window.nuvemCasos.logar) {
       window.nuvemCasos.logar({ acao: 'excluir-caso', casoId: id, paciente: (caso && caso.paciente) || '', resultado: ok ? 'ok' : 'erro ao gravar', versao: versaoApp });
     }
@@ -1489,7 +1503,9 @@ export default function App() {
     } else {
       await window.storage.set(`anexo-${anexoId}`, JSON.stringify({ nome, mime, dataURL }));
     }
-    const caso = casos.find(c => c.id === casoId);
+    // Busca o caso na lista VIVA: o upload pode ter demorado minutos e a lista do render antigo está velha
+    const caso = (window.__casosVivos || casos).find(c => c.id === casoId);
+    if (!caso) throw new Error('Falha ao salvar');
     const ok = await updateCaso(casoId, { anexos: [...(caso.anexos || []), meta] });
     if (!ok) throw new Error('Falha ao salvar');
   };
@@ -1530,17 +1546,19 @@ export default function App() {
       return false;
     }
     const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
-    const novaLista = casos.map(c => c.id === casoId ? atualizado : c);
+    const novaLista = (window.__casosVivos || casos).map(c => c.id === casoId ? atualizado : c);
+    window.__casosVivos = novaLista;
     setCasos(novaLista);
     setSaveStatus('saving');
     try {
       const anexoNome = anexoAlvo.nome || '';
-      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
-      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
-      // Canal RESERVA: o pedido também vira um doc próprio que dispara a notificação na nuvem
+      // Canal RESERVA PRIMEIRO: o carteiro na nuvem usa este doc pra deduplicar — se o caso
+      // for gravado antes, a função do caso não encontra o aviso e o dentista recebe em dobro
       if (ehPedido && window.nuvemCasos && window.nuvemCasos.avisarAprovacao) {
         await window.nuvemCasos.avisarAprovacao({ casoId, dentista: caso.dentista, paciente: caso.paciente, anexoNome });
       }
+      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
+      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
       if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: ehPedido ? 'pedir-aprovacao' : 'anexo-meta', casoId, anexoNome, resultado: 'ok', versao: versaoApp });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 1500);

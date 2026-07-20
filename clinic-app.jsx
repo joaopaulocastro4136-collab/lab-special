@@ -1296,7 +1296,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
         producaoAnterior.current[c.id] = comecou;
       });
       setCasos(lista);
-    });
+    }, (e) => console.error('Erro ao ouvir os trabalhos', e)); // sem isso, um erro encerra a escuta em silêncio
     const un2 = onSnapshot(doc(db, 'labs', LAB, 'financeiroClinica', dentista.replace(/\//g, '-')), s => {
       setTotalPago(s.exists() ? (s.data().totalPago || 0) : 0);
       setPagamentosLab(s.exists() ? (s.data().pagamentos || []) : []);
@@ -3539,6 +3539,13 @@ function Raiz() {
     return onAuthStateChanged(auth, u => setUsuario(u));
   }, []);
 
+  // Trocou de conta no mesmo aparelho? Volta pra "verificando" — senão a tela
+  // do dentista anterior aparece (com o nome dele) enquanto o acesso da conta
+  // nova ainda está sendo conferido
+  useEffect(() => {
+    setEstado('verificando');
+  }, [usuario]);
+
   useEffect(() => {
     if (!usuario || !usuario.email) return;
     let ativo = true;
@@ -3548,7 +3555,12 @@ function Raiz() {
         if (s.exists()) { setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok'); }
         else setEstado('negado');
       })
-      .catch(() => { if (ativo) setEstado('negado'); });
+      .catch((e) => {
+        // Sem internet não é "acesso negado": mantém a tela de abertura e tenta de novo sozinho
+        if (!ativo) return;
+        if (e && e.code === 'permission-denied') setEstado('negado');
+        else setTimeout(() => setTentativa(t => t + 1), 5000);
+      });
     return () => { ativo = false; };
   }, [usuario, tentativa]);
 
