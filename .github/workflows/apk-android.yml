@@ -1,0 +1,123 @@
+# Fábrica do APK Android do Lab Special: compila, assina e publica no site
+# (https://laboratorio-special.web.app/LabSpecial.apk) junto com o versao-apk.json —
+# o aviso "Nova atualização" dos aparelhos Android aponta pra cá.
+#
+# ASSINATURA: o keystore fica criptografado no repositório (cofre/lab-ci.keystore.enc),
+# com chave derivada do segredo FIREBASE_SERVICE_ACCOUNT (só o Actions consegue abrir).
+# Na primeira rodada ele é criado e commitado automaticamente.
+# ATENÇÃO: a assinatura é NOVA — quem tem o app Android antigo precisa desinstalar
+# e instalar de novo UMA vez (o aviso de atualização explica isso).
+name: APK Android → Site
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão visível (ex.: 7.3)"
+        default: "7.3"
+      codigo:
+        description: "Código da versão (inteiro, maior que o anterior; APK antigo era 17)"
+        default: "18"
+      novidades:
+        description: "Texto de novidades do aviso de atualização"
+        default: "Versão nova do Lab: Entrar com Apple/Google, correções e melhorias. Desinstale o app antigo antes de instalar (assinatura nova)."
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Abre (ou cria) o keystore do cofre
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT."
+            exit 1
+          fi
+          # Chave e senha derivadas do segredo — determinísticas, nunca aparecem no log
+          CHAVE=$(printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | sha256sum | cut -c1-64)
+          echo "::add-mask::$CHAVE"
+          echo "LAB_KS_SENHA=$CHAVE" >> "$GITHUB_ENV"
+          echo "LAB_KS_ARQUIVO=$RUNNER_TEMP/lab-ci.keystore" >> "$GITHUB_ENV"
+          mkdir -p cofre
+          if [ -f cofre/lab-ci.keystore.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:"$CHAVE" \
+              -in cofre/lab-ci.keystore.enc -out "$RUNNER_TEMP/lab-ci.keystore"
+            echo "Keystore do cofre aberto ✓"
+          else
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/lab-ci.keystore" \
+              -alias labspecial -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$CHAVE" -keypass "$CHAVE" \
+              -dname "CN=Laboratorio Special, O=Laboratorio Special, C=BR"
+            openssl enc -aes-256-cbc -pbkdf2 -pass pass:"$CHAVE" \
+              -in "$RUNNER_TEMP/lab-ci.keystore" -out cofre/lab-ci.keystore.enc
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add cofre/lab-ci.keystore.enc
+            git commit -m "Cofre: keystore de assinatura do APK (criptografado)"
+            git push
+            echo "Keystore novo criado e guardado no cofre ✓"
+          fi
+
+      - name: Instala dependências e gera o pacote web
+        env:
+          VERSAO_APP: ${{ github.event.inputs.versao || '7.3' }}
+        run: |
+          npm ci
+          node build-android.mjs
+          npx cap sync android
+
+      - name: Compila e assina o APK
+        env:
+          LAB_VERSION_CODE: ${{ github.event.inputs.codigo || '18' }}
+          LAB_VERSION_NAME: ${{ github.event.inputs.versao || '7.3' }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          ls -la app/build/outputs/apk/release/
+
+      - name: Publica o APK e o aviso de atualização no site
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VERSAO: ${{ github.event.inputs.versao || '7.3' }}
+          CODIGO: ${{ github.event.inputs.codigo || '18' }}
+          NOVIDADES: ${{ github.event.inputs.novidades }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          cp android/app/build/outputs/apk/release/app-release.apk dist-web/LabSpecial.apk
+          node -e "
+            const fs = require('fs');
+            fs.writeFileSync('dist-web/versao-apk.json', JSON.stringify({
+              versionCode: parseInt(process.env.CODIGO, 10),
+              versionName: process.env.VERSAO,
+              url: 'https://laboratorio-special.web.app/LabSpecial.apk',
+              novidades: process.env.NOVIDADES || '',
+            }, null, 2));
+          "
+          npx firebase-tools deploy --only hosting:lab --project laboratorio-special --non-interactive --force
+          echo "APK ${VERSAO} (código ${CODIGO}) publicado ✓"
+
+      - name: Guarda o versao-apk.json no repositório (pro deploy do site não voltar atrás)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add dist-web/versao-apk.json
+          git diff --cached --quiet || (git commit -m "APK Android ${{ github.event.inputs.versao || '7.3' }} publicado (versao-apk.json)" && git push)
