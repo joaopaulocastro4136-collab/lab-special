@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import QRCode from 'qrcode';
+import jsQR from 'jsqr';
 import VisorSTL from './visor-stl.jsx';
 import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut } from 'lucide-react';
 import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
@@ -105,6 +107,99 @@ function proximoDiaUtil(iso, diasTrabalho) {
   }
   return d.toISOString().split('T')[0];
 }
+// ── Etiqueta térmica do trabalho (NIIMBOT B1, rótulo 50×30 mm) ──
+// Gera a imagem no formato do rótulo; o QR guarda "LS-<id do caso>" e é lido
+// pelo botão "Ler etiqueta" (abre a ficha do trabalho na hora).
+async function gerarEtiquetaPNG(caso) {
+  const W = 800, H = 480; // 50×30 mm em dobro de definição — o app da NIIMBOT ajusta ao rótulo
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+  const qr = document.createElement('canvas');
+  await QRCode.toCanvas(qr, 'LS-' + caso.id, { width: 300, margin: 1 });
+  x.drawImage(qr, W - 322, (H - 300) / 2);
+  x.fillStyle = '#000';
+  const F = "-apple-system, 'Segoe UI', Arial, sans-serif";
+  const LARG = W - 322 - 56; // área de texto à esquerda do QR
+  x.font = `900 30px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 56);
+  const nome = String(caso.paciente || 'Trabalho').toUpperCase();
+  let fs = 62; x.font = `900 ${fs}px ${F}`;
+  while (x.measureText(nome).width > LARG && fs > 26) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
+  x.fillText(nome, 34, 148);
+  const linha = (t, y, fonte) => {
+    x.font = fonte;
+    let s = String(t || '');
+    while (x.measureText(s).width > LARG && s.length > 3) s = s.slice(0, -2);
+    x.fillText(s, 34, y);
+  };
+  linha(caso.tipoTrabalho, 226, `700 42px ${F}`);
+  linha(caso.dentista, 294, `400 38px ${F}`);
+  const cod = 'Nº ' + String(caso.id).slice(-4).toUpperCase();
+  x.font = `800 36px ${F}`;
+  x.lineWidth = 5; x.strokeStyle = '#000';
+  x.strokeRect(34, 376, x.measureText(cod).width + 44, 68);
+  x.fillText(cod, 56, 424);
+  return c.toDataURL('image/png');
+}
+async function compartilharEtiqueta(caso) {
+  try {
+    const dataURL = await gerarEtiquetaPNG(caso);
+    const blob = await (await fetch(dataURL)).blob();
+    const nomeArq = 'etiqueta-' + String(caso.paciente || 'trabalho').trim().replace(/[^\w]+/g, '-').toLowerCase() + '.png';
+    const arquivo = new File([blob], nomeArq, { type: 'image/png' });
+    if (navigator.share) { await navigator.share({ files: [arquivo], title: 'Etiqueta do trabalho' }); return; }
+    const a = document.createElement('a'); a.href = dataURL; a.download = nomeArq; a.click();
+  } catch (e) {
+    // cancelar o compartilhar não é erro
+    if (String(e).toLowerCase().indexOf('abort') === -1) alert('Não consegui gerar a etiqueta: ' + ((e && e.message) || e));
+  }
+}
+
+// Leitor do QR da etiqueta: câmera aberta em tela cheia até achar um código "LS-…"
+function LeitorEtiqueta({ onAchar, onFechar }) {
+  const videoRef = useRef(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    let ativo = true, stream = null, raf = 0;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (!ativo) { stream.getTracks().forEach(t => t.stop()); return; }
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        const ler = () => {
+          if (!ativo) return;
+          const v = videoRef.current;
+          if (v && v.videoWidth) {
+            canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+            ctx.drawImage(v, 0, 0);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const qr = jsQR(img.data, img.width, img.height);
+            const m = qr && /^LS-(.+)$/.exec(qr.data || '');
+            if (m) { ativo = false; stream.getTracks().forEach(t => t.stop()); onAchar(m[1]); return; }
+          }
+          raf = requestAnimationFrame(ler);
+        };
+        raf = requestAnimationFrame(ler);
+      } catch (e) { setErro('Não consegui abrir a câmera. Confira a permissão de câmera nos Ajustes do aparelho.'); }
+    })();
+    return () => { ativo = false; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); };
+  }, []);
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 90, background: '#000' }}>
+      <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '58px 20px 16px', textAlign: 'center', color: '#fff', fontWeight: 800, fontSize: 15, background: 'linear-gradient(rgba(0,0,0,.7), transparent)' }}>
+        Aponte a câmera para o QR da etiqueta
+      </div>
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 230, height: 230, border: '3px solid rgba(255,255,255,.85)', borderRadius: 24 }} />
+      {erro && <div style={{ position: 'absolute', top: '30%', left: 24, right: 24, textAlign: 'center', color: '#fff', fontWeight: 700, fontSize: 14 }}>{erro}</div>}
+      <button onClick={onFechar} style={{ position: 'absolute', bottom: 44, left: '50%', transform: 'translateX(-50%)', background: '#fff', color: '#1C1B19', border: 'none', borderRadius: 999, padding: '13px 34px', fontWeight: 800, fontSize: 15 }}>Fechar</button>
+    </div>
+  );
+}
+
 function formatDateBR(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
@@ -930,6 +1025,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
+  const [lendoEtiqueta, setLendoEtiqueta] = useState(false);
   const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
   const [perguntasAbertas, setPerguntasAbertas] = useState(false); // chat de perguntas à IA
   const [origemDetalhe, setOrigemDetalhe] = useState('lista');
@@ -1868,7 +1964,8 @@ export default function App() {
             filtroRapido={filtroRapido} onLimparFiltroRapido={() => setFiltroRapido(null)}
             getEndereco={(nome) => enderecoDe(dentistas, nome)}
             onSelect={goToDetalhe}
-            onConfirmarRetirada={confirmarRetirada} />
+            onConfirmarRetirada={confirmarRetirada}
+            onLerEtiqueta={() => setLendoEtiqueta(true)} />
         )}
         {view === 'dia' && (
           <DiaView
@@ -1921,6 +2018,7 @@ export default function App() {
             tiposTrabalho={tiposTrabalho}
             onSalvarItens={(novosItens) => salvarItensCaso(selectedCaso.id, novosItens)}
             onImprimir={() => setImprimindoCasoId(selectedCaso.id)}
+            onEtiqueta={() => compartilharEtiqueta(selectedCaso)}
             confirmandoExclusao={confirmandoExclusao}
             setConfirmandoExclusao={setConfirmandoExclusao}
             onExcluir={() => deleteCaso(selectedCaso.id)}
@@ -1984,6 +2082,17 @@ export default function App() {
         )}
       </div>
 
+      {lendoEtiqueta && (
+        <LeitorEtiqueta
+          onFechar={() => setLendoEtiqueta(false)}
+          onAchar={(id) => {
+            setLendoEtiqueta(false);
+            const achado = casosVivos().find(c => c.id === id);
+            if (achado) goToDetalhe(id);
+            else mostrarAviso('Não encontrei o trabalho desta etiqueta.');
+          }}
+        />
+      )}
       {imprimindoCasoId && (() => {
         const casoImpressao = casos.find(c => c.id === imprimindoCasoId);
         if (!casoImpressao) return null;
@@ -2834,7 +2943,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   );
 }
 
-function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect, onConfirmarRetirada }) {
+function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect, onConfirmarRetirada, onLerEtiqueta }) {
   const filtros = ['Todos', ...STATUS_LIST];
   return (
     <div>
@@ -2843,12 +2952,20 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
           Filtro: {FILTROS_RAPIDOS[filtroRapido].titulo} <X size={12} />
         </button>
       )}
-      <div className="relative mb-3">
-        <div className="absolute left-3 top-0 bottom-0 flex items-center pointer-events-none">
-          <Search size={16} className="text-stone-400" />
+      <div className="flex gap-2 mb-3">
+        <div className="relative flex-1 min-w-0">
+          <div className="absolute left-3 top-0 bottom-0 flex items-center pointer-events-none">
+            <Search size={16} className="text-stone-400" />
+          </div>
+          <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-3 rounded-xl text-sm outline-none bg-white"
+            style={{ border: busca ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)', fontWeight: 600 }} />
         </div>
-        <input type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por paciente, dentista ou ID..." className="w-full pl-9 pr-3 py-3 rounded-xl text-sm outline-none bg-white"
-          style={{ border: busca ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)', fontWeight: 600 }} />
+        {onLerEtiqueta && (
+          <button onClick={onLerEtiqueta} title="Ler etiqueta (QR)" className="px-3 rounded-xl bg-white flex items-center justify-center"
+            style={{ border: '1px solid #E7E5E4', color: '#8A6D3B', boxShadow: '0 10px 24px -20px rgba(28,27,25,0.3)' }}>
+            <Camera size={18} />
+          </button>
+        )}
       </div>
       {dentistas && dentistas.length > 0 && (
         <div className="relative mb-3">
@@ -4891,7 +5008,7 @@ function IdCopiavel({ id }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -5079,8 +5196,11 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
           <CheckCircle2 size={17} /> Marcar como Entregue
         </button>
       )}
-      <button onClick={onImprimir} className="w-full mb-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: INK, color: INK, background: 'white' }}>
+      <button onClick={onImprimir} className="w-full mb-2 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: INK, color: INK, background: 'white' }}>
         <FileText size={16} /> Imprimir ficha do trabalho (A4)
+      </button>
+      <button onClick={onEtiqueta} className="w-full mb-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: GOLD, color: '#8A6D3B', background: 'white' }}>
+        <Package size={16} /> Imprimir etiqueta (50×30)
       </button>
 
       <EtapasCaso caso={caso} usuarioAtivo={usuarioAtivo}
