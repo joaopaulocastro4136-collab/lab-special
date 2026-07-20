@@ -70,6 +70,7 @@ function previsaoEtapas(caso, diasTrabalho) {
   const hoje = todayISO();
   let cursor = base;
   return (caso.etapas || []).map((e) => {
+    if (e.pulada) return { data: null, concluida: false, atrasada: false, pulada: true };
     const dias = Number.isFinite(e.dias) ? e.dias : 1;
     if (e.concluida && e.dataConclusao) {
       cursor = e.dataConclusao;
@@ -1655,12 +1656,15 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
     { chave: 'acaminho', rotulo: 'A caminho (prova)', curto: 'A caminho', n: aCaminho.length, cor: '#0E7490', corClara: '#22D3EE' },
     { chave: 'clinica', rotulo: 'Na clínica (prova)', curto: 'Na clínica', n: naClinicaLista.length, cor: '#7C3AED', corClara: '#A78BFA' },
     { chave: 'prontos', rotulo: 'Prontos p/ entrega', curto: 'P/ entrega', n: prontos.length, cor: '#15803D', corClara: '#4ADE80' },
-    { chave: 'entregues', rotulo: 'Entregues', curto: 'Entregues', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
+    { chave: 'entregues', rotulo: 'Histórico de entregas', curto: 'Histórico', n: todasEntregas.length, cor: '#8A6631', corClara: '#E0BC85' },
   ];
+  // O donut e o total "Seus trabalhos" contam só o que está ATIVO — entregue vira histórico,
+  // some do número de cima (senão um trabalho já entregue aparece como 1 em andamento).
+  const dadosDonut = dadosPanorama.filter(d => d.chave !== 'entregues');
   const proximaEntrega = [...naoEntregues].filter(c => c.prazo).sort((a, b) => a.prazo.localeCompare(b.prazo))[0];
   const atrasadosN = naoEntregues.filter(c => c.prazo && diasRestantes(c.prazo) < 0).length;
   const panorama = (
-    <Panorama dentista={dentista} dados={dadosPanorama} total={casos.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
+    <Panorama dentista={dentista} dados={dadosDonut} total={naoEntregues.length} proxima={proximaEntrega} atrasadosN={atrasadosN} />
   );
   // Cartões grandes de situação (estilo do início do Lab): ícone colorido, número
   // grandão e setinha — toca e a lista abre numa tela própria (Voltar retorna)
@@ -1957,7 +1961,9 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               <Secao titulo={`Prontos para entrega (${prontos.length})`} cor="#166B3A" itens={prontos} vazio="Nada pronto aguardando entrega." />
             )}
             {filtroSecao === 'entregues' && (
-              <Secao titulo={`Entregues (${todasEntregas.length})`} itens={todasEntregas.slice(0, 40)} vazio="Nenhuma entrega registrada ainda." />
+              <Secao titulo={`Histórico de entregas (${todasEntregas.length})`} cor="#8A6631"
+                itens={[...todasEntregas].sort((a, b) => String(b.dataSaida || '').localeCompare(String(a.dataSaida || '')))}
+                vazio="Nenhuma entrega registrada ainda." />
             )}
           </div>
         )}
@@ -3013,12 +3019,14 @@ function DetalheCaso({ caso, infoLab, aoAvisar, aoFechar }) {
                     {mostrarItem && (
                       <div style={{ fontSize: 11, fontWeight: 800, color: '#7A6234', background: '#F6EEDD', borderRadius: 8, padding: '3px 8px', display: 'inline-block', margin: '6px 0 2px' }}>🦷 {e.item}</div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13 }}>
-                      <span style={{ width: 20, height: 20, borderRadius: 10, background: e.concluida ? '#DCF3E4' : (p.atrasada ? '#FDE2E1' : '#F0EFEC'), color: e.concluida ? '#166B3A' : (p.atrasada ? '#C0322B' : '#A8A29E'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
-                        {e.concluida ? '✓' : i + 1}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13, opacity: e.pulada ? 0.55 : 1 }}>
+                      <span style={{ width: 20, height: 20, borderRadius: 10, background: e.pulada ? '#F0EFEC' : (e.concluida ? '#DCF3E4' : (p.atrasada ? '#FDE2E1' : '#F0EFEC')), color: e.pulada ? '#A8A29E' : (e.concluida ? '#166B3A' : (p.atrasada ? '#C0322B' : '#A8A29E')), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                        {e.pulada ? '–' : (e.concluida ? '✓' : i + 1)}
                       </span>
-                      <span style={{ flex: 1, color: e.concluida ? INK : '#78716C', fontWeight: e.concluida ? 700 : 500 }}>{e.nome}</span>
-                      {p.data && (
+                      <span style={{ flex: 1, color: e.concluida ? INK : '#78716C', fontWeight: e.concluida ? 700 : 500, textDecoration: e.pulada ? 'line-through' : 'none' }}>{e.nome}</span>
+                      {e.pulada ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#A8A29E', flexShrink: 0 }}>pulada</span>
+                      ) : p.data && (
                         <span style={{ fontSize: 11.5, fontWeight: 700, color: e.concluida ? '#166B3A' : (p.atrasada ? '#C0322B' : '#7A6234'), flexShrink: 0 }}>
                           {e.concluida ? '✓ ' : (p.atrasada ? '⚠ ' : '')}{formatDateBR(p.data)}
                         </span>

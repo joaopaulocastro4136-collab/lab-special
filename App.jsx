@@ -1585,7 +1585,7 @@ export default function App() {
     const executor = etapa.funcionario || usuarioAtivo?.nome || null;
     const executorId = etapa.funcionarioId || usuarioAtivo?.id || null;
     const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, concluida: true, dataConclusao: todayISO(), inicioExec: null, duracaoMin, funcionario: executor, funcionarioId: executorId } : e);
-    const todasConcluidas = novasEtapas.every(e => e.concluida);
+    const todasConcluidas = novasEtapas.every(e => e.concluida || e.pulada);
 
     const patch = { etapas: novasEtapas };
     const nome = `${caso.paciente} (${caso.tipoTrabalho})`;
@@ -1618,6 +1618,17 @@ export default function App() {
     const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, concluida: false, dataConclusao: null, duracaoMin: null } : e) });
+  };
+  // Pular etapa: marca a etapa como "pulada" (não vai ser feita) e recalcula o prazo,
+  // já que uma etapa a menos encurta o trabalho. O dentista vê a previsão mudar na Special Clinic.
+  const pularEtapa = (casoId, indice) => {
+    const caso = casosVivos().find(c => c.id === casoId);
+    if (!caso?.etapas) return;
+    const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, pulada: !e.pulada, inicioExec: null } : e);
+    const base = caso.dataProducao || caso.dataEntrada || todayISO();
+    const totalDias = novasEtapas.filter(e => !e.pulada).reduce((s, e) => s + (Number(e.dias) || 0), 0);
+    const prazo = proximoDiaUtil(addDias(base, totalDias), diasTrabalho);
+    updateCaso(casoId, { etapas: novasEtapas, prazo });
   };
 
   const toggleClinica = (casoId) => {
@@ -2071,6 +2082,7 @@ export default function App() {
             onCancelarEtapa={(i) => cancelarEtapa(selectedCaso.id, i)}
             onConcluirEtapa={(i) => concluirEtapa(selectedCaso.id, i)}
             onDesfazerEtapa={(i) => desfazerEtapa(selectedCaso.id, i)}
+            onPularEtapa={(i) => pularEtapa(selectedCaso.id, i)}
             onToggleClinica={() => toggleClinica(selectedCaso.id)}
             onSalvarObs={(obs) => updateCaso(selectedCaso.id, { observacoes: obs })}
             onAddAnexo={(dados) => addAnexo(selectedCaso.id, dados)}
@@ -3180,7 +3192,10 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
 
   const tipoAtual = tiposTrabalho.find(t => t.nome === tipoNome);
   const etapasPreview = itens.length ? etapasDeItens(tiposTrabalho, itens.map(i => i.nome)) : [];
-  const valorTotal = itens.reduce((s, i) => s + (tiposTrabalho.find(t => t.nome === i.nome)?.valor || 0) * i.quantidade, 0);
+  // Valor por unidade: usa o que o gestor digitou no item (i.valor), senão o valor do tipo (Ajustes)
+  const valorUnitDe = (i) => (i.valor !== undefined && i.valor !== null && i.valor !== '') ? (Number(i.valor) || 0) : (tiposTrabalho.find(t => t.nome === i.nome)?.valor || 0);
+  const setValorItem = (nome, v) => setItens(lista => lista.map(i => i.nome === nome ? { ...i, valor: v } : i));
+  const valorTotal = itens.reduce((s, i) => s + valorUnitDe(i) * i.quantidade, 0);
   // Prazo do trabalho = prazo do item mais demorado
   // Prazo = SOMA dos dias das etapas de todos os itens (cada etapa tem seus dias de prazo)
   const prazoDiasCalc = itens.length
@@ -3223,8 +3238,7 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
     }
     // Cada item tem seu valor (Ajustes) × quantidade; o valor do trabalho é a soma; prazo nunca cai no domingo
     const itensFinal = itens.map(i => {
-      const t = tiposTrabalho.find(t => t.nome === i.nome);
-      const unit = t?.valor || 0;
+      const unit = valorUnitDe(i);
       return { nome: i.nome, quantidade: i.quantidade, valorUnit: unit, subtotal: Math.round(unit * i.quantidade * 100) / 100 };
     });
     const umSo = itensFinal.length === 1;
@@ -3320,14 +3334,23 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
             <div style={{ background: '#FAF9F7', border: '1px solid #EEECE7', borderRadius: 12, overflow: 'hidden' }}>
               {itens.map((it, idx) => {
                 const t = tiposTrabalho.find(x => x.nome === it.nome);
-                const unit = t?.valor || 0;
+                const unit = valorUnitDe(it);
+                const editado = it.valor !== undefined && it.valor !== null && it.valor !== '';
                 return (
                   <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #EEECE7' } : undefined}>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                      <div className="text-xs text-stone-400">{t ? `${t.prazoDias} dias` : ''}{unit > 0 ? ` • ${formatReais(unit)} / un.` : ' • sem valor no tipo (defina em Ajustes)'}</div>
+                      <div className="text-xs text-stone-400">{t ? `${diasDoTipo(t)} dias` : ''}{editado ? ' • valor alterado' : (unit > 0 ? ` • ${formatReais(t?.valor || 0)} / un. (padrão)` : ' • defina o valor →')}</div>
                     </div>
-                    {unit > 0 && <div className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(unit * it.quantidade)}</div>}
+                    <div className="flex items-center gap-1 flex-shrink-0" title="Valor por unidade — altere se quiser">
+                      <span className="text-xs font-bold" style={{ color: '#A8A29E' }}>R$</span>
+                      <input type="text" inputMode="decimal" value={editado ? it.valor : (t?.valor ? String(t.valor).replace('.', ',') : '')}
+                        onChange={e => setValorItem(it.nome, e.target.value.replace(',', '.'))}
+                        placeholder="0,00"
+                        className="px-2 py-1.5 rounded-lg border text-xs outline-none bg-white text-right"
+                        style={{ width: '62px', borderColor: editado ? GOLD : '#E7E5E4', color: INK, fontWeight: 700 }} />
+                    </div>
+                    {unit > 0 && it.quantidade > 1 && <div className="text-xs font-extrabold flex-shrink-0" style={{ color: '#166B3A', width: 64, textAlign: 'right' }}>{formatReais(unit * it.quantidade)}</div>}
                     <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg font-bold flex-shrink-0" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E' }}>×</button>
                   </div>
                 );
@@ -3659,6 +3682,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
   const [erroFunc, setErroFunc] = useState('');
   const [dentistaCombinado, setDentistaCombinado] = useState(null); // dentista com o editor de combinado de pagamento aberto
   const [expandido, setExpandido] = useState(null);
+  const [dentExpandido, setDentExpandido] = useState(null); // dentista com a caixa aberta (accordion)
 
   const inputClass = "px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
 
@@ -3932,10 +3956,19 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="text-xs text-stone-400 mt-3">Nenhum dentista cadastrado. Os casos só podem ser criados para dentistas cadastrados aqui — com endereço e telefone completos.</div>
         ) : (
           <div className="flex flex-col mt-3">
-            {dentistas.map(d => (
+            {dentistas.map(d => {
+              const aberto = dentExpandido === d.nome;
+              const temPag = (d.diasPagamento ?? null) !== null || d.dataPagamento;
+              return (
               <div key={d.nome} className="py-2.5 border-t border-stone-100">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium flex-1 min-w-0 truncate" style={{ color: INK }}>{d.nome}</span>
+                  <button onClick={() => setDentExpandido(aberto ? null : d.nome)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <ChevronDown size={15} className="text-stone-400 flex-shrink-0" style={{ transform: aberto ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium block truncate" style={{ color: INK }}>{d.nome}</span>
+                      <span className="text-xs text-stone-400 truncate block">{d.endereco || 'sem endereço'}{d.telefone ? ` • ${d.telefone}` : ''}</span>
+                    </div>
+                  </button>
                   {d.endereco && (
                     <a href={mapsUrl(d.endereco)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style={{ background: '#E8F0FE', color: '#1A73E8' }}>
                       <MapPin size={11} /> Maps
@@ -3943,7 +3976,8 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                   )}
                   <button onClick={() => onRemoveDentista(d.nome)} className="p-1 flex-shrink-0"><Trash2 size={15} className="text-stone-300" /></button>
                 </div>
-                <div className="flex items-center gap-1.5 mt-1.5">
+                {aberto && <>
+                <div className="flex items-center gap-1.5 mt-2">
                   <MapPin size={12} className="text-stone-300 flex-shrink-0" />
                   <input className="flex-1 px-2 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white" value={d.endereco || ''} onChange={e => onUpdateDentista(d.nome, { endereco: e.target.value })} placeholder="Endereço da clínica" />
                 </div>
@@ -3976,8 +4010,15 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                       onSalvarData={(data) => onUpdateDentista(d.nome, { dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) })} />
                   </div>
                 )}
+                </>}
+                {!aberto && temPag && (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold mt-1.5 ml-6 px-2 py-0.5 rounded-lg" style={{ background: '#DCF3E4', color: '#166B3A' }}>
+                    <DollarSign size={11} /> pagamento combinado
+                  </span>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -4314,12 +4355,13 @@ function TempoDecorrido({ inicioExec }) {
 }
 
 // ─── Checklist de etapas com cronômetro ───
-function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onAbrirSeletorUsuario }) {
+function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onAbrirSeletorUsuario }) {
   if (!caso.etapas?.length) return null;
-  const concluidas = caso.etapas.filter(e => e.concluida).length;
-  const total = caso.etapas.length;
+  const ativas = caso.etapas.filter(e => !e.pulada);
+  const concluidas = ativas.filter(e => e.concluida).length;
+  const total = ativas.length || 1;
   const pct = Math.round((concluidas / total) * 100);
-  const idxAtual = caso.etapas.findIndex(e => !e.concluida);
+  const idxAtual = caso.etapas.findIndex(e => !e.concluida && !e.pulada);
 
   return (
     <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-5">
@@ -4342,6 +4384,22 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
         const linhaEtapa = (e, i, primeira) => {
           const atual = i === idxAtual;
           const rodando = !!e.inicioExec && !e.concluida;
+          if (e.pulada) {
+            return (
+              <div key={i} className="py-2.5" style={{ borderTop: primeira ? 'none' : '1px solid #F5F5F4', opacity: 0.6 }}>
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#F0EFEC', color: '#A8A29E', fontWeight: 800 }}>–</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate" style={{ color: '#A8A29E', textDecoration: 'line-through' }}>{e.nome}</div>
+                    <span className="text-xs text-stone-400">pulada — não conta no prazo</span>
+                  </div>
+                  <button onClick={() => onPularEtapa(i)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold flex-shrink-0" style={{ background: '#F0EFEC', color: '#78716C' }} title="Voltar a fazer esta etapa">
+                    <Undo2 size={12} /> Restaurar
+                  </button>
+                </div>
+              </div>
+            );
+          }
           return (
             <div key={i} className="py-2.5" style={{ borderTop: primeira ? 'none' : '1px solid #F5F5F4' }}>
               <div className="flex items-center gap-3">
@@ -4391,6 +4449,11 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
                   {!e.concluida && !rodando && (
                     <button onClick={() => onConcluirEtapa(i)} className="p-1.5 rounded-lg" style={{ background: '#F0EFEC' }} title="Concluir sem cronometrar">
                       <Check size={12} className="text-stone-500" />
+                    </button>
+                  )}
+                  {!e.concluida && !rodando && (
+                    <button onClick={() => onPularEtapa(i)} className="p-1.5 rounded-lg" style={{ background: '#F0EFEC' }} title="Pular esta etapa (não vou fazer)">
+                      <X size={12} className="text-stone-500" />
                     </button>
                   )}
                   {e.concluida && (
@@ -5090,7 +5153,7 @@ function IdCopiavel({ id }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -5300,7 +5363,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
 
       <EtapasCaso caso={caso} usuarioAtivo={usuarioAtivo}
         onIniciarEtapa={onIniciarEtapa} onCancelarEtapa={onCancelarEtapa}
-        onConcluirEtapa={onConcluirEtapa} onDesfazerEtapa={onDesfazerEtapa}
+        onConcluirEtapa={onConcluirEtapa} onDesfazerEtapa={onDesfazerEtapa} onPularEtapa={onPularEtapa}
         onAbrirSeletorUsuario={onAbrirSeletorUsuario} />
 
       <AnexosSection caso={caso} onAddAnexo={onAddAnexo} getAnexoData={getAnexoData} onRemoveAnexo={onRemoveAnexo} onAtualizarAnexo={onAtualizarAnexo} />
@@ -6195,9 +6258,11 @@ function gerarFichaHTML(caso, dentistaInfo, ehGestor) {
 
 // ─── Ficha de trabalho desenhada como imagem (cabe no celular e vira PDF) ───
 function desenharFicha(caso, dentistaInfo, ehGestor) {
-  const W = 1240, PAD = 90;
-  const etapas = caso.etapas || [];
+  const W = 1240, PAD = 80;
+  const CW = W - PAD * 2; // largura útil
+  const INKc = '#1C1B19', GOLDc = '#B8935A', GOLDSOFT = '#F5EEDD', STONE = '#78716C', ROXOc = '#7C3AED', LINHA = '#E7E2D6';
   const F = "'Manrope', -apple-system, sans-serif";
+  const etapas = caso.etapas || [];
   const cvMed = document.createElement('canvas');
   const ctx0 = cvMed.getContext('2d');
   const quebrarLinhas = (ctx, txt, maxW) => {
@@ -6215,106 +6280,228 @@ function desenharFicha(caso, dentistaInfo, ehGestor) {
     });
     return saida;
   };
-  ctx0.font = `500 26px ${F}`;
-  const obsLinhas = quebrarLinhas(ctx0, caso.observacoes || '', W - PAD * 2 - 56);
-  const hObs = Math.max(110, obsLinhas.length * 36 + 60);
+
+  // ── Dados derivados ──
   const temContato = !!(dentistaInfo?.endereco || dentistaInfo?.telefone);
-  const H = 300 + (temContato ? 3 : 2) * 58 + 56 + 3 * 58 + (etapas.length > 0 ? 56 + (etapas.length + 1) * 52 : 0) + 56 + hObs + 320;
+  const tempos = temposLabClinica(caso);
+  const inicioLoc = caso.dataProducao || caso.dataEntrada;
+  const fimData = caso.status === 'Entregue' ? (caso.dataSaida || caso.dataFinalizado) : caso.dataFinalizado;
+  const pontos = inicioLoc ? [{ local: 'lab', em: inicioLoc + 'T08:00:00' }, ...((caso.movimentos) || [])] : ((caso.movimentos) || []);
+  const fimISO = fimData ? fimData + 'T23:59:59' : agoraISO();
+  const histLoc = pontos.map((p, i) => {
+    const proxEm = i + 1 < pontos.length ? pontos[i + 1].em : fimISO;
+    return { local: p.local, de: p.em, ate: proxEm, dur: Math.max(0, new Date(proxEm).getTime() - new Date(p.em).getTime()) };
+  });
+  const temHist = histLoc.length > 0;
+
+  ctx0.font = `500 25px ${F}`;
+  const obsLinhas = quebrarLinhas(ctx0, caso.observacoes || '', CW - 60);
+  const hObs = obsLinhas.length ? obsLinhas.length * 34 + 40 : 0;
+
+  // ── Alturas das seções (para dimensionar o canvas) ──
+  const infoRows = 2 + (temContato ? 2 : 0);
+  const hHeader = 236;
+  const hInfo = 44 + infoRows * 54 + 22;
+  const hTimeline = 172;
+  const hTempo = 172;
+  const hHistTitulo = 44;
+  const hHist = temHist ? hHistTitulo + 46 + histLoc.length * 44 + 14 : 0;
+  const hEtapas = etapas.length > 0 ? 44 + 50 + etapas.length * 50 + 14 : 0;
+  const hObsSec = 44 + Math.max(80, hObs);
+  const hAssin = 200;
+  const GAP = 34;
+  let H = hHeader;
+  [hInfo, hTimeline, hTempo, hHist, hEtapas, hObsSec, hAssin].forEach(s => { if (s > 0) H += GAP + s; });
+  H += 70;
 
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic';
 
-  const celula = (x, y, w, h, texto, negrito, centro, fundo) => {
-    if (fundo) { ctx.fillStyle = fundo; ctx.fillRect(x, y, w, h); }
-    ctx.strokeStyle = '#D6D3D1'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#1C1B19';
-    ctx.font = `${negrito ? 800 : 500} 26px ${F}`;
-    let t = String(texto ?? '');
-    while (ctx.measureText(t).width > w - 28 && t.length > 3) t = t.slice(0, -2);
-    ctx.textBaseline = 'middle';
-    if (centro) { ctx.textAlign = 'center'; ctx.fillText(t, x + w / 2, y + h / 2); ctx.textAlign = 'left'; }
-    else ctx.fillText(t, x + 14, y + h / 2);
-    ctx.textBaseline = 'alphabetic';
+  // ── Helpers de desenho ──
+  const roundRect = (x, y, w, h, r) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   };
-  const rotulo = (texto, y) => {
-    ctx.fillStyle = '#B8935A'; ctx.font = `800 24px ${F}`;
-    ctx.fillText(texto.toUpperCase(), PAD, y);
+  const cartao = (y, h, fill) => { roundRect(PAD, y, CW, h, 18); if (fill) { ctx.fillStyle = fill; ctx.fill(); } ctx.strokeStyle = LINHA; ctx.lineWidth = 2; ctx.stroke(); };
+  const secTitulo = (txt, y) => { ctx.fillStyle = GOLDc; ctx.font = `800 22px ${F}`; ctx.fillText(txt.toUpperCase(), PAD + 4, y); };
+  const desenharEstrela = (cx, cy, s, cor) => {
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(s / 55, s / 55); ctx.fillStyle = cor;
+    ctx.beginPath();
+    ctx.moveTo(0, -55); ctx.bezierCurveTo(4, -17, 17, -4, 46, 0); ctx.bezierCurveTo(17, 4, 4, 17, 0, 55);
+    ctx.bezierCurveTo(-4, 17, -17, 4, -46, 0); ctx.bezierCurveTo(-17, -4, -4, -17, 0, -55); ctx.closePath(); ctx.fill(); ctx.restore();
+  };
+  const par = (x, y, w, rot, val) => {
+    ctx.fillStyle = '#A8A29E'; ctx.font = `700 17px ${F}`; ctx.fillText(rot.toUpperCase(), x, y);
+    ctx.fillStyle = INKc; ctx.font = `700 26px ${F}`;
+    let t = String(val ?? '—'); while (ctx.measureText(t).width > w - 8 && t.length > 3) t = t.slice(0, -2);
+    ctx.fillText(t, x, y + 32);
   };
 
-  // Cabeçalho
-  ctx.fillStyle = '#B8935A'; ctx.font = `700 24px ${F}`;
-  ctx.fillText('L A B O R A T Ó R I O', PAD, 96);
-  ctx.fillStyle = '#1C1B19'; ctx.font = `800 62px ${F}`;
-  ctx.fillText('SPECIAL', PAD, 164);
-  ctx.fillStyle = '#78716C'; ctx.font = `600 26px ${F}`;
-  ctx.fillText('Ficha de Trabalho Protético', PAD, 204);
-  ctx.fillStyle = '#1C1B19'; ctx.fillRect(PAD, 228, W - PAD * 2, 6);
-
-  let y = 280;
-  const meia = (W - PAD * 2) / 2;
-  const L = 58;
-  celula(PAD, y, meia, L, `Paciente: ${caso.paciente}`);
-  celula(PAD + meia, y, meia, L, `Trabalho: ${caso.tipoTrabalho}`); y += L;
-  celula(PAD, y, meia, L, `Dentista: ${caso.dentista}`);
-  celula(PAD + meia, y, meia, L, `Material: ${caso.material || '—'}`); y += L;
-  if (temContato) {
-    celula(PAD, y, meia, L, `Endereço: ${dentistaInfo?.endereco || '—'}`);
-    celula(PAD + meia, y, meia, L, `Telefone: ${dentistaInfo?.telefone || '—'}`); y += L;
-  }
-
-  y += 56;
-  rotulo('Linha do tempo', y - 14);
-  celula(PAD, y, meia, L, `Entrada: ${formatDateBR(caso.dataEntrada)}`);
-  celula(PAD + meia, y, meia, L, `Início produção: ${caso.dataProducao ? formatDateBR(caso.dataProducao) : '—'}`); y += L;
-  celula(PAD, y, meia, L, `Prazo: ${formatDateBR(caso.prazo)}`);
-  celula(PAD + meia, y, meia, L, `Finalizado: ${caso.dataFinalizado ? formatDateBR(caso.dataFinalizado) : '—'}`); y += L;
-  celula(PAD, y, meia, L, `Entregue: ${caso.dataSaida ? formatDateBR(caso.dataSaida) : '—'}`);
-  celula(PAD + meia, y, meia, L, ehGestor && caso.valor > 0 ? `Valor do serviço: ${formatReais(caso.valor)}` : ''); y += L;
-  {
-    const tmp = temposLabClinica(caso);
-    celula(PAD, y, meia, L, `Tempo no laboratório: ${formatDuracao(tmp.lab)}`);
-    celula(PAD + meia, y, meia, L, `Tempo na clínica: ${formatDuracao(tmp.clinica)}`); y += L;
-  }
-
-  if (etapas.length > 0) {
-    y += 56;
-    rotulo('Etapas executadas', y - 14);
-    const cols = [W - PAD * 2 - 120 - 160 - 130 - 190, 120, 160, 130, 190];
-    let x = PAD;
-    ['Etapa', 'Prova', 'Concluída', 'Tempo', 'Executor'].forEach((c, i) => { celula(x, y, cols[i], 52, c, true, i > 0, '#F3EBDA'); x += cols[i]; });
-    y += 52;
-    etapas.forEach((e, i) => {
-      x = PAD;
-      const nomeEt = `${i + 1}. ${e.item && (caso.itens || []).length > 1 ? `${e.item} — ` : ''}${e.nome}`;
-      const vals = [nomeEt, e.prova ? 'Sim' : '—', e.concluida ? formatDateBR(e.dataConclusao) : '—', e.duracaoMin ? formatMinutos(e.duracaoMin) : '—', e.funcionario || '—'];
-      vals.forEach((v, j) => { celula(x, y, cols[j], 52, v, false, j > 0 && j < 4); x += cols[j]; });
-      y += 52;
-    });
-  }
-
-  y += 56;
-  rotulo('Observações', y - 14);
-  ctx.strokeStyle = '#D6D3D1'; ctx.lineWidth = 2;
-  ctx.strokeRect(PAD, y, W - PAD * 2, hObs);
-  ctx.fillStyle = '#1C1B19'; ctx.font = `500 26px ${F}`;
-  obsLinhas.forEach((l, i) => ctx.fillText(l, PAD + 28, y + 48 + i * 36));
-  y += hObs;
-
-  y += 140;
-  const wAss = (W - PAD * 2 - 120) / 2;
-  ctx.strokeStyle = '#1C1B19'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(PAD + wAss, y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(PAD + wAss + 120, y); ctx.lineTo(W - PAD, y); ctx.stroke();
-  ctx.fillStyle = '#57534E'; ctx.font = `600 24px ${F}`; ctx.textAlign = 'center';
-  ctx.fillText('Laboratório Special', PAD + wAss / 2, y + 38);
-  ctx.fillText('Recebido por (clínica)', PAD + wAss + 120 + wAss / 2, y + 38);
-  ctx.fillStyle = '#A8A29E'; ctx.font = `500 22px ${F}`;
-  ctx.fillText(`Emitido em ${formatDateBR(todayISO())} • Laboratório Special — gestão de casos`, W / 2, H - 46);
+  // ── Cabeçalho: faixa dourada + marca ──
+  ctx.fillStyle = INKc; roundRect(PAD, 60, CW, 128, 18); ctx.fill();
+  desenharEstrela(W - PAD - 70, 124, 116, 'rgba(184,147,90,0.14)');
+  desenharEstrela(PAD + 52, 124, 40, GOLDc);
+  ctx.fillStyle = GOLDc; ctx.font = `700 20px ${F}`; ctx.fillText('L A B O R A T Ó R I O', PAD + 92, 108);
+  ctx.fillStyle = '#fff'; ctx.font = `800 52px ${F}`; ctx.fillText('SPECIAL', PAD + 90, 158);
+  ctx.fillStyle = 'rgba(255,255,255,0.72)'; ctx.font = `600 22px ${F}`; ctx.textAlign = 'right';
+  ctx.fillText('Ficha de Trabalho Protético', W - PAD - 34, 112);
+  ctx.fillStyle = GOLDc; ctx.font = `800 22px ${F}`;
+  ctx.fillText(`Nº ${String(caso.id).toUpperCase()}`, W - PAD - 34, 150);
   ctx.textAlign = 'left';
 
-  return cv.toDataURL('image/jpeg', 0.94);
+  let y = hHeader + GAP;
+
+  // ── Dados do trabalho ──
+  cartao(y, hInfo, '#FCFBF8');
+  secTitulo('Dados do trabalho', y + 32);
+  const colA = PAD + 30, colB = PAD + CW / 2 + 10, colW = CW / 2 - 40;
+  let yy = y + 74;
+  par(colA, yy, colW, 'Paciente', caso.paciente);
+  par(colB, yy, colW, 'Trabalho', caso.tipoTrabalho); yy += 54;
+  par(colA, yy, colW, 'Dentista', caso.dentista);
+  par(colB, yy, colW, 'Material', caso.material || '—'); yy += 54;
+  if (temContato) {
+    par(colA, yy, CW - 60, 'Endereço', dentistaInfo?.endereco || '—'); yy += 54;
+    par(colA, yy, CW - 60, 'Telefone', dentistaInfo?.telefone || '—'); yy += 54;
+  }
+  y += hInfo + GAP;
+
+  // ── Linha do tempo (stepper visual) ──
+  cartao(y, hTimeline, '#fff');
+  secTitulo('Linha do tempo', y + 32);
+  {
+    const marcos = [
+      { rot: 'Entrada', data: caso.dataEntrada },
+      { rot: 'Produção', data: caso.dataProducao },
+      { rot: 'Prazo', data: caso.prazo, alvo: true },
+      { rot: 'Finalizado', data: caso.dataFinalizado },
+      { rot: 'Entregue', data: caso.dataSaida },
+    ];
+    const linhaY = y + 104;
+    const x0 = PAD + 70, x1 = W - PAD - 70, passo = (x1 - x0) / (marcos.length - 1);
+    ctx.strokeStyle = LINHA; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x0, linhaY); ctx.lineTo(x1, linhaY); ctx.stroke();
+    marcos.forEach((m, i) => {
+      const cx = x0 + passo * i;
+      const feito = !!m.data;
+      const cor = m.alvo ? ROXOc : GOLDc;
+      ctx.beginPath(); ctx.arc(cx, linhaY, 15, 0, Math.PI * 2);
+      if (feito) { ctx.fillStyle = cor; ctx.fill(); } else { ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#D6D3D1'; ctx.lineWidth = 3; ctx.stroke(); }
+      ctx.fillStyle = feito ? cor : '#A8A29E'; ctx.font = `800 19px ${F}`; ctx.textAlign = 'center';
+      ctx.fillText(m.rot, cx, linhaY - 30);
+      ctx.fillStyle = feito ? INKc : '#C9C4BC'; ctx.font = `600 18px ${F}`;
+      ctx.fillText(m.data ? formatDateBR(m.data) : '—', cx, linhaY + 44);
+      ctx.textAlign = 'left';
+    });
+  }
+  y += hTimeline + GAP;
+
+  // ── Tempo no laboratório × na clínica (barra proporcional + histórico) ──
+  cartao(y, hTempo, '#fff');
+  secTitulo('Tempo no laboratório × na clínica', y + 32);
+  {
+    const total = tempos.lab + tempos.clinica;
+    const barX = PAD + 30, barY = y + 60, barW = CW - 60, barH = 34;
+    roundRect(barX, barY, barW, barH, 10); ctx.fillStyle = '#F0EFEC'; ctx.fill();
+    if (total > 0) {
+      const wLab = Math.max(0, Math.round(barW * tempos.lab / total));
+      ctx.save(); roundRect(barX, barY, barW, barH, 10); ctx.clip();
+      ctx.fillStyle = GOLDc; ctx.fillRect(barX, barY, wLab, barH);
+      ctx.fillStyle = ROXOc; ctx.fillRect(barX + wLab, barY, barW - wLab, barH);
+      ctx.restore();
+    }
+    const legY = barY + barH + 40;
+    ctx.fillStyle = GOLDc; roundRect(barX, legY - 14, 16, 16, 4); ctx.fill();
+    ctx.fillStyle = INKc; ctx.font = `700 22px ${F}`; ctx.fillText(`Laboratório: ${formatDuracao(tempos.lab)}`, barX + 26, legY);
+    const cx2 = barX + barW / 2 + 20;
+    ctx.fillStyle = ROXOc; roundRect(cx2, legY - 14, 16, 16, 4); ctx.fill();
+    ctx.fillStyle = INKc; ctx.font = `700 22px ${F}`; ctx.fillText(`Clínica: ${formatDuracao(tempos.clinica)}`, cx2 + 26, legY);
+  }
+  y += hTempo + GAP;
+
+  // ── Histórico de localização (por datas) ──
+  if (temHist) {
+    cartao(y, hHist, '#fff');
+    secTitulo('Histórico — onde o trabalho esteve', y + 32);
+    const cols = [CW * 0.30, CW * 0.28, CW * 0.24, CW * 0.18];
+    const hx = PAD + 24;
+    let cy = y + 58;
+    ctx.font = `800 18px ${F}`; ctx.fillStyle = '#A8A29E';
+    ['Local', 'De', 'Até', 'Duração'].forEach((c, i) => { const cx = hx + cols.slice(0, i).reduce((a, b) => a + b, 0); ctx.fillText(c.toUpperCase(), cx, cy); });
+    cy += 16; ctx.strokeStyle = LINHA; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hx, cy); ctx.lineTo(W - PAD - 24, cy); ctx.stroke();
+    cy += 34;
+    histLoc.forEach(h => {
+      const ehClin = h.local === 'clinica';
+      const cx0 = hx;
+      ctx.fillStyle = ehClin ? ROXOc : GOLDc; ctx.beginPath(); ctx.arc(cx0 + 7, cy - 8, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = INKc; ctx.font = `700 21px ${F}`; ctx.fillText(ehClin ? 'Clínica' : 'Laboratório', cx0 + 24, cy);
+      ctx.font = `500 21px ${F}`; ctx.fillStyle = '#57534E';
+      ctx.fillText(formatDateBR(String(h.de).slice(0, 10)), hx + cols[0], cy);
+      ctx.fillText(formatDateBR(String(h.ate).slice(0, 10)), hx + cols[0] + cols[1], cy);
+      ctx.fillStyle = INKc; ctx.font = `700 21px ${F}`;
+      ctx.fillText(formatDuracao(h.dur), hx + cols[0] + cols[1] + cols[2], cy);
+      cy += 44;
+    });
+    y += hHist + GAP;
+  }
+
+  // ── Etapas executadas ──
+  if (etapas.length > 0) {
+    cartao(y, hEtapas, '#fff');
+    secTitulo('Etapas executadas', y + 32);
+    const cols = [CW - 110 - 150 - 130 - 200, 110, 150, 130, 200];
+    const hx = PAD + 24;
+    let cy = y + 58;
+    ctx.font = `800 18px ${F}`; ctx.fillStyle = '#A8A29E';
+    ['Etapa', 'Prova', 'Concluída', 'Tempo', 'Executor'].forEach((c, i) => { const cx = hx + cols.slice(0, i).reduce((a, b) => a + b, 0); ctx.fillText(c.toUpperCase(), cx, cy); });
+    cy += 16; ctx.strokeStyle = LINHA; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hx, cy); ctx.lineTo(W - PAD - 24, cy); ctx.stroke();
+    cy += 36;
+    etapas.forEach((e, i) => {
+      const pulada = !!e.pulada;
+      const nomeEt = `${i + 1}. ${e.item && (caso.itens || []).length > 1 ? `${e.item} — ` : ''}${e.nome}`;
+      const vals = [nomeEt, e.prova ? 'Sim' : '—', pulada ? 'Pulada' : (e.concluida ? formatDateBR(e.dataConclusao) : '—'), e.duracaoMin ? formatMinutos(e.duracaoMin) : '—', e.funcionario || '—'];
+      vals.forEach((v, j) => {
+        const cx = hx + cols.slice(0, j).reduce((a, b) => a + b, 0);
+        ctx.fillStyle = pulada ? '#A8A29E' : (j === 0 ? INKc : '#57534E');
+        ctx.font = `${j === 0 ? 700 : 500} 21px ${F}`;
+        let t = String(v); while (ctx.measureText(t).width > cols[j] - 14 && t.length > 3) t = t.slice(0, -2);
+        ctx.fillText(t, cx, cy);
+      });
+      cy += 50;
+    });
+  }
+  if (etapas.length > 0) y += hEtapas + GAP;
+
+  // ── Observações ──
+  cartao(y, hObsSec, '#FCFBF8');
+  secTitulo('Observações', y + 32);
+  ctx.fillStyle = '#44403C'; ctx.font = `500 25px ${F}`;
+  if (obsLinhas.length) obsLinhas.forEach((l, i) => ctx.fillText(l, PAD + 30, y + 76 + i * 34));
+  else { ctx.fillStyle = '#C9C4BC'; ctx.fillText('—', PAD + 30, y + 76); }
+  y += hObsSec + GAP;
+
+  // ── Assinaturas ──
+  const wAss = (CW - 120) / 2;
+  const ly = y + 90;
+  ctx.strokeStyle = INKc; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(PAD + 10, ly); ctx.lineTo(PAD + 10 + wAss, ly); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD + wAss + 110, ly); ctx.lineTo(W - PAD - 10, ly); ctx.stroke();
+  ctx.fillStyle = STONE; ctx.font = `600 22px ${F}`; ctx.textAlign = 'center';
+  ctx.fillText('Laboratório Special', PAD + 10 + wAss / 2, ly + 36);
+  ctx.fillText('Recebido por (clínica)', PAD + wAss + 110 + wAss / 2, ly + 36);
+  if (ehGestor && caso.valor > 0) {
+    ctx.fillStyle = GOLDc; ctx.font = `800 24px ${F}`;
+    ctx.fillText(`Valor do serviço: ${formatReais(caso.valor)}`, W / 2, y + 30);
+  }
+  ctx.fillStyle = '#A8A29E'; ctx.font = `500 20px ${F}`;
+  ctx.fillText(`Emitido em ${formatDateBR(todayISO())} • Laboratório Special — gestão de casos protéticos`, W / 2, H - 34);
+  ctx.textAlign = 'left';
+
+  return cv.toDataURL('image/jpeg', 0.95);
 }
 
 function FichaImpressao({ caso, dentistaInfo, ehGestor, onFechar }) {
