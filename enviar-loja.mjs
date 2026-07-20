@@ -150,15 +150,25 @@ if (listaItens.length > 0 && !itemDaVersao) {
   falha('o envio aberto contém OUTRA versão — cancele-o no App Store Connect e rode de novo');
 }
 if (!itemDaVersao) {
-  const item = await api('POST', '/v1/reviewSubmissionItems', {
-    data: {
-      type: 'reviewSubmissionItems',
-      relationships: {
-        reviewSubmission: { data: { type: 'reviewSubmissions', id: envio.id } },
-        appStoreVersion: { data: { type: 'appStoreVersions', id: versao.id } },
+  // Depois de cancelar um envio reprovado, a Apple demora alguns segundos para
+  // "soltar" a versão do envio antigo — tenta de novo com espera
+  let item = null;
+  for (let tentativa = 1; tentativa <= 8; tentativa++) {
+    item = await api('POST', '/v1/reviewSubmissionItems', {
+      data: {
+        type: 'reviewSubmissionItems',
+        relationships: {
+          reviewSubmission: { data: { type: 'reviewSubmissions', id: envio.id } },
+          appStoreVersion: { data: { type: 'appStoreVersions', id: versao.id } },
+        },
       },
-    },
-  });
+    });
+    if (item.status < 300) break;
+    const msg = JSON.stringify(item.dados || {});
+    if (!msg.includes('ANOTHER_SUBMISSION')) break; // outro erro — não adianta insistir
+    console.log(`  versão ainda presa no envio anterior — aguardando (${tentativa}/8)...`);
+    await new Promise(r => setTimeout(r, 15000));
+  }
   if (item.status >= 300) falha('não consegui colocar a versão dentro do envio', item);
   console.log('Versão colocada no envio ✓');
 } else {
