@@ -66,24 +66,22 @@ const vers = await api('GET', `/v1/apps/${app.id}/appStoreVersions?filter[platfo
 let versao = ((vers.dados && vers.dados.data) || []).find(v => ESTADOS_EDITAVEIS.includes(v.attributes.appStoreState));
 if (versao) {
   console.log(`Versão de loja encontrada: ${versao.attributes.versionString} (${versao.attributes.appStoreState})`);
-  if (versao.attributes.versionString !== versaoAlvo) {
-    const muda = await api('PATCH', `/v1/appStoreVersions/${versao.id}`, {
-      data: { type: 'appStoreVersions', id: versao.id, attributes: { versionString: versaoAlvo } },
-    });
-    if (muda.status >= 300) falha(`não consegui mudar o número da versão para ${versaoAlvo} — sem isso o envio iria com o número errado`, muda);
-    console.log(`Número da versão atualizado para ${versaoAlvo} ✓`);
-  }
+  const muda = await api('PATCH', `/v1/appStoreVersions/${versao.id}`, {
+    data: { type: 'appStoreVersions', id: versao.id, attributes: { versionString: versaoAlvo, releaseType: 'AFTER_APPROVAL' } },
+  });
+  if (muda.status >= 300) falha(`não consegui ajustar a versão para ${versaoAlvo}`, muda);
+  console.log(`Versão ${versaoAlvo} + lançamento automático após aprovação ✓`);
 } else {
   const nova = await api('POST', '/v1/appStoreVersions', {
     data: {
       type: 'appStoreVersions',
-      attributes: { platform: 'IOS', versionString: versaoAlvo },
+      attributes: { platform: 'IOS', versionString: versaoAlvo, releaseType: 'AFTER_APPROVAL' },
       relationships: { app: { data: { type: 'apps', id: app.id } } },
     },
   });
   if (nova.status >= 300) falha('não consegui criar a versão de loja', nova);
   versao = nova.dados.data;
-  console.log(`Versão de loja ${versaoAlvo} criada ✓`);
+  console.log(`Versão de loja ${versaoAlvo} criada (lançamento automático após aprovação) ✓`);
 }
 
 // 5. Anexa o build escolhido à versão de loja
@@ -94,14 +92,20 @@ if (anexa.status >= 300) falha('não consegui anexar o build à versão de loja'
 console.log('Build anexado à versão ✓');
 
 // 6. Corrige a URL de suporte (regra 1.5) em todos os idiomas da ficha —
-// era um dos motivos da reprovação: se falhar, não adianta enviar
+// era um dos motivos da reprovação: se falhar, não adianta enviar.
+// Em ATUALIZAÇÃO (já existe versão publicada), o texto de "Novidades" é obrigatório.
+const jaPublicado = ((vers.dados && vers.dados.data) || []).some(v => ['READY_FOR_SALE', 'PENDING_APPLE_RELEASE', 'PENDING_DEVELOPER_RELEASE', 'IN_REVIEW', 'PROCESSING_FOR_APP_STORE'].includes(v.attributes.appStoreState) && v.id !== versao.id);
+const NOVIDADES = (process.env.NOVIDADES || '').trim()
+  || 'Novidades desta versão:\n• Entrar com Apple\n• Notificações mais confiáveis\n• Correções de estabilidade e melhorias de desempenho';
 const locs = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreVersionLocalizations`);
 for (const loc of ((locs.dados && locs.dados.data) || [])) {
+  const atributos = { supportUrl: URL_SUPORTE };
+  if (jaPublicado) atributos.whatsNew = NOVIDADES;
   const atualiza = await api('PATCH', `/v1/appStoreVersionLocalizations/${loc.id}`, {
-    data: { type: 'appStoreVersionLocalizations', id: loc.id, attributes: { supportUrl: URL_SUPORTE } },
+    data: { type: 'appStoreVersionLocalizations', id: loc.id, attributes: atributos },
   });
-  if (atualiza.status >= 300) falha(`não consegui corrigir a URL de suporte (${loc.attributes.locale})`, atualiza);
-  console.log(`URL de suporte (${loc.attributes.locale}) ✓`);
+  if (atualiza.status >= 300) falha(`não consegui atualizar a ficha (${loc.attributes.locale})`, atualiza);
+  console.log(`Ficha (${loc.attributes.locale}): URL de suporte${jaPublicado ? ' + novidades' : ''} ✓`);
 }
 
 // 7. Envio para a análise. Estados possíveis de um envio aberto:

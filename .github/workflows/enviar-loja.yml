@@ -10,6 +10,10 @@ on:
         description: "Versão visível na loja (vazio = usa a do build mais novo)"
         required: false
         default: ""
+      app:
+        description: "Qual app (lab ou clinic)"
+        required: false
+        default: "lab"
 
 jobs:
   enviar:
@@ -28,4 +32,5 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           VERSAO: ${{ github.event.inputs.versao }}
+          BUNDLE: ${{ github.event.inputs.app == 'clinic' && 'com.laboratorio.specialclinic' || 'com.laboratorio.special' }}
         run: node enviar-loja.mjs

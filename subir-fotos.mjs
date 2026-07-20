@@ -40,8 +40,21 @@ const app = apps.dados?.data?.[0];
 if (!app) falha('app não encontrado');
 console.log(`App: ${app.attributes.name}`);
 const versoes = await api('GET', `/v1/apps/${app.id}/appStoreVersions?filter[appStoreState]=PREPARE_FOR_SUBMISSION,REJECTED,DEVELOPER_REJECTED,METADATA_REJECTED&limit=5`);
-const versao = versoes.dados?.data?.[0];
-if (!versao) falha('nenhuma versão em preparação — crie a versão nova antes (o robô Enviar → App Store faz isso)');
+let versao = versoes.dados?.data?.[0];
+if (!versao) {
+  // App já publicado sem versão nova aberta: cria a versão de atualização aqui mesmo
+  const num = (process.env.VERSAO || '7.3').trim();
+  const nova = await api('POST', '/v1/appStoreVersions', {
+    data: {
+      type: 'appStoreVersions',
+      attributes: { platform: 'IOS', versionString: num, releaseType: 'AFTER_APPROVAL' },
+      relationships: { app: { data: { type: 'apps', id: app.id } } },
+    },
+  });
+  if (nova.status >= 300) falha('não consegui criar a versão de loja ' + num, nova);
+  versao = nova.dados.data;
+  console.log(`Versão de loja ${num} criada ✓`);
+}
 console.log(`Versão de loja: ${versao.attributes.versionString} (${versao.attributes.appStoreState})`);
 
 // 2. Localização da ficha (pega a primeira — pt-BR)
