@@ -68,10 +68,11 @@ const sets = await api('GET', `/v1/appStoreVersionLocalizations/${loc.id}/appScr
 let conjunto = (sets.dados?.data || []).find(s => s.attributes.screenshotDisplayType === 'APP_IPHONE_69')
   || (sets.dados?.data || []).find(s => s.attributes.screenshotDisplayType === 'APP_IPHONE_67');
 if (!conjunto) {
+  // A API só aceita 'APP_IPHONE_67' (o slot de 6,7"/6,9" da ficha)
   const novo = await api('POST', '/v1/appScreenshotSets', {
     data: {
       type: 'appScreenshotSets',
-      attributes: { screenshotDisplayType: 'APP_IPHONE_69' },
+      attributes: { screenshotDisplayType: 'APP_IPHONE_67' },
       relationships: { appStoreVersionLocalization: { data: { type: 'appStoreVersionLocalizations', id: loc.id } } },
     },
   });
