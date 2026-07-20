@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import VisorSTL from './visor-stl.jsx';
-import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle } from 'lucide-react';
+import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut } from 'lucide-react';
 import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
 
 const INK = '#1C1B19';
@@ -82,7 +82,11 @@ function todayISO() { return new Date().toISOString().split('T')[0]; }
 function agoraISO() { return new Date().toISOString(); }
 function mesAtualISO() { return todayISO().slice(0, 7); }
 function addDias(iso, dias) {
+  // Data vazia/inválida (ex.: campo de data apagado no formulário) não pode derrubar o app —
+  // devolve '' porque proximoDiaUtil e as telas já sabem lidar com data vazia
+  if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
   d.setDate(d.getDate() + dias);
   return d.toISOString().split('T')[0];
 }
@@ -93,6 +97,7 @@ function proximoDiaUtil(iso, diasTrabalho) {
   if (!iso) return iso;
   const dias = (diasTrabalho && diasTrabalho.length > 0) ? diasTrabalho : DIAS_TRABALHO_PADRAO;
   const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso; // data fora do formato (dado antigo/importado) não pode derrubar o app
   let tentativas = 0;
   while (!dias.includes(d.getDay()) && tentativas < 7) {
     d.setDate(d.getDate() + 1);
@@ -152,11 +157,13 @@ function emProducao(caso) {
 function aguardandoDentista(caso) {
   return (caso.anexos || []).some(a => a.aprovacao && a.aprovacao.status === 'pendente');
 }
-// Trabalho postado pelo dentista que o laboratório ainda não foi buscar:
-// sai da lista sozinho assim que alguma etapa é iniciada/concluída (produção começou)
+// Trabalho postado pelo dentista que o laboratório ainda não foi buscar.
+// Sai da lista quando: (1) alguém toca em "Foi pego ✓" (retiradoEm), OU
+// (2) alguma etapa é iniciada/concluída — começou a produção, então já foi pego
 function aguardandoRetirada(caso) {
   return caso.origem === 'clinica'
     && caso.status === 'Em Produção'
+    && !caso.retiradoEm
     && !(caso.etapas || []).some(e => e.concluida || e.inicioExec);
 }
 function progressoPrazo(caso) {
@@ -300,7 +307,7 @@ const FILTROS_RAPIDOS = {
   atrasado: { titulo: 'Atrasados', teste: (c) => getUrgencia(c) === 'atrasado' },
   pronto: { titulo: 'Prontos p/ entrega', teste: (c) => c.status === 'Pronto' },
   clinica: { titulo: 'Provas (levar + na clínica)', teste: (c) => (c.naClinica || c.provaPendente) && c.status !== 'Entregue' },
-  retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) },
+  retirada: { titulo: 'Para retirada na clínica', teste: (c) => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado) },
 };
 
 // Converte um dataURL (base64) em Blob binário — usado p/ subir fotos comprimidas ao armazém
@@ -1017,6 +1024,7 @@ export default function App() {
             }
             return { ...c, provaPendente: c.provaPendente || false };
           });
+          window.__casosVivos = migrada;
           setCasos(migrada);
           // Persiste as migrações (prazos ajustados, provas sincronizadas) para não repetir a cada abertura
           if (JSON.stringify(migrada) !== JSON.stringify(lista)) {
@@ -1067,9 +1075,25 @@ export default function App() {
   };
 
   const persistCasos = (newCasos) => {
+    // Lista viva fora do React: ações demoradas (upload grande) terminam depois de
+    // outras gravações/remontagens — regravar a lista do render antigo apagava casos novos
+    window.__casosVivos = newCasos;
     setCasos(newCasos);
-    return flashSave(() => window.storage.set('casos-laboratorio', JSON.stringify(newCasos)));
+    return flashSave(async () => {
+      try {
+        await window.storage.set('casos-laboratorio', JSON.stringify(newCasos));
+      } catch (e) {
+        // Falha ao gravar os casos NUNCA pode ser muda: registra na nuvem e avisa na tela
+        const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
+        if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'erro-gravar-casos', resultado: String((e && e.message) || e).slice(0, 180), versao: versaoApp });
+        alert('Não consegui salvar na nuvem — confira a internet e tente de novo.');
+        throw e;
+      }
+    });
   };
+  // Toda ação que GRAVA parte da lista viva, nunca da lista do render em que o botão
+  // foi tocado — entre o toque e a gravação podem ter entrado casos novos de outra tela
+  const casosVivos = () => window.__casosVivos || casos;
   const persistConfig = (patch) => {
     const novo = {
       dentistas: patch.dentistas ?? dentistas,
@@ -1146,7 +1170,7 @@ export default function App() {
       status: 'Em Produção', dataSaida: null, dataProducao: hoje, dataFinalizado: null,
       anexos: s.anexos || [], etapas, naClinica: false, provaPendente: false,
     };
-    persistCasos([novo, ...casos]);
+    persistCasos([novo, ...casosVivos()]);
     persistSolicitacoes(solicitacoes.map(x => x.id === s.id ? { ...x, status: 'aceita', casoId: novo.id } : x));
     criarNotificacao('novo', `Pedido de ${s.dentista} aceito: ${s.paciente} (${s.tipoTrabalho}) entrou em produção.`, novo.id);
   };
@@ -1201,17 +1225,29 @@ export default function App() {
     const nomesItens = (dados.itens && dados.itens.length) ? dados.itens.map(i => i.nome) : [dados.tipoTrabalho];
     const etapas = etapasDeItens(tiposTrabalho, nomesItens).map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     const novo = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...dados, status: 'Em Produção', dataSaida: null, dataProducao: dados.dataEntrada || todayISO(), dataFinalizado: null, anexos: dados.anexos || [], etapas, naClinica: false, provaPendente: false };
-    persistCasos([novo, ...casos]);
+    persistCasos([novo, ...casosVivos()]);
     setView('lista');
   };
   const updateCaso = (id, patch, listaBase) => {
-    const base = listaBase || casos;
+    const base = listaBase || casosVivos();
     return persistCasos(base.map(c => c.id === id ? { ...c, ...patch } : c));
+  };
+  // "Foi pego ✓": confirma a retirada na clínica — o trabalho sai da caixa de retirada.
+  // Vale para trabalho novo postado pelo dentista E para prova devolvida pela clínica.
+  const confirmarRetirada = (id) => {
+    const caso = casos.find(c => c.id === id);
+    if (caso && caso.naClinica) {
+      updateCaso(id, { naClinica: false, provaPendente: false, retornoSolicitado: null });
+      criarNotificacao('novo', `Retorno confirmado: ${caso.paciente} voltou da clínica para o laboratório. ✓`, id);
+    } else {
+      updateCaso(id, { retiradoEm: agoraISO() });
+      criarNotificacao('novo', `Retirada confirmada: ${caso ? caso.paciente : 'trabalho'} já está com o laboratório. ✓`, id);
+    }
   };
   // Edita os itens de um trabalho já criado: recalcula rótulo, valor e etapas,
   // SEM perder o progresso das etapas já iniciadas ou concluídas
   const salvarItensCaso = (id, novosItens) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || !novosItens || novosItens.length === 0) return;
     const itensFinal = novosItens.map(i => {
       const t = tiposTrabalho.find(t => t.nome === i.nome);
@@ -1220,17 +1256,23 @@ export default function App() {
     });
     const umSo = itensFinal.length === 1;
     const alvo = etapasDeItens(tiposTrabalho, itensFinal.map(i => i.nome));
-    // Cada etapa pertence a um item — casa por item + nome da etapa
+    // Cada etapa pertence a um item — casa por item + nome da etapa.
+    // Etapa antiga sem a tag "item" (caso aceito da clínica / migração) casa pelo nome,
+    // senão salvar itens duplicava as etapas do trabalho e zerava o progresso.
+    // Cada alvo é CONSUMIDO ao casar: dois itens com etapa de mesmo nome continuam contando dois.
     const chave = (e) => `${e.item || ''}|${e.nome}`;
+    const alvosLivres = [...alvo];
+    const consome = (idx) => idx === -1 ? null : alvosLivres.splice(idx, 1)[0];
+    // 1º passo: casamento exato item|nome; 2º passo: etapa antiga sem tag pega um alvo livre de mesmo nome
+    const pares = (caso.etapas || []).map(e => ({ e, cfg: consome(alvosLivres.findIndex(a => chave(a) === chave(e))) }));
+    for (const p of pares) {
+      if (!p.cfg && !p.e.item) p.cfg = consome(alvosLivres.findIndex(a => a.nome === p.e.nome));
+    }
     // Mantém etapas com progresso (mesmo que o item tenha saído); atualiza config das não iniciadas; remove as não iniciadas que sobraram
-    const mantidas = (caso.etapas || [])
-      .filter(e => e.concluida || e.inicioExec || alvo.some(a => chave(a) === chave(e)))
-      .map(e => {
-        const cfg = alvo.find(a => chave(a) === chave(e));
-        return (cfg && !e.concluida && !e.inicioExec) ? { ...e, horas: cfg.horas, prova: cfg.prova } : e;
-      });
-    const novas = alvo
-      .filter(a => !mantidas.some(m => chave(m) === chave(a)))
+    const mantidas = pares
+      .filter(p => p.e.concluida || p.e.inicioExec || p.cfg)
+      .map(p => (p.cfg && !p.e.concluida && !p.e.inicioExec) ? { ...p.e, horas: p.cfg.horas, prova: p.cfg.prova } : p.e);
+    const novas = alvosLivres
       .map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
     updateCaso(id, {
       itens: itensFinal,
@@ -1294,18 +1336,21 @@ export default function App() {
   };
 
   const updateStatus = (id, novoStatus) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || caso.status === novoStatus) return;
-    // Trava: só finaliza com todas as etapas concluídas
-    if (novoStatus === 'Pronto' && !etapasCompletas(caso)) {
+    // Trava: só finaliza com todas as etapas concluídas (vale também pro "Entregue" direto,
+    // que pulava o "Pronto" e deixava o trabalho sem comissão e fora do fechamento do mês)
+    const pulouPronto = novoStatus === 'Entregue' && caso.status !== 'Pronto';
+    if ((novoStatus === 'Pronto' || pulouPronto) && !etapasCompletas(caso)) {
       const feitas = caso.etapas.filter(e => e.concluida).length;
       mostrarAviso(`Conclua todas as etapas antes de finalizar (${feitas}/${caso.etapas.length}).`);
       return;
     }
     const patch = { status: novoStatus };
     if (novoStatus === 'Em Produção' && !caso.dataProducao) patch.dataProducao = todayISO();
-    if (novoStatus === 'Pronto') {
-      patch.dataFinalizado = todayISO();
+    if (novoStatus === 'Pronto' || pulouPronto) {
+      // No Entregue direto preserva a data de finalização original (se houver); sempre limpa as bandeiras
+      patch.dataFinalizado = novoStatus === 'Pronto' ? todayISO() : (caso.dataFinalizado || todayISO());
       patch.naClinica = false;
       patch.provaPendente = false;
     }
@@ -1320,13 +1365,14 @@ export default function App() {
       const msgComissao = registrarComissoes(caso, caso.etapas || []);
       criarNotificacao('pronto', `${nome} foi finalizado${antesDoPrazo ? ' antes do prazo' : ''}!${msgComissao}`, id);
     } else if (novoStatus === 'Entregue') {
-      criarNotificacao('entregue', `${nome} foi entregue.`, id);
+      const msgComissao = pulouPronto ? registrarComissoes(caso, caso.etapas || []) : '';
+      criarNotificacao('entregue', `${nome} foi entregue.${msgComissao}`, id);
     }
   };
 
   // ── Cronômetro de etapas ──
   const iniciarEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     const primeiraAtividade = !caso.etapas.some(e => e.concluida || e.inicioExec);
     const estavaFora = caso.naClinica || caso.provaPendente;
@@ -1342,12 +1388,12 @@ export default function App() {
     }
   };
   const cancelarEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, inicioExec: null } : e) });
   };
   const concluirEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     const etapa = caso.etapas[indice];
     let duracaoMin = null;
@@ -1389,6 +1435,10 @@ export default function App() {
       patch.dataFinalizado = todayISO();
       patch.naClinica = false;
       patch.provaPendente = false;
+      // Telemetria: registra a virada para Pronto ANTES de gravar (diagnóstico de longe)
+      if (window.nuvemCasos && window.nuvemCasos.logar) {
+        window.nuvemCasos.logar({ acao: 'virou-pronto', casoId, versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev' });
+      }
       updateCaso(casoId, patch);
       const antesDoPrazo = diasRestantes(caso.prazo) > 0;
       const msgComissao = registrarComissoes(caso, novasEtapas);
@@ -1402,16 +1452,16 @@ export default function App() {
     }
   };
   const desfazerEtapa = (casoId, indice) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
     updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, concluida: false, dataConclusao: null, duracaoMin: null } : e) });
   };
 
   const toggleClinica = (casoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
     const indo = !caso.naClinica;
-    updateCaso(casoId, { naClinica: indo, provaPendente: false });
+    updateCaso(casoId, { naClinica: indo, provaPendente: false, retornoSolicitado: null });
     const nome = `${caso.paciente} (${caso.tipoTrabalho})`;
     if (indo) {
       const et = etapaAtual(caso);
@@ -1422,13 +1472,13 @@ export default function App() {
   };
   // Confirma que a prova saiu do laboratório e foi entregue na clínica
   const entregarProva = (casoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) return;
     updateCaso(casoId, { provaPendente: false, naClinica: true });
     criarNotificacao('clinica', `${caso.paciente} (${caso.tipoTrabalho}) entregue na clínica de ${caso.dentista} para prova.`, casoId);
   };
   const adiarUmDia = (id) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso) return;
     const baseData = diasRestantes(caso.prazo) < 0 ? todayISO() : caso.prazo;
     const novoPrazo = proximoDiaUtil(addDias(baseData, 1), diasTrabalho);
@@ -1448,7 +1498,7 @@ export default function App() {
 
   // Mover um trabalho para uma data escolhida no calendário (aba Datas)
   const mudarPrazoParaDia = (id, data) => {
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (!caso || !data) return;
     const novoPrazo = proximoDiaUtil(data, diasTrabalho);
     updateCaso(id, { prazo: novoPrazo });
@@ -1456,13 +1506,15 @@ export default function App() {
   };
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
-    const caso = casos.find(c => c.id === id);
+    const caso = casosVivos().find(c => c.id === id);
     if (caso?.anexos?.length) {
       for (const a of caso.anexos) {
-        try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ }
+        // Formato novo (arquivo no Storage com caminho) e formato antigo (dataURL no banco)
+        if (a.caminho && window.arquivos) { try { await window.arquivos.apagar(a.caminho); } catch (e) { /* já removido */ } }
+        else { try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ } }
       }
     }
-    const ok = await persistCasos(casos.filter(c => c.id !== id));
+    const ok = await persistCasos(casosVivos().filter(c => c.id !== id));
     if (window.nuvemCasos && window.nuvemCasos.logar) {
       window.nuvemCasos.logar({ acao: 'excluir-caso', casoId: id, paciente: (caso && caso.paciente) || '', resultado: ok ? 'ok' : 'erro ao gravar', versao: versaoApp });
     }
@@ -1489,7 +1541,9 @@ export default function App() {
     } else {
       await window.storage.set(`anexo-${anexoId}`, JSON.stringify({ nome, mime, dataURL }));
     }
-    const caso = casos.find(c => c.id === casoId);
+    // Busca o caso na lista VIVA: o upload pode ter demorado minutos e a lista do render antigo está velha
+    const caso = casosVivos().find(c => c.id === casoId);
+    if (!caso) throw new Error('Falha ao salvar');
     const ok = await updateCaso(casoId, { anexos: [...(caso.anexos || []), meta] });
     if (!ok) throw new Error('Falha ao salvar');
   };
@@ -1501,7 +1555,7 @@ export default function App() {
     return r && r.value ? JSON.parse(r.value) : null;
   };
   const removeAnexo = async (casoId, anexoId) => {
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     const anexo = (caso?.anexos || []).find(a => a.id === anexoId);
     if (anexo?.caminho && window.arquivos) window.arquivos.apagar(anexo.caminho);
     else { try { await window.storage.delete(`anexo-${anexoId}`); } catch (e) { /* já removido */ } }
@@ -1518,7 +1572,7 @@ export default function App() {
     if (ehPedido && window.nuvemCasos && window.nuvemCasos.logar) {
       window.nuvemCasos.logar({ acao: 'toque-pedir-aprovacao', casoId, anexoId, versao: versaoApp });
     }
-    const caso = casos.find(c => c.id === casoId);
+    const caso = casosVivos().find(c => c.id === casoId);
     if (!caso) {
       if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'pedir-aprovacao', casoId, resultado: 'erro: caso não encontrado', versao: versaoApp });
       return false;
@@ -1530,17 +1584,19 @@ export default function App() {
       return false;
     }
     const atualizado = { ...caso, anexos: (caso.anexos || []).map(a => a.id === anexoId ? { ...a, ...patch } : a) };
-    const novaLista = casos.map(c => c.id === casoId ? atualizado : c);
+    const novaLista = casosVivos().map(c => c.id === casoId ? atualizado : c);
+    window.__casosVivos = novaLista;
     setCasos(novaLista);
     setSaveStatus('saving');
     try {
       const anexoNome = anexoAlvo.nome || '';
-      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
-      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
-      // Canal RESERVA: o pedido também vira um doc próprio que dispara a notificação na nuvem
+      // Canal RESERVA PRIMEIRO: o carteiro na nuvem usa este doc pra deduplicar — se o caso
+      // for gravado antes, a função do caso não encontra o aviso e o dentista recebe em dobro
       if (ehPedido && window.nuvemCasos && window.nuvemCasos.avisarAprovacao) {
         await window.nuvemCasos.avisarAprovacao({ casoId, dentista: caso.dentista, paciente: caso.paciente, anexoNome });
       }
+      if (window.nuvemCasos && window.nuvemCasos.salvarCaso) await window.nuvemCasos.salvarCaso(atualizado);
+      else await window.storage.set('casos-laboratorio', JSON.stringify(novaLista));
       if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: ehPedido ? 'pedir-aprovacao' : 'anexo-meta', casoId, anexoNome, resultado: 'ok', versao: versaoApp });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 1500);
@@ -1619,7 +1675,8 @@ export default function App() {
   const trabalhoHoje = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) <= 0)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
-  const paraRetirada = emAndamento.filter(aguardandoRetirada);
+  // Para retirada: trabalho novo postado pelo dentista OU prova que o dentista devolveu
+  const paraRetirada = emAndamento.filter(c => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado));
   const trabalhoAmanha = emAndamento
     .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) === 1)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
@@ -1810,7 +1867,8 @@ export default function App() {
             dentistas={dentistas} filtroDentista={filtroDentista} setFiltroDentista={setFiltroDentista}
             filtroRapido={filtroRapido} onLimparFiltroRapido={() => setFiltroRapido(null)}
             getEndereco={(nome) => enderecoDe(dentistas, nome)}
-            onSelect={goToDetalhe} />
+            onSelect={goToDetalhe}
+            onConfirmarRetirada={confirmarRetirada} />
         )}
         {view === 'dia' && (
           <DiaView
@@ -1857,6 +1915,7 @@ export default function App() {
             onAtualizarAnexo={(anexoId, patch) => atualizarAnexoMeta(selectedCaso.id, anexoId, patch)}
             onAbrirSeletorUsuario={() => setSeletorUsuarioAberto(true)}
             onEntregarProva={() => entregarProva(selectedCaso.id)}
+            onConfirmarRetirada={() => confirmarRetirada(selectedCaso.id)}
             ehGestor={ehGestor}
             onSalvarValor={(v) => updateCaso(selectedCaso.id, { valor: v })}
             tiposTrabalho={tiposTrabalho}
@@ -2248,7 +2307,7 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
   );
 }
 
-function CasoCard({ caso, onClick, endereco }) {
+function CasoCard({ caso, onClick, endereco, onConfirmarRetirada }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -2257,6 +2316,7 @@ function CasoCard({ caso, onClick, endereco }) {
   const concluidas = caso.etapas?.filter(e => e.concluida).length || 0;
   const totalEtapas = caso.etapas?.length || 0;
   const esperandoDentista = aguardandoDentista(caso);
+  const naRetirada = (aguardandoRetirada(caso) || (caso.naClinica && caso.retornoSolicitado)) && onConfirmarRetirada;
   return (
     <button onClick={onClick} className="w-full text-left rounded-2xl p-4 bg-white flex flex-col gap-0"
       style={{
@@ -2290,6 +2350,16 @@ function CasoCard({ caso, onClick, endereco }) {
           <span className="text-xs" style={{ color: caso.status === 'Pronto' ? VERDE : '#A8A29E', fontWeight: caso.status === 'Pronto' ? 700 : 400 }}>{caso.status}</span>
         </div>
       </div>
+      {/* Trabalho aguardando busca na clínica: botão confirma que já foi pego */}
+      {naRetirada && (
+        <span role="button" tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onConfirmarRetirada(caso.id); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onConfirmarRetirada(caso.id); } }}
+          className="flex items-center justify-center gap-1.5 mt-2.5 px-3 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+          style={{ background: '#2563EB', color: '#fff', boxShadow: '0 10px 22px -14px rgba(37,99,235,0.8)' }}>
+          <Inbox size={13} /> Foi pego ✓ — confirmar retirada
+        </span>
+      )}
       {!caso.naClinica && !caso.provaPendente && <BarraProgresso caso={caso} compacta />}
       {(caso.naClinica || caso.provaPendente) && endereco && (
         <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
@@ -2764,7 +2834,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   );
 }
 
-function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect }) {
+function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dentistas, filtroDentista, setFiltroDentista, filtroRapido, onLimparFiltroRapido, getEndereco, onSelect, onConfirmarRetirada }) {
   const filtros = ['Todos', ...STATUS_LIST];
   return (
     <div>
@@ -2809,7 +2879,7 @@ function ListaView({ casos, busca, setBusca, filtroStatus, setFiltroStatus, dent
         <div className="text-center py-10 text-stone-400 text-sm">Nenhum caso encontrado.</div>
       ) : (
         <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start">
-          {casos.map(c => <CasoCard key={c.id} caso={c} endereco={getEndereco ? getEndereco(c.dentista) : ''} onClick={() => onSelect(c.id)} />)}
+          {casos.map(c => <CasoCard key={c.id} caso={c} endereco={getEndereco ? getEndereco(c.dentista) : ''} onClick={() => onSelect(c.id)} onConfirmarRetirada={onConfirmarRetirada} />)}
         </div>
       )}
     </div>
@@ -3388,6 +3458,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
   const [erroDentista, setErroDentista] = useState('');
   const [erroTipo, setErroTipo] = useState('');
   const [erroFunc, setErroFunc] = useState('');
+  const [dentistaCombinado, setDentistaCombinado] = useState(null); // dentista com o editor de combinado de pagamento aberto
   const [expandido, setExpandido] = useState(null);
 
   const inputClass = "px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
@@ -3681,6 +3752,31 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                   <Send size={12} className="text-stone-300 flex-shrink-0" />
                   <input type="tel" className="flex-1 px-2 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white" value={d.telefone || ''} onChange={e => onUpdateDentista(d.nome, { telefone: e.target.value })} placeholder="Telefone / WhatsApp" />
                 </div>
+                {/* Combinado de pagamento: dia marcado do mês OU prazo em dias após a entrega */}
+                <button onClick={() => setDentistaCombinado(dentistaCombinado === d.nome ? null : d.nome)}
+                  className="flex items-center gap-1.5 mt-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg"
+                  style={(d.diasPagamento ?? null) !== null || d.dataPagamento
+                    ? { background: '#DCF3E4', color: '#166B3A' }
+                    : { background: '#F0EFEC', color: '#57534E' }}>
+                  <DollarSign size={12} />
+                  {d.dataPagamento
+                    ? `Pagamento: dia marcado ${formatDateBR(d.dataPagamento)}`
+                    : (d.diasPagamento ?? null) !== null
+                      ? `Pagamento: até ${d.diasPagamento} ${d.diasPagamento === 1 ? 'dia' : 'dias'} após a entrega`
+                      : 'Definir combinado de pagamento'}
+                  <span style={{ marginLeft: 'auto', opacity: 0.6 }}>{dentistaCombinado === d.nome ? '▲' : '▼'}</span>
+                </button>
+                {dentistaCombinado === d.nome && (
+                  <div className="mt-1.5">
+                    <PrazoPagamentoEdit
+                      atual={d.prazoPagamento}
+                      onSalvar={(texto) => onUpdateDentista(d.nome, { prazoPagamento: texto || null })}
+                      diasAtual={d.diasPagamento ?? null}
+                      onSalvarDias={(n) => onUpdateDentista(d.nome, { diasPagamento: n ?? null, dataPagamento: null })}
+                      dataAtual={d.dataPagamento || null}
+                      onSalvarData={(data) => onUpdateDentista(d.nome, { dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) })} />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -3731,6 +3827,15 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           })}
         </div>
       </div>
+
+      {/* Sair da conta Google deste aparelho (só existe na versão em nuvem) */}
+      {typeof window !== 'undefined' && window.sairDaConta && (
+        <button onClick={() => { if (confirm('Sair da conta neste aparelho? Você volta para a tela de entrada.')) window.sairDaConta(); }}
+          className="w-full mt-4 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 bg-white"
+          style={{ color: '#B42318', border: '1px solid #F5B5B5' }}>
+          <LogOut size={16} /> Sair da conta
+        </button>
+      )}
     </div>
   );
 }
@@ -4786,7 +4891,7 @@ function IdCopiavel({ id }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -4800,6 +4905,27 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
       <button onClick={onVoltar} className="flex items-center gap-1 text-sm text-stone-500 mb-4 font-medium">
         <ChevronLeft size={16} /> Voltar
       </button>
+
+      {/* Faixa azul: trabalho postado pela clínica esperando o laboratório ir buscar */}
+      {aguardandoRetirada(caso) && (
+        <div className="mb-4 px-4 py-3 rounded-2xl" style={{ background: '#E8F0FE' }}>
+          <div className="flex items-center gap-2">
+            <Inbox size={17} style={{ color: '#2563EB' }} />
+            <span className="text-sm font-bold flex-1" style={{ color: '#1D4ED8' }}>Aguardando retirada na clínica</span>
+            <button onClick={onConfirmarRetirada} className="px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1" style={{ background: '#2563EB' }}>
+              <Check size={13} /> Foi pego
+            </button>
+          </div>
+          {endereco && (
+            <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold bg-white" style={{ color: '#1A73E8' }}>
+              <MapPin size={13} className="flex-shrink-0" />
+              <span className="flex-1 min-w-0 truncate">{endereco}</span>
+              <span className="flex-shrink-0 font-bold">Abrir no Maps →</span>
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Faixa vermelha: trabalho travado esperando o dentista aprovar arquivo(s) */}
       {aguardandoDentista(caso) && (
@@ -4844,6 +4970,11 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
               <Undo2 size={13} /> Retornou
             </button>
           </div>
+          {caso.retornoSolicitado && (
+            <div className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-bold" style={{ background: '#2563EB', color: '#fff' }}>
+              📣 O dentista avisou: está pronto para o laboratório buscar!
+            </div>
+          )}
           {endereco && (
             <a href={mapsUrl(endereco)} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 mt-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold bg-white" style={{ color: '#1A73E8' }}>
@@ -5223,44 +5354,101 @@ function EntregasView({ casos, provasLevar, provasNaClinica, getEndereco, getTel
 // ─── Finanças (só gestor): entradas, valores e comissões ───
 // Combinado de pagamento do dentista (aparece para ele no Special Clinic)
 function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtual, onSalvarData }) {
-  const [texto, setTexto] = useState(atual || '');
+  // Escolha fica local e SÓ grava quando toca em Salvar (nada muda sem querer)
+  const [modo, setModo] = useState(dataAtual ? 'data' : (diasAtual ?? null) !== null ? 'dias' : null);
+  const [dias, setDias] = useState((diasAtual ?? null) !== null ? String(diasAtual) : '');
+  const [data, setData] = useState(dataAtual || '');
   const [salvo, setSalvo] = useState(false);
+
+  const podeSalvar = modo === 'dias' ? parseInt(dias, 10) >= 0 : (modo === 'data' ? !!data : true);
+  const salvar = () => {
+    if (modo === 'dias') {
+      const n = parseInt(dias, 10);
+      onSalvarDias(n);
+      onSalvar(`pagar até ${n} ${n === 1 ? 'dia' : 'dias'} após a entrega`);
+    } else if (modo === 'data') {
+      onSalvarData(data);
+      onSalvar(`pagamento até ${data.split('-').reverse().join('/')}`);
+    } else {
+      onSalvarDias(null);
+      onSalvarData(null);
+      onSalvar('');
+    }
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2200);
+  };
+  const estiloCard = (ativo) => ({
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+    padding: '12px 13px', borderRadius: 14, cursor: 'pointer', marginBottom: 8,
+    background: ativo ? '#fff' : '#FBFAF8',
+    border: ativo ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4',
+    boxShadow: ativo ? '0 8px 20px -14px rgba(184,147,90,0.6)' : 'none',
+  });
+  const bolinha = (ativo) => (
+    <span style={{ width: 18, height: 18, borderRadius: 9, flexShrink: 0, border: ativo ? `5.5px solid ${GOLD}` : '2px solid #D6D3D1', background: '#fff', boxSizing: 'border-box' }} />
+  );
   return (
     <div className="rounded-xl p-3 mb-2" style={{ background: '#F5F4F0' }}>
-      <div className="text-xs font-bold mb-2" style={{ color: INK }}>Combinado de pagamento <span className="font-normal text-stone-400">(o dentista vê no Special Clinic)</span>:</div>
-      <div className="flex gap-2">
-        <input className="flex-1 px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" value={texto}
-          onChange={e => { setTexto(e.target.value); setSalvo(false); }} placeholder='Ex.: "todo dia 10" ou "15 dias após entrega"' />
-        <button onClick={() => { onSalvar(texto.trim()); setSalvo(true); }} className="px-4 rounded-xl text-xs font-bold text-white" style={{ background: salvo ? VERDE : INK }}>
-          {salvo ? '✓' : 'Salvar'}
-        </button>
-      </div>
-      {/* Vencimento automático — DUAS formas de combinar (uma exclui a outra):
-          • PRAZO: N dias após cada entrega  • DATA: um dia marcado pro pagamento
-          Nos dois casos, passou sem baixa → fica VERMELHO no app do dentista
-          e o robô da nuvem manda notificação de atraso todo dia de manhã. */}
-      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Vencimento: prazo em dias após a entrega <span className="font-normal text-stone-400">(fica vermelho no app dele se passar)</span>:</div>
-      <div className="flex gap-1.5 flex-wrap">
-        {[[null, 'Sem prazo'], [2, '2 dias'], [5, '5 dias'], [7, '7 dias'], [15, '15 dias'], [30, '30 dias']].map(([n, rot]) => (
-          <button key={rot} onClick={() => onSalvarDias(n)}
-            className="px-3 py-2 rounded-xl text-xs font-bold"
-            style={!dataAtual && (diasAtual ?? null) === n
-              ? { background: INK, color: GOLD, border: `1px solid ${INK}` }
-              : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
-            {rot}
-          </button>
-        ))}
-      </div>
-      <div className="text-xs font-bold mt-3 mb-1.5" style={{ color: INK }}>Ou uma data marcada para o pagamento:</div>
-      <div className="flex items-center gap-2">
-        <input type="date" value={dataAtual || ''} onChange={e => onSalvarData(e.target.value || null)}
-          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
-          style={dataAtual ? { background: INK, color: GOLD, border: `1px solid ${INK}`, colorScheme: 'dark' } : { background: '#fff', color: '#57534E', border: '1px solid #E7E5E4' }} />
-        {dataAtual && (
-          <button onClick={() => onSalvarData(null)} className="px-3 py-2.5 rounded-xl text-xs font-bold" style={{ background: '#fff', color: '#B42318', border: '1px solid #F5B5B5' }}>Limpar</button>
-        )}
-      </div>
-      {dataAtual && <div className="text-xs mt-1.5" style={{ color: '#7A6234' }}>Combinado: pagamento até <b>{dataAtual.split('-').reverse().join('/')}</b> — passou sem baixa, fica vermelho e o dentista é notificado.</div>}
+      <div className="text-xs font-bold mb-2.5" style={{ color: INK }}>Combinado de pagamento <span className="font-normal text-stone-400">(marque UMA opção e salve — o dentista vê no Special Clinic)</span></div>
+
+      {/* Opção 1: X dias após a entrega */}
+      <button onClick={() => { setModo('dias'); setSalvo(false); }} style={estiloCard(modo === 'dias')}>
+        {bolinha(modo === 'dias')}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="block text-sm font-bold" style={{ color: INK }}>Pagar em dias após a entrega</span>
+          <span className="block text-xs text-stone-400 mt-0.5">Cada trabalho entregue vence tantos dias depois</span>
+        </span>
+      </button>
+      {modo === 'dias' && (
+        <div className="flex items-center gap-2 mb-2 pl-1">
+          <input type="text" inputMode="numeric" value={dias}
+            onChange={e => { setDias(e.target.value.replace(/[^\d]/g, '')); setSalvo(false); }}
+            className="px-3 py-2.5 rounded-xl border text-sm outline-none bg-white text-center font-bold" style={{ width: 74, borderColor: GOLD }} placeholder="?" />
+          <span className="text-xs font-bold" style={{ color: INK }}>dias após a entrega</span>
+          <span className="flex gap-1 ml-auto">
+            {[2, 5, 7, 15, 30].map(n => (
+              <button key={n} onClick={() => { setDias(String(n)); setSalvo(false); }}
+                className="px-2 py-1.5 rounded-lg text-xs font-bold"
+                style={dias === String(n) ? { background: INK, color: GOLD } : { background: '#fff', color: '#78716C', border: '1px solid #E7E5E4' }}>
+                {n}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+
+      {/* Opção 2: data escolhida */}
+      <button onClick={() => { setModo('data'); setSalvo(false); }} style={estiloCard(modo === 'data')}>
+        {bolinha(modo === 'data')}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span className="block text-sm font-bold" style={{ color: INK }}>Pagar numa data escolhida</span>
+          <span className="block text-xs text-stone-400 mt-0.5">Tudo que foi entregue até essa data é pago nesse dia</span>
+        </span>
+      </button>
+      {modo === 'data' && (
+        <div className="mb-2 pl-1">
+          <input type="date" value={data} onChange={e => { setData(e.target.value); setSalvo(false); }}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none bg-white" style={{ border: `1.5px solid ${GOLD}`, color: INK, fontWeight: 700 }} />
+        </div>
+      )}
+
+      {/* Opção 3: sem combinado */}
+      <button onClick={() => { setModo(null); setSalvo(false); }} style={estiloCard(modo === null)}>
+        {bolinha(modo === null)}
+        <span className="text-sm font-bold" style={{ color: '#78716C' }}>Sem combinado (não cobra automático)</span>
+      </button>
+
+      <button onClick={salvar} disabled={!podeSalvar}
+        className="w-full py-3 rounded-xl text-sm font-extrabold text-white mt-1 disabled:opacity-40"
+        style={{ background: salvo ? VERDE : INK }}>
+        {salvo ? '✓ Salvo — o dentista já vê no Special Clinic' : 'Salvar combinado'}
+      </button>
+      {modo === 'dias' && parseInt(dias, 10) >= 0 && !salvo && (
+        <div className="text-xs mt-2 text-center" style={{ color: '#7A6234' }}>Entregou e passou de <b>{dias} {parseInt(dias, 10) === 1 ? 'dia' : 'dias'}</b> sem pagamento → fica vermelho e o robô cobra às 9h.</div>
+      )}
+      {modo === 'data' && data && !salvo && (
+        <div className="text-xs mt-2 text-center" style={{ color: '#7A6234' }}>Entregas até <b>{data.split('-').reverse().join('/')}</b> devem ser pagas nesse dia → passou, fica vermelho e o robô cobra às 9h.</div>
+      )}
     </div>
   );
 }

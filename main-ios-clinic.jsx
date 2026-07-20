@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { GoogleAuthProvider, OAuthProvider, signInWithCredential } from 'firebase/auth';
 
 // ─── Ponte nativa (iPhone): login Google, compartilhar e baixar arquivos ───
 if (Capacitor.isNativePlatform()) {
@@ -12,6 +12,16 @@ if (Capacitor.isNativePlatform()) {
     const idToken = resultado.credential && resultado.credential.idToken;
     if (!idToken) throw new Error('Login cancelado');
     await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+  };
+
+  // Login Apple nativo (Face ID) + repasse ao Firebase web
+  window.__entrarNativoApple = async (auth) => {
+    // skipNativeAuth: o token da Apple só vale uma vez — quem entra no Firebase é a camada web
+    const resultado = await FirebaseAuthentication.signInWithApple({ scopes: ['email', 'name'], skipNativeAuth: true });
+    const cred = (resultado && resultado.credential) || {};
+    if (!cred.idToken) throw new Error('Login cancelado');
+    const oauth = new OAuthProvider('apple.com').credential({ idToken: cred.idToken, rawNonce: cred.nonce });
+    await signInWithCredential(auth, oauth);
   };
 
   const bytesParaBase64 = (bytes) => {

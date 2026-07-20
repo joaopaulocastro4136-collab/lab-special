@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth, initializeAuth, indexedDBLocalPersistence,
-  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
 } from 'firebase/auth';
 import {
@@ -79,7 +79,9 @@ function logarAbertura(email) {
       acao: 'abriu-app',
       app: 'lab',
       versao: typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev',
-      plataforma: typeof location !== 'undefined' && location.protocol === 'capacitor:' ? 'ios-app' : 'web',
+      plataforma: (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+        ? window.Capacitor.getPlatform() + '-app'  // 'ios-app' / 'android-app' (checar por protocol marcava Android como web)
+        : 'web',
       email: email || '',
     });
   } catch (e) { /* telemetria nunca derruba o app */ }
@@ -115,7 +117,9 @@ const firebaseConfig = {
 };
 
 const EMAIL_DONO = 'joaopaulocastro41@gmail.com';
-const LAB = 'principal';
+// Cada conta trabalha no SEU laboratório: resolvido no login (mapa usuarios/<email>).
+// 'principal' é o laboratório original; contas novas ganham um laboratório próprio.
+let LAB = (typeof localStorage !== 'undefined' && localStorage.getItem('specialLabId')) || 'principal';
 const TAM_CHUNK = 900000; // Firestore limita documentos a ~1MB
 
 const fbApp = initializeApp(firebaseConfig);
@@ -126,6 +130,9 @@ const auth = ehIosNativo
   ? initializeAuth(fbApp, { persistence: indexedDBLocalPersistence })
   : getAuth(fbApp);
 const db = initializeFirestore(fbApp, { localCache: persistentLocalCache() });
+
+// Botão "Sair da conta" dentro do app (Ajustes) usa esta ponte
+if (typeof window !== 'undefined') window.sairDaConta = () => signOut(auth);
 
 const colCasos = () => collection(db, 'labs', LAB, 'casos');
 const docCaso = (id) => doc(db, 'labs', LAB, 'casos', id);
@@ -158,7 +165,18 @@ async function lerCasos() {
   return ordenarCasos([...porId.values()]);
 }
 
-async function gravarCasos(lista) {
+// Fila única: uma gravação de casos por vez, na ordem em que foram pedidas.
+// Duas gravações quase juntas (ex.: concluir etapa dispara várias) não se atropelam.
+let filaCasos = Promise.resolve();
+let gravandoCasos = 0;
+function gravarCasos(lista) {
+  const tarefa = filaCasos.then(() => gravarCasosAgora(lista));
+  filaCasos = tarefa.catch(() => { });
+  gravandoCasos++;
+  return tarefa.finally(() => { gravandoCasos--; });
+}
+
+async function gravarCasosAgora(lista) {
   const idsNovos = new Set();
   const ops = [];
   for (const c of lista) {
@@ -235,7 +253,20 @@ async function apagarKV(key) {
 async function sincronizarAcesso(configJson) {
   try {
     const cfg = JSON.parse(configJson);
-    const emails = [EMAIL_DONO];
+    // O dono nunca sai da lista: no principal é o e-mail original; nos demais
+    // laboratórios é o primeiro e-mail da lista de acesso (quem criou o lab)
+    let emails;
+    if (LAB === 'principal') {
+      emails = [EMAIL_DONO];
+    } else {
+      let dono = ((auth.currentUser && auth.currentUser.email) || '').toLowerCase();
+      try {
+        const atual = await getDoc(docKV('acesso'));
+        const lista = (atual.exists() && atual.data().emails) || [];
+        if (lista.length) dono = lista[0];
+      } catch (e) { }
+      emails = dono ? [dono] : [];
+    }
     for (const f of cfg.funcionarios || []) {
       if (f.email && !emails.includes(f.email)) emails.push(f.email);
     }
@@ -256,6 +287,14 @@ async function sincronizarAcesso(configJson) {
     atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
       batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null, dataPagamento: d.dataPagamento || null });
+    }
+    // Índice global dentista → laboratório (o Special Clinic usa p/ achar o lab certo).
+    // Fora do lote: se o dentista já pertence a outro laboratório, só essa escrita falha.
+    atuais.forEach(docAtual => {
+      if (!porEmail.has(docAtual.id)) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
+    });
+    for (const [email, d] of porEmail) {
+      setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome }).catch(() => { });
     }
     // Informações que a clínica usa: tipos completos (para criar o caso direto) e dias de trabalho (cálculo do prazo)
     batch.set(doc(db, 'labs', LAB, 'publicoClinica', 'info'), {
@@ -281,7 +320,8 @@ async function registrarPush(dados) {
     if (!Capacitor.isNativePlatform()) return;
     const { PushNotifications } = await import('@capacitor/push-notifications');
     let perm = await PushNotifications.checkPermissions();
-    if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
+    // Android 13+ devolve 'prompt-with-rationale' depois de um pedido dispensado — pede de novo
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await PushNotifications.requestPermissions();
     if (perm.receive !== 'granted') return;
     await PushNotifications.addListener('registration', async (t) => {
       try {
@@ -479,6 +519,57 @@ function TelaBase({ children }) {
   );
 }
 
+// ─── Tela de entrada premium: preto com brilho dourado, marca centrada e botões Apple + Google ───
+function TelaLogin({ children }) {
+  const FONTE_L = "'Manrope', -apple-system, sans-serif";
+  return (
+    <div style={{ minHeight: '100vh', background: 'radial-gradient(130% 55% at 50% -8%, #3B2E1B 0%, #1C1B19 52%, #121110 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 28px calc(40px + env(safe-area-inset-bottom))', fontFamily: FONTE_L, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -160, left: '50%', transform: 'translateX(-50%)', width: 460, height: 460, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,196,138,0.28), transparent 62%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', right: -36, bottom: -50, opacity: 0.05, pointerEvents: 'none' }}><EstrelaMarca size={170} color={GOLD} /></div>
+      <div style={{ width: '100%', maxWidth: 340, textAlign: 'center', position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 11 }}>
+          <EstrelaMarca size={18} color="#fff" />
+          <span style={{ color: '#fff', fontWeight: 300, fontSize: 21, letterSpacing: '0.3em', paddingLeft: '0.1em' }}>SPECIAL</span>
+          <span style={{ color: GOLD, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.3em', border: `1px solid ${GOLD}66`, borderRadius: 999, padding: '3px 9px' }}>LAB</span>
+        </div>
+        <div style={{ width: 74, height: 74, borderRadius: 37, margin: '44px auto 0', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(232,196,138,0.55)', background: 'rgba(184,147,90,0.10)', boxShadow: '0 0 40px rgba(184,147,90,0.35)' }}>
+          <EstrelaMarca size={26} color="#fff" />
+        </div>
+        <div style={{ color: '#fff', fontSize: 27, fontWeight: 800, marginTop: 22, letterSpacing: '-0.01em' }}>Bem-vindo ao Lab</div>
+        <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, lineHeight: 1.55, marginTop: 10, marginBottom: 34 }}>
+          A bancada digital do Laboratório Special: produção, entregas e financeiro num só lugar.
+        </div>
+        {children}
+        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 26, lineHeight: 1.5 }}>
+          Entre com a conta autorizada pelo gestor do laboratório.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BotaoApple({ onClick, carregando }) {
+  const FONTE_L = "'Manrope', -apple-system, sans-serif";
+  return (
+    <button onClick={onClick} disabled={carregando}
+      style={{ width: '100%', background: '#fff', color: '#000', border: 'none', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE_L, boxShadow: '0 14px 30px -18px rgba(255,255,255,0.45)' }}>
+      <svg width="17" height="20" viewBox="0 0 384 512" fill="#000"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+      {carregando ? 'Entrando...' : 'Continuar com Apple'}
+    </button>
+  );
+}
+
+function BotaoGoogleEscuro({ onClick, carregando }) {
+  const FONTE_L = "'Manrope', -apple-system, sans-serif";
+  return (
+    <button onClick={onClick} disabled={carregando}
+      style={{ width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE_L, marginTop: 11 }}>
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+      {carregando ? 'Entrando...' : 'Continuar com Google'}
+    </button>
+  );
+}
+
 function BotaoGoogle({ onClick, carregando }) {
   return (
     <button onClick={onClick} disabled={carregando}
@@ -491,6 +582,41 @@ function BotaoGoogle({ onClick, carregando }) {
 
 function ehMobile() {
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
+// Descobre (ou cria) o laboratório desta conta.
+// Ordem: mapa salvo → equipe do laboratório principal → conta de dentista? → laboratório novo.
+async function resolverLaboratorio(usuario, forcarNovo) {
+  const email = (usuario.email || '').toLowerCase();
+  if (!email) throw new Error('conta sem e-mail');
+
+  const refMapa = doc(db, 'usuarios', email);
+  const mapa = await getDoc(refMapa); // se falhar (offline), quem chama abre do cache
+  if (mapa.exists() && mapa.data().lab) return { lab: mapa.data().lab };
+
+  // Equipe antiga do laboratório principal entra como sempre — e ganha o mapa
+  try {
+    await getDoc(doc(db, 'labs', 'principal', 'kv', 'acesso'));
+    setDoc(refMapa, { lab: 'principal', em: new Date().toISOString() }).catch(() => { });
+    return { lab: 'principal' };
+  } catch (e) {
+    if (e.code !== 'permission-denied') throw e; // offline/erro transitório — não decide nada agora
+  }
+
+  // E-mail cadastrado como dentista de alguma clínica? Sugere o Special Clinic
+  if (!forcarNovo) {
+    try {
+      const idx = await getDoc(doc(db, 'dentistasIndex', email));
+      if (idx.exists()) return { dentista: true };
+    } catch (e) { /* sem índice — segue o fluxo normal */ }
+  }
+
+  // Conta nova: nasce um laboratório vazio, e esta conta é a dona
+  const novoLab = 'lab-' + String(usuario.uid || novoIdN()).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);
+  await setDoc(doc(db, 'labs', novoLab, 'kv', 'acesso'), { emails: [email] });
+  await setDoc(doc(db, 'labsIndex', novoLab), { dono: email, criadoEm: new Date().toISOString() }).catch(() => { });
+  await setDoc(refMapa, { lab: novoLab, papel: 'dono', em: new Date().toISOString() });
+  return { lab: novoLab, novo: true };
 }
 
 function CloudRoot({ entrarNativo }) {
@@ -525,21 +651,40 @@ function CloudRoot({ entrarNativo }) {
     return onAuthStateChanged(auth, u => setUsuario(u));
   }, []);
 
-  // Verifica se o e-mail logado tem permissão (as regras do banco barram quem não tem)
+  // Trocou de conta (saiu p/ entrar com outra)? Zera o contador e volta pra "verificando" —
+  // senão a tela "Acesso não liberado" da conta antiga continua bombando o contador a cada 7s
+  // e a conta nova (autorizada) ainda veria a mensagem de bloqueio da antiga
+  useEffect(() => {
+    if (!usuario) { setTentativa(0); setAcesso('verificando'); }
+  }, [usuario]);
+
+  // Descobre o laboratório da conta (criando um novo se for a primeira vez)
+  // e confirma a permissão (as regras do banco barram quem não tem)
   useEffect(() => {
     if (!usuario) return;
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
-    getDoc(docKV('acesso'))
-      .then(() => { if (ativo) { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } })
-      .catch(e => {
+    const abrir = () => { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); };
+    (async () => {
+      try {
+        const r = await resolverLaboratorio(usuario, forcarLabNovo.current);
+        if (!ativo) return;
+        if (r.dentista) { setAcesso('dentista'); return; }
+        if (LAB !== r.lab) { espelhoCasos = new Map(); espelhoSolic.clear(); } // laboratório mudou — nada de resto da conta anterior
+        LAB = r.lab;
+        try { localStorage.setItem('specialLabId', r.lab); } catch (e) { }
+        await getDoc(docKV('acesso'));
+        if (ativo) abrir();
+      } catch (e) {
         if (!ativo) return;
         setDiagnostico(`[${e.code || 'sem-codigo'}] conta: ${usuario.email || 'sem e-mail'} | ${String(e.message || e).slice(0, 120)}`);
         if (e.code === 'permission-denied') setAcesso('negado');
-        else { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); } // offline/erro transitório — deixa o app abrir do cache
-      });
+        else abrir(); // offline/erro transitório — deixa o app abrir do cache (com o último laboratório salvo)
+      }
+    })();
     return () => { ativo = false; };
   }, [usuario, tentativa]);
+  const forcarLabNovo = useRef(false);
 
   // Sincronização em tempo real: mudanças de outros aparelhos recarregam o app
   useEffect(() => {
@@ -549,15 +694,18 @@ function CloudRoot({ entrarNativo }) {
       if (!prontoRef.current) return; // ignora o snapshot inicial
       refreshPendente.current = true;
       clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
+      timerRef.current = setTimeout(function tentar() {
         const el = document.activeElement;
         const editando = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
-        if (editando) { timerRef.current = setTimeout(() => agendarAgora(), 5000); return; }
+        // Continua adiando enquanto o usuário digita — remontar no meio perdia o formulário inteiro
+        if (editando) { timerRef.current = setTimeout(tentar, 5000); return; }
         agendarAgora();
       }, 1800);
     };
     const agendarAgora = () => {
       if (!refreshPendente.current) return;
+      // Nunca recarrega no meio de uma gravação nossa — espera terminar
+      if (gravandoCasos > 0) { timerRef.current = setTimeout(agendarAgora, 2500); return; }
       refreshPendente.current = false;
       setAppKey(k => k + 1);
     };
@@ -584,7 +732,7 @@ function CloudRoot({ entrarNativo }) {
         await entrarNativo(auth);
       } catch (e) {
         console.error(e);
-        if (String(e).indexOf('canceled') === -1 && String(e).indexOf('cancelled') === -1) {
+        if (String(e).indexOf('canceled') === -1 && String(e).indexOf('cancelled') === -1 && String(e).indexOf('cancelado') === -1) {
           alert('Não foi possível entrar. Verifique a internet e tente de novo.');
         }
       }
@@ -606,6 +754,32 @@ function CloudRoot({ entrarNativo }) {
     setEntrando(false);
   };
 
+  const entrarApple = async () => {
+    if (window.__appleEmAndamento) return; // toque duplo: o 2º pedido cancelaria o 1º (erro 1001)
+    window.__appleEmAndamento = true;
+    setEntrando(true);
+    try {
+      if (window.__entrarNativoApple) {
+        await window.__entrarNativoApple(auth); // tela nativa do iPhone (Face ID)
+      } else {
+        await signInWithPopup(auth, new OAuthProvider('apple.com'));
+      }
+    } catch (e) {
+      console.error('login apple', e);
+      const msg = String((e && e.code) || e);
+      // 1001 = a janelinha da Apple foi fechada sem concluir — cancelamento, não erro
+      if (msg.indexOf('canceled') === -1 && msg.indexOf('cancelled') === -1 && msg.indexOf('popup-closed') === -1 && msg.indexOf('1001') === -1) {
+        alert(msg.indexOf('operation-not-allowed') !== -1 || msg.indexOf('1000') !== -1
+          ? 'O login com Apple está sendo ativado — por enquanto, entre com o Google.'
+          : 'Não foi possível entrar com a Apple (' + msg + '). Tente de novo ou use o Google.');
+      }
+    }
+    window.__appleEmAndamento = false;
+    setEntrando(false);
+  };
+  // Apple aparece no iPhone (nativo) e na web; no Android não existe login Apple nativo
+  const temApple = (typeof window !== 'undefined' && !!window.__entrarNativoApple) || !entrarNativo;
+
   const abertura = <Abertura visivel={abrindo} />;
 
   if (usuario === undefined) {
@@ -616,23 +790,42 @@ function CloudRoot({ entrarNativo }) {
     const jaInstalado = entrarNativo || (typeof matchMedia !== 'undefined' && matchMedia('(display-mode: standalone)').matches) || (typeof navigator !== 'undefined' && navigator.standalone);
     return (
       <>{abertura}
-      <TelaBase>
-        <BotaoGoogle onClick={entrar} carregando={entrando} />
-        <div style={{ color: '#78716C', fontSize: '12px', marginTop: '16px', lineHeight: 1.5 }}>
-          Entre com a conta Google autorizada pelo gestor do laboratório.
-        </div>
+      <TelaLogin>
+        {temApple && <BotaoApple onClick={entrarApple} carregando={entrando} />}
+        <BotaoGoogleEscuro onClick={entrar} carregando={entrando} />
         {!jaInstalado && (
-          <a href="/instalar.html" style={{ display: 'block', marginTop: '18px', color: GOLD, fontSize: '13px', fontWeight: 700, textDecoration: 'none', border: `1.5px solid ${GOLD}`, borderRadius: '12px', padding: '11px' }}>
+          <a href="/instalar.html" style={{ display: 'block', marginTop: '18px', color: GOLD, fontSize: '13px', fontWeight: 700, textDecoration: 'none', border: `1.5px solid ${GOLD}66`, borderRadius: '12px', padding: '11px' }}>
             📲 Instalar o app no celular
           </a>
         )}
-      </TelaBase>
+      </TelaLogin>
       </>
     );
   }
 
   if (acesso === 'verificando') {
     return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: '14px' }}>Verificando acesso...</div></TelaBase></>;
+  }
+
+  if (acesso === 'dentista') {
+    return (
+      <TelaBase>
+        <div style={{ color: 'white', fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>Você é dentista? 🦷</div>
+        <div style={{ color: '#A8A29E', fontSize: '13px', lineHeight: 1.6, marginBottom: '20px' }}>
+          A conta <b style={{ color: GOLD }}>{usuario.email}</b> está cadastrada como dentista de um laboratório.
+          Para acompanhar seus trabalhos, use o app <b>Special Clinic</b>.
+        </div>
+        <div style={{ color: '#78716C', fontSize: '12px', lineHeight: 1.6, marginBottom: '18px' }}>
+          Este app (Special Lab) é para quem <b>gerencia um laboratório</b>. Se você também quer o seu, é só continuar:
+        </div>
+        <button onClick={() => { forcarLabNovo.current = true; setTentativa(t => t + 1); }} style={{ display: 'block', width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: '12px', padding: '12px 20px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', marginBottom: '10px' }}>
+          Criar meu laboratório
+        </button>
+        <button onClick={() => signOut(auth)} style={{ background: 'transparent', color: GOLD, border: `1.5px solid ${GOLD}`, borderRadius: '12px', padding: '10px 20px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+          Entrar com outra conta
+        </button>
+      </TelaBase>
+    );
   }
 
   if (acesso === 'negado') {

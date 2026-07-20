@@ -80,7 +80,7 @@ do {
 const todos = todosDocs.map(d => d.f);
 todos.sort((a, b) => String(valor(b.id)).localeCompare(String(valor(a.id))));
 for (const f of todos.slice(0, 6)) {
-  console.log(`  caso=${valor(f.id)} | paciente=${valor(f.paciente)} | dentista="${valor(f.dentista)}" | status=${valor(f.status)} | dataHora=${valor(f.dataHora)}`);
+  console.log(`  caso=${valor(f.id)} | paciente=${valor(f.paciente)} | dentista="${valor(f.dentista)}" | status=${valor(f.status)} | naClinica=${valor(f.naClinica)} | retornoSolicitado=${valor(f.retornoSolicitado)} | retiradoEm=${valor(f.retiradoEm)} | dataHora=${valor(f.dataHora)}`);
   const anexos = f.anexos?.arrayValue?.values || [];
   if (!anexos.length) console.log('    (sem anexos)');
   for (const a of anexos) {

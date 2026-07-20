@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { GoogleAuthProvider, OAuthProvider, signInWithCredential } from 'firebase/auth';
 import { montarCloud } from './cloud-app.jsx';
 
 // ─── Ponte Android: compartilhar e baixar arquivos pelo menu nativo ───
@@ -56,7 +56,9 @@ if (Capacitor.isNativePlatform()) {
 
 // ─── Auto-atualização: ao abrir, compara a versão instalada com a publicada no site ───
 async function verificarAtualizacao() {
-  if (!Capacitor.isNativePlatform()) return;
+  // Só no Android: o aviso baixa um APK — no iPhone/iPad a atualização é pela App Store
+  // (aparecer no iOS compara versionCode do APK com o build iOS e ainda viola as regras da Apple)
+  if (Capacitor.getPlatform() !== 'android') return;
   try {
     const { App: CapApp } = await import('@capacitor/app');
     const info = await CapApp.getInfo();
@@ -91,13 +93,25 @@ function mostrarAvisoAtualizacao(remoto) {
 
 setTimeout(verificarAtualizacao, 4000);
 
-// Login Google NATIVO (a tela de contas do próprio Android) + repasse ao Firebase web
+// Login Google NATIVO (a tela de contas do próprio aparelho) + repasse ao Firebase web
 async function entrarNativo(auth) {
   const resultado = await FirebaseAuthentication.signInWithGoogle();
   const idToken = resultado.credential && resultado.credential.idToken;
   if (!idToken) throw new Error('Login cancelado');
   const credencial = GoogleAuthProvider.credential(idToken);
   await signInWithCredential(auth, credencial);
+}
+
+// Login Apple NATIVO (Face ID) — só existe no iPhone; no Android o botão nem aparece
+if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+  window.__entrarNativoApple = async (auth) => {
+    // skipNativeAuth: o token da Apple só vale uma vez — quem entra no Firebase é a camada web
+    const resultado = await FirebaseAuthentication.signInWithApple({ scopes: ['email', 'name'], skipNativeAuth: true });
+    const cred = (resultado && resultado.credential) || {};
+    if (!cred.idToken) throw new Error('Login cancelado');
+    const oauth = new OAuthProvider('apple.com').credential({ idToken: cred.idToken, rawNonce: cred.nonce });
+    await signInWithCredential(auth, oauth);
+  };
 }
 
 montarCloud(Capacitor.isNativePlatform() ? entrarNativo : null);

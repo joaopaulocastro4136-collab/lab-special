@@ -1,0 +1,31 @@
+# Robô de envio para a App Store: prepara a versão de loja do Lab Special
+# (URL de suporte corrigida + build mais novo do TestFlight) e envia para a
+# análise da Apple. Rodar manualmente: aba Actions → "Enviar → App Store" → Run workflow.
+name: Enviar → App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão visível na loja (vazio = usa a do build mais novo)"
+        required: false
+        default: ""
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prepara a versão de loja e envia para a análise
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          VERSAO: ${{ github.event.inputs.versao }}
+        run: node enviar-loja.mjs
