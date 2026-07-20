@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
+import { imprimirDireto } from './impressora-niimbot.mjs';
 import VisorSTL from './visor-stl.jsx';
 import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut } from 'lucide-react';
 import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
@@ -110,7 +111,7 @@ function proximoDiaUtil(iso, diasTrabalho) {
 // ── Etiqueta térmica do trabalho (NIIMBOT B1, rótulo 50×30 mm) ──
 // Gera a imagem no formato do rótulo; o QR guarda "LS-<id do caso>" e é lido
 // pelo botão "Ler etiqueta" (abre a ficha do trabalho na hora).
-async function gerarEtiquetaPNG(caso) {
+async function gerarEtiquetaCanvas(caso) {
   const W = 800, H = 480; // 50×30 mm em dobro de definição — o app da NIIMBOT ajusta ao rótulo
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
@@ -139,11 +140,11 @@ async function gerarEtiquetaPNG(caso) {
   x.lineWidth = 5; x.strokeStyle = '#000';
   x.strokeRect(34, 376, x.measureText(cod).width + 44, 68);
   x.fillText(cod, 56, 424);
-  return c.toDataURL('image/png');
+  return c;
 }
 async function compartilharEtiqueta(caso) {
   try {
-    const dataURL = await gerarEtiquetaPNG(caso);
+    const dataURL = (await gerarEtiquetaCanvas(caso)).toDataURL('image/png');
     const blob = await (await fetch(dataURL)).blob();
     const nomeArq = 'etiqueta-' + String(caso.paciente || 'trabalho').trim().replace(/[^\w]+/g, '-').toLowerCase() + '.png';
     const arquivo = new File([blob], nomeArq, { type: 'image/png' });
@@ -153,6 +154,25 @@ async function compartilharEtiqueta(caso) {
     // cancelar o compartilhar não é erro
     if (String(e).toLowerCase().indexOf('abort') === -1) alert('Não consegui gerar a etiqueta: ' + ((e && e.message) || e));
   }
+}
+// Imprime a etiqueta: no app do celular tenta DIRETO pelo Bluetooth (NIIMBOT);
+// se não der (sem Bluetooth, cancelou a escolha, máquina desligada), cai no compartilhar.
+async function imprimirEtiqueta(caso) {
+  const nativo = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+  if (nativo) {
+    try {
+      await imprimirDireto(await gerarEtiquetaCanvas(caso));
+      return true;
+    } catch (e) {
+      console.error('impressão direta', e);
+      const msg = String((e && e.message) || e);
+      const cancelou = /cancel|requestDevice/i.test(msg);
+      if (!cancelou && !confirm('Não consegui imprimir direto pelo Bluetooth.\n(' + msg.slice(0, 90) + ')\n\nQuer compartilhar a etiqueta pra imprimir pelo app da NIIMBOT?')) return false;
+      if (cancelou) return false;
+    }
+  }
+  await compartilharEtiqueta(caso);
+  return false;
 }
 
 // Leitor do QR da etiqueta: câmera aberta em tela cheia até achar um código "LS-…"
@@ -2018,7 +2038,7 @@ export default function App() {
             tiposTrabalho={tiposTrabalho}
             onSalvarItens={(novosItens) => salvarItensCaso(selectedCaso.id, novosItens)}
             onImprimir={() => setImprimindoCasoId(selectedCaso.id)}
-            onEtiqueta={() => compartilharEtiqueta(selectedCaso)}
+            onEtiqueta={async () => { if (await imprimirEtiqueta(selectedCaso)) mostrarAviso('Etiqueta impressa ✓'); }}
             confirmandoExclusao={confirmandoExclusao}
             setConfirmandoExclusao={setConfirmandoExclusao}
             onExcluir={() => deleteCaso(selectedCaso.id)}
