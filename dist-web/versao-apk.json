@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "4.0",
+  "versionCode": 24,
+  "versionName": "8.2",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Icone novo do Lab, faixa de aguardando aprovacao do dentista e notificacoes no celular."
+  "novidades": "Dias por etapa e prazo pela soma das etapas, tempo no lab x na clinica na ficha. Toque em Baixar para atualizar."
 }
