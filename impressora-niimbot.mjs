@@ -38,19 +38,39 @@ function aoReceber(valor) {
 // Acha o serviço da NIIMBOT e as características de escrita e de resposta.
 // Na B1 podem ser a MESMA característica (notify + write) ou DUAS separadas,
 // e a escrita pode ser "sem resposta" ou "com resposta" — trata todos os casos.
+// Ignora os serviços padrão do Bluetooth (bateria, informações do aparelho etc.).
+const SERVICOS_PADRAO = ['1800', '1801', '180a', '180f', '1804']; // genéricos, não são de impressão
 async function acharCanal(deviceId) {
   const servicos = await BleClient.getServices(deviceId);
+  const mapa = []; // pra diagnóstico se nada servir
+  let melhor = null;
   for (const s of servicos) {
-    if ((s.uuid || '').length < 5) continue;
-    let escrita = null, semResposta = false, resposta = null;
+    const suuid = (s.uuid || '').toLowerCase();
+    if (suuid.length < 5) continue;
+    const curto = suuid.length >= 8 ? suuid.slice(4, 8) : suuid;
     for (const c of (s.characteristics || [])) {
       const p = c.properties || {};
-      if (!escrita && (p.writeWithoutResponse || p.write)) { escrita = c.uuid; semResposta = !!p.writeWithoutResponse; }
-      if (!resposta && (p.notify || p.indicate)) resposta = c.uuid;
+      const podeEscrever = !!(p.writeWithoutResponse || p.write);
+      const podeAvisar = !!(p.notify || p.indicate);
+      mapa.push(`${curto}/${(c.uuid || '').slice(4, 8)}[${[p.write && 'w', p.writeWithoutResponse && 'W', p.notify && 'n', p.indicate && 'i'].filter(Boolean).join('')}]`);
+      if (!podeEscrever) continue;
+      const generico = SERVICOS_PADRAO.includes(curto);
+      const cand = {
+        servico: s.uuid, canal: c.uuid, semResposta: !!p.writeWithoutResponse,
+        canalResposta: c.uuid, temNotify: podeAvisar,
+        // nota: quanto maior, melhor — canal com escrita+aviso no serviço não-genérico é o ideal
+        nota: (generico ? 0 : 10) + (podeAvisar ? 2 : 0) + (p.writeWithoutResponse ? 1 : 0),
+      };
+      // se a escrita não tem aviso, procura um notify separado no MESMO serviço
+      if (!podeAvisar) {
+        const notif = (s.characteristics || []).find(o => { const q = o.properties || {}; return q.notify || q.indicate; });
+        if (notif) { cand.canalResposta = notif.uuid; cand.temNotify = true; cand.nota += 2; }
+      }
+      if (!melhor || cand.nota > melhor.nota) melhor = cand;
     }
-    if (escrita) return { servico: s.uuid, canal: escrita, semResposta, canalResposta: resposta || escrita, temNotify: !!resposta };
   }
-  throw new Error('conectou, mas não achei o canal de impressão da máquina');
+  if (melhor) return melhor;
+  throw new Error('conectou, mas não achei o canal de impressão. Mapa: ' + (mapa.join(' ') || 'nenhum serviço visível').slice(0, 220));
 }
 
 // Acha a NIIMBOT sozinha: escaneia por alguns segundos e pega a 1ª cujo nome
