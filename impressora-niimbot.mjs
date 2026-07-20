@@ -208,15 +208,33 @@ async function _imprimir(canvasEtiqueta) {
   await dorme(20);
 
   // ── Linhas da imagem (com a contagem de pixels pretos por terço) ──
+  // Uma pausinha em CADA linha: sem isso, no iPhone o Bluetooth manda rápido
+  // demais e a máquina perde linhas (imprime um pedacinho e para).
   for (let y = 0; y < linhas.length; y++) {
     const p = contarPartes(linhas[y]);
     await enviar(CMD.LINHA, new Uint8Array([y >> 8, y & 0xff, p[0], p[1], p[2], 1, ...linhas[y]]));
-    if (y % 20 === 19) await dorme(35); // respiro pra fila do Bluetooth não engasgar
+    await dorme(8);
   }
 
-  // ── Fim ──
+  // ── Fim da página ──
   await enviar(CMD.FIM_PAGINA, []);              // pageEnd: SEM dados na B1
-  await dorme(500);
+
+  // ESPERA a máquina realmente terminar de imprimir antes de encerrar —
+  // encerrar cedo demais corta a impressão no meio (o "barulhinho e parou").
+  // Pergunta o status (0xA3) até a impressão concluir, ou espera ~6s.
+  const t0 = Date.now();
+  let terminou = false;
+  while (Date.now() - t0 < 6000) {
+    recebidos = [];
+    await enviar(CMD.STATUS, [1]);
+    await dorme(300);
+    // resposta de status: [páginas(2)][progresso...]. Progresso 100 = pronto.
+    const st = recebidos.find(p => p.cmd === CMD.STATUS + 1 || p.cmd === 0xb3);
+    if (st && st.dados && st.dados.length >= 3 && st.dados[2] >= 100) { terminou = true; break; }
+    if (!aparelho.temAviso) { await dorme(1500); break; } // sem canal de aviso: só espera
+  }
+  if (terminou) await dorme(300);
+
   await enviar(CMD.FIM, []);                     // printEnd: SEM dados na B1
   await dorme(300);
   return true;
