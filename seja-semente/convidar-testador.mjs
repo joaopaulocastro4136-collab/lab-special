@@ -5,7 +5,7 @@ import crypto from 'crypto';
 const KEY_ID = process.env.ASC_KEY_ID.trim();
 const ISSUER = process.env.ASC_ISSUER_ID.trim();
 const P8 = process.env.ASC_KEY_P8;
-const EMAIL = (process.env.CONVIDAR_EMAIL || 'sejasemente@gmail.com').trim();
+const EMAIL = (process.env.CONVIDAR_EMAIL || 'joaopaulocastro41@gmail.com').trim();
 
 function jwt() {
   const agora = Math.floor(Date.now() / 1000);
