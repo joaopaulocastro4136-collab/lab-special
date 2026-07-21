@@ -1649,7 +1649,10 @@ export default function App() {
     const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, pulada: !e.pulada, inicioExec: null } : e);
     const base = caso.dataProducao || caso.dataEntrada || todayISO();
     const totalDias = novasEtapas.filter(e => !e.pulada).reduce((s, e) => s + (Number(e.dias) || 0), 0);
-    const prazo = proximoDiaUtil(addDias(base, totalDias), diasTrabalho);
+    let prazo = proximoDiaUtil(addDias(base, totalDias), diasTrabalho);
+    // Pular etapa ENCURTA o trabalho — nunca pode jogar o prazo pro passado (ficaria
+    // "atrasado" sem estar). Se o cálculo cair antes de hoje, mantém no mínimo hoje.
+    if (prazo < todayISO()) prazo = proximoDiaUtil(todayISO(), diasTrabalho);
     updateCaso(casoId, { etapas: novasEtapas, prazo });
   };
 

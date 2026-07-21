@@ -27,6 +27,24 @@
           ]
         },
         {
+          "source": "**/*.apk",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "**/versao-apk.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
           "source": "**/*.@(png|webmanifest)",
           "headers": [
             {
