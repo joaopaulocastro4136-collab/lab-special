@@ -195,6 +195,9 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       <label className="campo"><span>Idade</span><input value={editando.idade} onChange={e => setEditando({ ...editando, idade: e.target.value })} inputMode="numeric" /></label>
       <label className="campo"><span>Telefone</span><input value={editando.telefone} onChange={e => setEditando({ ...editando, telefone: e.target.value })} inputMode="tel" /></label>
       <label className="campo"><span>Observações</span><textarea rows={3} value={editando.observacoes} onChange={e => setEditando({ ...editando, observacoes: e.target.value })} /></label>
+      <label className={editando.prioridade ? 'caixa marcada' : 'caixa'} onClick={() => setEditando({ ...editando, prioridade: !editando.prioridade })} style={{ alignSelf: 'flex-start' }}>
+        ⚑ Prioridade — fura a fila do agendamento
+      </label>
       {erro && <div className="erro">{erro}</div>}
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={() => setEditando(null)}>Cancelar</button>
@@ -218,7 +221,10 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
           <div>
             <div className="cartao-topo">
               <strong style={{ fontSize: 18 }}>{paciente.nome}</strong>
-              {paciente.codigo && <span className="chip concluído">{paciente.codigo}</span>}
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {paciente.prioridade && <span className="chip prioridade">prioridade</span>}
+                {paciente.codigo && <span className="chip concluído">{paciente.codigo}</span>}
+              </span>
             </div>
             <p className="obs">{[paciente.idade ? `${paciente.idade} anos` : '', paciente.telefone].filter(Boolean).join(' · ')}</p>
             {areas.length > 0 && <p>{areas.join(' · ')}{t?.profissionalNome ? ` · com ${t.profissionalNome}` : ''}</p>}
@@ -232,7 +238,7 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       </div>
 
       <div className="linha-acoes">
-        {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', observacoes: paciente.observacoes || '' })}><Pencil size={16} /> Editar</button>}
+        {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', observacoes: paciente.observacoes || '', prioridade: !!paciente.prioridade })}><Pencil size={16} /> Editar</button>}
         {podeEditar && aoEditarTriagem && <button className="btn-acao" onClick={aoEditarTriagem}><Pencil size={16} /> Triagem</button>}
         <button className="btn-acao" onClick={compartilharA4}><Printer size={16} /> Ficha A4</button>
         {podeEditar && <button className="btn-acao vermelho" onClick={apagar}><Trash2 size={16} /> Apagar</button>}

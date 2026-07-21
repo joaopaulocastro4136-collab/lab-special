@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -63,11 +63,13 @@ const DURACAO_PADRAO = 30; // minutos
 const OPCOES_DURACAO = [15, 20, 30, 40, 45, 60, 90, 120];
 
 // Um paciente pode precisar de vários procedimentos ao mesmo tempo
+// (aceita também os formatos antigos: `area` e `procedimento`)
 function areasDoPaciente(p) {
   const t = p?.triagem;
   if (!t) return [];
   if (Array.isArray(t.areas)) return t.areas;
-  return t.area ? [t.area] : [];
+  if (t.area) return [t.area];
+  return t.procedimento ? [t.procedimento] : [];
 }
 
 function horaFim(hora, dur) {
@@ -90,7 +92,7 @@ const DEMO = {
   pacientes: [
     { id: 'p1', codigo: 'SS-0001', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', observacoes: 'Sente dor no dente há duas semanas.', status: 'triado', criadoEm: new Date(), triagem: { areas: ['Cirurgia', 'Raio-X'], saude: ['Hipertensão / pressão alta'], outrasCondicoes: '' } },
     { id: 'p2', codigo: 'SS-0002', nome: 'Ana Paula', idade: '34', telefone: '(11) 94444-2222', observacoes: 'Chegou pela campanha do agasalho.', status: 'cadastrado', criadoEm: new Date(Date.now() - 864e5), triagem: null },
-    { id: 'p3', codigo: 'SS-0003', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', observacoes: '', status: 'em atendimento', criadoEm: new Date(Date.now() - 3 * 864e5), triagem: { areas: ['Prótese'], saude: ['Diabetes', 'Medicação contínua'], outrasCondicoes: 'Insulina 2x ao dia' } },
+    { id: 'p3', codigo: 'SS-0003', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', observacoes: '', status: 'em atendimento', prioridade: true, criadoEm: new Date(Date.now() - 3 * 864e5), triagem: { areas: ['Prótese'], saude: ['Diabetes', 'Medicação contínua'], outrasCondicoes: 'Insulina 2x ao dia' } },
   ],
   agendamentos: [
     { id: 'g1', area: 'Cirurgia', titulo: 'Cirurgia (extração)', pacienteId: 'p1', pacienteNome: 'José da Silva', data: hojeISO(), hora: '14:00', profissionalUid: 'v1', profissionalNome: 'Maria Souza', origem: 'central', criadoEm: new Date() },
@@ -291,7 +293,8 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
 // agendamento próprio — os horários se emendam pelo tempo de cada um, e
 // cada linha pode ter a hora ajustada à mão.
 function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, areaInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar }) {
-  const triados = pacientes.filter(p => p.triagem);
+  const triados = pacientes.filter(p => p.triagem)
+    .sort((a, b) => (b.prioridade ? 1 : 0) - (a.prioridade ? 1 : 0)); // prioridade primeiro
   const primeiro = pacienteInicial || triados[0];
   const [f, setF] = useState({
     pacienteId: primeiro?.id || '',
@@ -354,7 +357,7 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
       {triados.length === 0 && <p className="dica">Nenhum paciente com triagem ainda — faça a triagem primeiro.</p>}
       <Campo rotulo="Paciente">
         <select value={f.pacienteId} onChange={mudaPaciente}>
-          {triados.map(p => <option key={p.id} value={p.id}>{p.codigo ? `${p.codigo} · ` : ''}{p.nome}</option>)}
+          {triados.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '★ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
         </select>
       </Campo>
       {areasPac.length > 0 && (
@@ -456,7 +459,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
   const [cadastradoMsg, setCadastradoMsg] = useState('');
-  const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', observacoes: '' });
+  const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', observacoes: '', prioridade: false });
   const [fotoNovo, setFotoNovo] = useState('');
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
@@ -542,7 +545,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const maior = Math.max(0, ...pacientes.map(p => parseInt(String(p.codigo || '').replace(/\D/g, ''), 10) || 0));
     const codigo = 'SS-' + String(maior + 1).padStart(4, '0');
     await salvar('pacientes', { ...novo, nome, codigo, foto: fotoNovo || '' }, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes);
-    setNovo({ nome: '', idade: '', telefone: '', observacoes: '' });
+    setNovo({ nome: '', idade: '', telefone: '', observacoes: '', prioridade: false });
     setFotoNovo('');
     setCadastradoMsg(`${nome} cadastrado com o código ${codigo}! Agora é só fazer a triagem.`);
     setTimeout(() => setCadastradoMsg(''), 6000);
@@ -755,7 +758,10 @@ function TelaPrincipal({ usuario, aoSair }) {
               <div>
                 <div className="cartao-topo">
                   <strong>{p.nome}</strong>
-                  <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
+                  <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                    <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
+                  </span>
                 </div>
                 <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
               </div>
@@ -836,6 +842,9 @@ function TelaPrincipal({ usuario, aoSair }) {
               <Campo rotulo="Idade"><input value={novo.idade} onChange={e => setNovo({ ...novo, idade: e.target.value })} inputMode="numeric" /></Campo>
               <Campo rotulo="Telefone"><input value={novo.telefone} onChange={e => setNovo({ ...novo, telefone: e.target.value })} inputMode="tel" /></Campo>
               <Campo rotulo="Observações"><textarea rows={3} value={novo.observacoes} onChange={e => setNovo({ ...novo, observacoes: e.target.value })} /></Campo>
+              <label className={novo.prioridade ? 'caixa marcada' : 'caixa'} onClick={() => setNovo({ ...novo, prioridade: !novo.prioridade })} style={{ alignSelf: 'flex-start' }}>
+                <Flag size={15} style={{ color: '#C23A1E' }} /> Prioridade — fura a fila do agendamento
+              </label>
               <button className="btn-principal" style={{ maxWidth: 'none' }} disabled={!novo.nome.trim()} onClick={cadastrarPaciente}>Cadastrar paciente</button>
             </div>
             <p className="dica" style={{ marginTop: 10 }}>Depois do cadastro, o próximo passo é a aba Triagem.</p>
@@ -901,9 +910,12 @@ function TelaPrincipal({ usuario, aoSair }) {
                     <div>
                       <div className="cartao-topo">
                         <strong>{p.nome}</strong>
-                        {p.triagem
-                          ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
-                          : <span className="chip aguardando">sem triagem</span>}
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                          {p.triagem
+                            ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
+                            : <span className="chip aguardando">sem triagem</span>}
+                        </span>
                       </div>
                       {p.triagem && <p>{areasDoPaciente(p).join(' · ')}</p>}
                       <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
@@ -935,6 +947,8 @@ function TelaPrincipal({ usuario, aoSair }) {
                   if (!ja) pendentes.push({ p, area });
                 }
               }
+              // Prioridade fura a fila
+              pendentes.sort((x, y) => (y.p.prioridade ? 1 : 0) - (x.p.prioridade ? 1 : 0));
               return pendentes.length ? pendentes.map(({ p, area }) => {
                 const a = todasAreas.find(x => x.nome === area);
                 return (
@@ -944,7 +958,13 @@ function TelaPrincipal({ usuario, aoSair }) {
                         {a?.Icone ? <a.Icone size={22} strokeWidth={2.2} /> : <Tag size={22} />}
                       </span>
                       <div>
-                        <div className="cartao-topo"><strong>{area}</strong><span className="quando">{duracaoDe(area)} min</span></div>
+                        <div className="cartao-topo">
+                          <strong>{area}</strong>
+                          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                            <span className="quando">{duracaoDe(area)} min</span>
+                          </span>
+                        </div>
                         <p className="obs">{p.codigo ? `${p.codigo} · ` : ''}{p.nome}</p>
                         <button className="btn-confirmar" style={{ marginTop: 8 }} onClick={() => setTela({ marcarPaciente: p, marcarArea: area })}>Agendar</button>
                       </div>

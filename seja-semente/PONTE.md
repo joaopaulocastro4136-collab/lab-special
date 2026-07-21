@@ -109,6 +109,7 @@ daí o paciente aparece no Semeador do profissional e pode ir para a agenda.
 | `idade`       | string    | `"52"`                                         |
 | `telefone`    | string    | `"(11) 98888-1111"`                            |
 | `observacoes` | string    | `"Sente dor há duas semanas…"`                 |
+| `prioridade`  | boolean   | `true` — fura a fila: aparece primeiro e marcado nos "não agendados" |
 | `status`      | string    | `"cadastrado"` → `"triado"` → `"em atendimento"` → `"concluído"` |
 | `triagem`     | mapa ou null | ver abaixo                                  |
 | `criadoEm`    | timestamp | data/hora do cadastro                          |

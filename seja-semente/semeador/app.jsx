@@ -60,7 +60,7 @@ const DEMO = {
   ],
   pacientes: [
     { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
-    { id: 'p4', nome: 'Rita Nascimento', idade: '60', telefone: '(11) 93333-8888', status: 'em atendimento', observacoes: '', triagem: { especialidade: 'Odontologia', procedimento: 'Prótese', saude: ['Diabetes'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
+    { id: 'p4', nome: 'Rita Nascimento', idade: '60', telefone: '(11) 93333-8888', status: 'em atendimento', prioridade: true, observacoes: '', triagem: { especialidade: 'Odontologia', procedimento: 'Prótese', saude: ['Diabetes'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
     { id: 'p7', codigo: 'SS-0007', nome: 'Ana Paula', idade: '34', telefone: '(11) 94444-2222', status: 'cadastrado', observacoes: 'Chegou pela campanha do agasalho.', triagem: null },
   ],
   centralOnline: false,
@@ -87,11 +87,13 @@ const DURACAO_PADRAO = 30; // minutos
 const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
 
 // Um paciente pode precisar de vários procedimentos ao mesmo tempo
+// (aceita também os formatos antigos: `area` e `procedimento`)
 function areasDoPaciente(p) {
   const t = p?.triagem;
   if (!t) return [];
   if (Array.isArray(t.areas)) return t.areas;
-  return t.area ? [t.area] : [];
+  if (t.area) return [t.area];
+  return t.procedimento ? [t.procedimento] : [];
 }
 
 // ─── Utilidades ───
@@ -360,6 +362,7 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
+  const [buscaArea, setBuscaArea] = useState('');
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-pacientes', todosPacientes); }, [todosPacientes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-config-proc', configProc); }, [configProc]);
@@ -506,14 +509,17 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   if (telaTriagem?.area) {
     const A = telaTriagem.area;
-    const daArea = todosPacientes.filter(p => areasDoPaciente(p).includes(A.nome));
+    const filtro = buscaArea.trim().toLowerCase();
+    const daAreaTodos = todosPacientes.filter(p => areasDoPaciente(p).includes(A.nome));
+    const daArea = daAreaTodos.filter(p => !filtro || p.nome.toLowerCase().includes(filtro) || String(p.codigo || '').toLowerCase().includes(filtro));
     return (
       <div className="folha">
-        <button className="btn-voltar" onClick={() => setTelaTriagem(null)}><ChevronLeft size={18} /> Voltar</button>
+        <button className="btn-voltar" onClick={() => { setTelaTriagem(null); setBuscaArea(''); }}><ChevronLeft size={18} /> Voltar</button>
         <div className="cartao-linha" style={{ alignItems: 'center', marginBottom: 4 }}>
           <span className="caixa-area-icone" style={{ background: A.cor + '22', color: A.cor }}><A.Icone size={26} strokeWidth={2.2} /></span>
-          <h2 style={{ margin: 0 }}>{A.nome} · {daArea.length} paciente{daArea.length === 1 ? '' : 's'}</h2>
+          <h2 style={{ margin: 0 }}>{A.nome} · {daAreaTodos.length} paciente{daAreaTodos.length === 1 ? '' : 's'}</h2>
         </div>
+        <input className="busca" placeholder="Pesquisar por nome ou código…" value={buscaArea} onChange={e => setBuscaArea(e.target.value)} />
         {daArea.length ? daArea.map(p => (
           <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
             <div className="cartao-linha">
@@ -521,13 +527,16 @@ function TelaPrincipal({ usuario, aoSair }) {
               <div>
                 <div className="cartao-topo">
                   <strong>{p.nome}</strong>
-                  <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
+                  <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                    <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
+                  </span>
                 </div>
                 <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
               </div>
             </div>
           </div>
-        )) : <Vazio texto={`Nenhum paciente de ${A.nome} ainda.`} />}
+        )) : <Vazio texto={filtro ? 'Nenhum paciente encontrado na pesquisa.' : `Nenhum paciente de ${A.nome} ainda.`} />}
       </div>
     );
   }
