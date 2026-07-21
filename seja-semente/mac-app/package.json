@@ -16,11 +16,10 @@
     "directories": { "output": "dist" },
     "files": ["main.js", "build/icon.png"],
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [{ "target": "zip", "arch": ["x64", "arm64"] }],
       "category": "public.app-category.medical",
       "icon": "build/icon.png",
       "identity": null
-    },
-    "dmg": { "title": "Seja Semente" }
+    }
   }
 }
