@@ -79,6 +79,11 @@ function dataBonita(iso) {
   const dt = new Date(a, m - 1, d);
   return `${DIAS[dt.getDay()]}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
 }
+function horaFim(hora, dur) {
+  const [h, m] = String(hora || '00:00').split(':').map(Number);
+  const total = h * 60 + m + (dur || 30);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
 function horaBonita(v) {
   const d = v?.toDate ? v.toDate() : v instanceof Date ? v : null;
   if (!d) return '';
@@ -411,7 +416,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                   <div>
                     <div className="cartao-topo">
                       <strong>{g.pacienteNome || g.titulo}</strong>
-                      <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                      <span className="quando">{dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}</span>
                     </div>
                     {g.pacienteNome && <p>{g.titulo}</p>}
                     {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}

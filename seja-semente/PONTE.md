@@ -185,3 +185,14 @@ guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
 | `autorUid`  | string    | uid de quem adicionou                  |
 | `autorNome` | string    | `"Lucas Andrade"`                      |
 | `criadoEm`  | timestamp | data/hora                              |
+
+### `config/procedimentos` — tipos de procedimento e tempos
+Quem escreve: **Central**. Documento único de configuração.
+
+| Campo            | Tipo                       | Exemplo                          |
+|------------------|----------------------------|----------------------------------|
+| `personalizados` | array de `{nome, detalhe}` | `[{"nome": "Pediatria"}]`        |
+| `duracoes`       | mapa `{nome: minutos}`     | `{"Pediatria": 45, "Cirurgia": 60}` (padrão 30 min) |
+
+Os `agendamentos` gravam também `duracaoMin` (minutos do procedimento no
+momento em que foi marcado) — a agenda mostra início–fim e avisa conflito.

@@ -17,8 +17,8 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, Scan, Camera } from 'lucide-react';
+import { Bolha, lerLocal, gravarLocal, corDoNome } from '../logo.jsx';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, Scan, Camera, Tag, Clock } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -58,14 +58,28 @@ const AREAS = [
   { nome: 'Prótese', detalhe: '', Icone: Crown, cor: '#F0A912' },
   { nome: 'Raio-X', detalhe: 'radiografia', Icone: Scan, cor: '#3559B8' },
   { nome: 'Avaliação', detalhe: 'primeira consulta', Icone: ClipboardCheck, cor: '#2F7D4E' },
-  { nome: 'Outro', detalhe: 'outro procedimento', Icone: Plus, cor: '#55645A' },
 ];
+const DURACAO_PADRAO = 30; // minutos
+const OPCOES_DURACAO = [15, 20, 30, 40, 45, 60, 90, 120];
+
 // Um paciente pode precisar de vários procedimentos ao mesmo tempo
 function areasDoPaciente(p) {
   const t = p?.triagem;
   if (!t) return [];
   if (Array.isArray(t.areas)) return t.areas;
   return t.area ? [t.area] : [];
+}
+
+function horaFim(hora, dur) {
+  const [h, m] = String(hora || '00:00').split(':').map(Number);
+  const total = h * 60 + m + (dur || DURACAO_PADRAO);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+function conflita(hora, dur, g) {
+  const ini = t => { const [h, m] = String(t || '00:00').split(':').map(Number); return h * 60 + m; };
+  const a1 = ini(hora), a2 = a1 + (dur || DURACAO_PADRAO);
+  const b1 = ini(g.hora), b2 = b1 + (g.duracaoMin || DURACAO_PADRAO);
+  return a1 < b2 && b1 < a2;
 }
 const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
 const PROXIMO_STATUS = { 'triado': 'em atendimento', 'em atendimento': 'concluído', 'concluído': 'triado' };
@@ -188,25 +202,37 @@ function Campo({ rotulo, children }) {
 }
 
 // TRIAGEM: o formulário de diagnóstico do paciente (vários procedimentos)
-function FormTriagem({ paciente, aoSalvar, aoCancelar }) {
+function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar }) {
   const inicial = paciente.triagem;
   const [f, setF] = useState({
     areas: inicial ? (Array.isArray(inicial.areas) ? inicial.areas : (inicial.area ? [inicial.area] : [])) : [],
     saude: inicial?.saude || [],
     outrasCondicoes: inicial?.outrasCondicoes || '',
   });
+  const [novoTipo, setNovoTipo] = useState('');
   const alternaArea = a => setF({ ...f, areas: f.areas.includes(a) ? f.areas.filter(x => x !== a) : [...f.areas, a] });
   const alternaSaude = c => setF({ ...f, saude: f.saude.includes(c) ? f.saude.filter(x => x !== c) : [...f.saude, c] });
+  async function adicionarTipo() {
+    const nome = novoTipo.trim();
+    if (!nome) return;
+    await aoAdicionarTipo(nome);
+    setF(atual => ({ ...atual, areas: [...atual.areas, nome] }));
+    setNovoTipo('');
+  }
   return (
     <div className="folha">
       <h2>Triagem — {paciente.nome}</h2>
       <div className="campo"><span>Procedimentos que vai fazer (marque todos os que precisar)</span>
         <div className="caixas">
-          {AREAS.map(a => (
+          {areas.map(a => (
             <label key={a.nome} className={f.areas.includes(a.nome) ? 'caixa marcada' : 'caixa'} onClick={() => alternaArea(a.nome)}>
               <a.Icone size={15} style={{ color: a.cor }} />{a.nome}
             </label>
           ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <input style={{ flex: 1 }} value={novoTipo} onChange={e => setNovoTipo(e.target.value)} placeholder="Outro procedimento? Digite (ex.: Pediatria)" onKeyDown={e => e.key === 'Enter' && adicionarTipo()} />
+          <button className="btn-mais" onClick={adicionarTipo} disabled={!novoTipo.trim()}>+ Add</button>
         </div>
       </div>
       <div className="campo"><span>Saúde do paciente (marque o que tiver)</span>
@@ -250,7 +276,7 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
 }
 
 // AGENDAMENTO: paciente + procedimento + voluntário (vendo os horários dele)
-function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, aoSalvar, aoCancelar }) {
+function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar }) {
   const triados = pacientes.filter(p => p.triagem);
   const primeiro = pacienteInicial || triados[0];
   const [f, setF] = useState({
@@ -267,10 +293,12 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
   const pac = triados.find(p => p.id === f.pacienteId);
   const prof = voluntarios.find(p => p.id === f.profissionalUid);
   const areasPac = areasDoPaciente(pac);
-  const area = areaDe(f.areaEscolhida);
+  const area = todasAreas.find(a => a.nome === f.areaEscolhida);
+  const duracao = duracaoDe(f.areaEscolhida);
   const ocupados = agendamentos
     .filter(g => g.profissionalUid === f.profissionalUid && g.data === f.data)
     .sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
+  const choque = ocupados.find(g => conflita(f.hora, duracao, g));
   return (
     <div className="folha">
       <h2>Agendar paciente</h2>
@@ -293,20 +321,24 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
         </select>
       </Campo>
       <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
-      <Campo rotulo="Hora"><input type="time" value={f.hora} onChange={muda('hora')} /></Campo>
+      <Campo rotulo={`Hora (${f.areaEscolhida || 'procedimento'} leva ${duracao} min → termina ${horaFim(f.hora, duracao)})`}>
+        <input type="time" value={f.hora} onChange={muda('hora')} />
+      </Campo>
       {prof && (
         <p className="dica">
           {ocupados.length
-            ? `Horários já ocupados de ${prof.nome} em ${dataBonita(f.data)}: ${ocupados.map(g => g.hora).join(', ')}`
+            ? `Horários já ocupados de ${prof.nome} em ${dataBonita(f.data)}: ${ocupados.map(g => `${g.hora}–${horaFim(g.hora, g.duracaoMin)}`).join(', ')}`
             : `${prof.nome} está com o dia ${dataBonita(f.data)} livre.`}
         </p>
       )}
+      {choque && <p className="erro">⚠ Esse horário conflita com {choque.pacienteNome || choque.titulo} ({choque.hora}–{horaFim(choque.hora, choque.duracaoMin)}). Pode agendar mesmo assim, mas confira.</p>}
       <p className="dica">O agendamento cai na hora na agenda do voluntário, no Semeador dele.</p>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
         <button className="btn-principal" disabled={!pac || !prof || !f.areaEscolhida} onClick={() => aoSalvar({
           area: f.areaEscolhida,
           titulo: f.areaEscolhida + (area?.detalhe ? ` (${area.detalhe})` : ''),
+          duracaoMin: duracao,
           pacienteId: pac.id, pacienteNome: pac.nome,
           profissionalUid: prof.id, profissionalNome: prof.nome,
           data: f.data, hora: f.hora,
@@ -333,6 +365,25 @@ function FormAviso({ aoSalvar, aoCancelar }) {
   );
 }
 
+// Formulário de novo tipo de procedimento (ex.: Pediatria) com o tempo dele
+function NovoProcedimento({ aoAdicionar }) {
+  const [nome, setNome] = useState('');
+  const [dur, setDur] = useState(DURACAO_PADRAO);
+  return (
+    <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <strong>Adicionar novo procedimento</strong>
+      <input className="busca" style={{ margin: 0 }} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome (ex.: Pediatria)" />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select value={dur} onChange={e => setDur(Number(e.target.value))}
+          style={{ flex: 1, padding: '11px 12px', border: '1.5px solid #DBE3D8', borderRadius: 12, fontSize: 15, background: '#fff' }}>
+          {OPCOES_DURACAO.map(d => <option key={d} value={d}>{d} minutos</option>)}
+        </select>
+        <button className="btn-mais" disabled={!nome.trim()} onClick={async () => { await aoAdicionar(nome.trim(), dur); setNome(''); }}>+ Adicionar</button>
+      </div>
+    </div>
+  );
+}
+
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('cadastro');
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -343,6 +394,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
   const [visaoAgenda, setVisaoAgenda] = useState('dia'); // 'dia' | 'sem'
+  const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('ss-config-proc', { personalizados: [], duracoes: {} }));
   const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : lerLocal('ss-pacientes', DEMO.pacientes));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('ss-agendamentos', DEMO.agendamentos));
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : lerLocal('ss-avisos', DEMO.avisos));
@@ -352,6 +404,38 @@ function TelaPrincipal({ usuario, aoSair }) {
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-agendamentos', agendamentos); }, [agendamentos]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-avisos', avisos); }, [avisos]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-voluntarios', voluntarios); }, [voluntarios]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-config-proc', configProc); }, [configProc]);
+
+  // Configuração dos procedimentos (tipos personalizados + tempos)
+  useEffect(() => {
+    if (!CONFIGURADO) return;
+    const { doc, onSnapshot } = fb.fns;
+    return onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
+      if (snap.exists()) setConfigProc({ personalizados: [], duracoes: {}, ...snap.data() });
+    });
+  }, []);
+
+  async function salvarConfig(nova) {
+    setConfigProc(nova);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc } = fb.fns;
+    await setDoc(doc(fb.db, 'config', 'procedimentos'), nova);
+  }
+
+  // Todas as áreas: as fixas + as adicionadas pela central (ex.: Pediatria)
+  const todasAreas = [
+    ...AREAS,
+    ...(configProc.personalizados || []).map(p => ({ nome: p.nome, detalhe: p.detalhe || '', Icone: Tag, cor: corDoNome(p.nome), personalizado: true })),
+  ];
+  const duracaoDe = nome => configProc.duracoes?.[nome] || DURACAO_PADRAO;
+
+  async function adicionarTipo(nome) {
+    if (todasAreas.some(a => a.nome.toLowerCase() === nome.toLowerCase())) return;
+    await salvarConfig({
+      ...configProc,
+      personalizados: [...(configProc.personalizados || []), { nome, detalhe: '' }],
+    });
+  }
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -500,10 +584,46 @@ function TelaPrincipal({ usuario, aoSair }) {
   }
 
   // ─── Telas por cima das abas ───
-  if (tela?.triagem) return <FormTriagem paciente={tela.triagem} aoCancelar={() => setTela(null)} aoSalvar={t => salvarTriagem(tela.triagem, t)} />;
+  if (tela?.triagem) return <FormTriagem paciente={tela.triagem} areas={todasAreas} aoAdicionarTipo={adicionarTipo} aoCancelar={() => setTela(null)} aoSalvar={t => salvarTriagem(tela.triagem, t)} />;
+  if (tela === 'procedimentos') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+      <h2>Procedimentos e tempos</h2>
+      <p className="dica">Ajuste quanto tempo cada procedimento leva — a agenda usa isso para calcular início e fim de cada paciente no dia.</p>
+      {todasAreas.map(a => (
+        <div className="cartao" key={a.nome} style={{ padding: '12px 14px' }}>
+          <div className="cartao-linha" style={{ alignItems: 'center' }}>
+            <span className="caixa-area-icone" style={{ background: a.cor + '22', color: a.cor, width: 40, height: 40 }}><a.Icone size={21} /></span>
+            <div style={{ flex: 1 }}>
+              <strong>{a.nome}</strong>
+              {a.detalhe && <p className="obs" style={{ margin: 0 }}>{a.detalhe}</p>}
+            </div>
+            <select value={duracaoDe(a.nome)} onChange={async e => salvarConfig({ ...configProc, duracoes: { ...(configProc.duracoes || {}), [a.nome]: Number(e.target.value) } })}
+              style={{ padding: '9px 10px', border: '1.5px solid #DBE3D8', borderRadius: 11, fontSize: 15, background: '#fff' }}>
+              {OPCOES_DURACAO.map(d => <option key={d} value={d}>{d} min</option>)}
+            </select>
+            {a.personalizado && (
+              <button className="btn-remover" style={{ marginLeft: 6 }} onClick={() => {
+                if (!window.confirm(`Remover o procedimento "${a.nome}"?`)) return;
+                salvarConfig({ ...configProc, personalizados: (configProc.personalizados || []).filter(p => p.nome !== a.nome) });
+              }}>✕</button>
+            )}
+          </div>
+        </div>
+      ))}
+      <NovoProcedimento aoAdicionar={async (nome, dur) => {
+        if (todasAreas.some(a => a.nome.toLowerCase() === nome.toLowerCase())) return;
+        await salvarConfig({
+          ...configProc,
+          personalizados: [...(configProc.personalizados || []), { nome, detalhe: '' }],
+          duracoes: { ...(configProc.duracoes || {}), [nome]: dur },
+        });
+      }} />
+    </div>
+  );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(null); }} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
@@ -578,7 +698,7 @@ function TelaPrincipal({ usuario, aoSair }) {
         {dele.length ? dele.map(g => (
           <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
             <div className="linha-agenda">
-              <div className="hora-col">{g.hora}</div>
+              <div className="hora-col">{g.hora}<span className="hora-fim">{horaFim(g.hora, g.duracaoMin)}</span></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong>{g.pacienteNome || g.titulo}</strong>
                 <p className="obs">{dataBonita(g.data)}{g.titulo && g.pacienteNome ? ` · ${g.titulo}` : ''}</p>
@@ -654,16 +774,21 @@ function TelaPrincipal({ usuario, aoSair }) {
             )}
             <p className="dica" style={{ margin: '10px 0 8px' }}>Pacientes por procedimento (toque para ver):</p>
             <div className="grade-areas">
-              {AREAS.map(a => {
+              {todasAreas.map(a => {
                 const total = pacientes.filter(p => areasDoPaciente(p).includes(a.nome)).length;
                 return (
                   <button key={a.nome} className="caixa-area" onClick={() => setTela({ area: a })}>
                     <span className="caixa-area-icone" style={{ background: a.cor + '22', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
                     <strong>{a.nome}</strong>
-                    <span className="caixa-area-detalhe">{total} paciente{total === 1 ? '' : 's'}{a.detalhe ? ` · ${a.detalhe}` : ''}</span>
+                    <span className="caixa-area-detalhe">{total} paciente{total === 1 ? '' : 's'} · {duracaoDe(a.nome)} min</span>
                   </button>
                 );
               })}
+              <button className="caixa-area tracejada" onClick={() => setTela('procedimentos')}>
+                <span className="caixa-area-icone" style={{ background: '#EAF2EC', color: '#226343' }}><Clock size={26} strokeWidth={2.2} /></span>
+                <strong>Outros / tempos</strong>
+                <span className="caixa-area-detalhe">adicionar procedimento e ajustar os minutos</span>
+              </button>
             </div>
           </>
         )}
@@ -734,10 +859,10 @@ function TelaPrincipal({ usuario, aoSair }) {
             {doDia.length ? doDia.map(g => (
               <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
                 <div className="linha-agenda">
-                  <div className="hora-col">{g.hora}</div>
+                  <div className="hora-col">{g.hora}<span className="hora-fim">{horaFim(g.hora, g.duracaoMin)}</span></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <strong>{g.pacienteNome || g.titulo}</strong>
-                    {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo}</p>}
+                    {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo} · {g.duracaoMin || DURACAO_PADRAO} min</p>}
                     {g.profissionalNome && <p className="obs">com {g.profissionalNome}</p>}
                   </div>
                   <button className="btn-remover" onClick={e => { e.stopPropagation(); removerAgendamento(g); }} title="Remover">✕</button>
