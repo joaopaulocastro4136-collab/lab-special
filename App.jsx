@@ -1879,16 +1879,17 @@ export default function App() {
   const naClinicaLista = emAndamento.filter(c => c.naClinica);
   const provasPendentes = emAndamento.filter(c => c.provaPendente && !c.naClinica);
   const atrasados = emAndamento.filter(c => getUrgencia(c) === 'atrasado');
-  // Agenda do dia: TODOS os trabalhos com prazo naquele dia (menos os que estão
-  // fisicamente na clínica). Antes excluía prova pendente e sumia da lista — agora
-  // aparece tudo que foi agendado, batendo com o calendário.
+  // Agenda do dia: trabalhos que ainda TÊM produção no laboratório naquele dia.
+  // Fica de fora quem já finalizou a etapa e está indo pra clínica (prova pendente)
+  // ou está fisicamente na clínica — esses só voltam pra agenda ao iniciar uma nova
+  // etapa (ou ao retornar da clínica).
   const trabalhoHoje = emAndamento
-    .filter(c => c.status !== 'Pronto' && !c.naClinica && diasRestantes(c.prazo) <= 0)
+    .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) <= 0)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
   // Para retirada: trabalho novo postado pelo dentista OU prova que o dentista devolveu
   const paraRetirada = emAndamento.filter(c => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado));
   const trabalhoAmanha = emAndamento
-    .filter(c => c.status !== 'Pronto' && !c.naClinica && diasRestantes(c.prazo) === 1)
+    .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) === 1)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
   const prontos = casos.filter(c => c.status === 'Pronto');
   const proximosPrazos = [...emAndamento].sort((a, b) => a.prazo.localeCompare(b.prazo)).slice(0, 5);
@@ -3017,7 +3018,8 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
       {(dia === 'hoje' || dia === 'amanha') && (() => {
         const alvoISO = dia === 'hoje' ? todayISO() : addDias(todayISO(), 1);
         const jaNoDia = new Set(casos.map(c => c.id));
-        const disponiveis = casosAgenda.filter(c => !jaNoDia.has(c.id) && !c.naClinica && c.status !== 'Pronto').sort((a, b) => (a.prazo || '').localeCompare(b.prazo || ''));
+        // Só trabalhos que ainda têm produção no lab (fora os que estão indo/na clínica ou prontos)
+        const disponiveis = casosAgenda.filter(c => !jaNoDia.has(c.id) && !c.naClinica && !c.provaPendente && c.status !== 'Pronto').sort((a, b) => (a.prazo || '').localeCompare(b.prazo || ''));
         return !adicNaAgenda ? (
           <button onClick={() => setAdicNaAgenda(true)} className="w-full mb-3 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 border border-dashed" style={{ borderColor: GOLD, color: '#7A6234', background: GOLD_SOFT }}>
             <Plus size={16} /> Trazer um trabalho pra {dia === 'hoje' ? 'hoje' : 'amanhã'}
