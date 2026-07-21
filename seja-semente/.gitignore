@@ -2,3 +2,7 @@ node_modules/
 dist-semente/
 dist-semeador/
 *.log
+nativo-central/www/
+nativo-semeador/www/
+nativo-central/www-bundle.js
+nativo-semeador/www-bundle.js
