@@ -284,14 +284,15 @@ async function sincronizarAcesso(configJson) {
       if (d.email) porEmail.set(String(d.email).toLowerCase(), d);
     }
     const batch = writeBatch(db);
-    atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
+    // Não apaga quem entrou pelo ID do laboratório (auto) e ainda não foi absorvido na lista
+    atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id) && !docAtual.data().auto) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
       batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null, dataPagamento: d.dataPagamento || null });
     }
     // Índice global dentista → laboratório (o Special Clinic usa p/ achar o lab certo).
     // Fora do lote: se o dentista já pertence a outro laboratório, só essa escrita falha.
     atuais.forEach(docAtual => {
-      if (!porEmail.has(docAtual.id)) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
+      if (!porEmail.has(docAtual.id) && !docAtual.data().auto) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
     });
     for (const [email, d] of porEmail) {
       setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome }).catch(() => { });
@@ -307,7 +308,30 @@ async function sincronizarAcesso(configJson) {
       diasTrabalho: cfg.diasTrabalho || [1, 2, 3, 4, 5, 6],
       chavePix: cfg.chavePix || null,
     });
+    // ID do laboratório (convite por código): publica o mapa código → lab p/ o Special Clinic resolver
+    if (cfg.codigoLab) {
+      batch.set(doc(db, 'codigosLab', String(cfg.codigoLab).toUpperCase()), { lab: LAB, nome: emails[0] || '' });
+    }
     await batch.commit();
+
+    // Absorve quem se cadastrou pelo ID: entra na lista de dentistas do laboratório (config).
+    // Só apaga da caixa de entrada quem JÁ está no config (evita perder o cadastro se a
+    // ponte com a tela ainda não estiver pronta) — os novos ficam para o próximo ciclo.
+    try {
+      const auto = await getDocs(collection(db, 'labs', LAB, 'dentistasAuto'));
+      if (!auto.empty) {
+        const jaTem = new Set((cfg.dentistas || []).map(d => String(d.email || '').toLowerCase()).filter(Boolean));
+        const novos = [];
+        auto.forEach(a => {
+          const em = a.id;
+          if (jaTem.has(em)) deleteDoc(a.ref).catch(() => { }); // já virou dentista do config → limpa
+          else novos.push({ nome: a.data().nome || em, email: em, endereco: '', telefone: '', auto: true });
+        });
+        if (novos.length && typeof window !== 'undefined' && window.absorverDentistasAuto) {
+          window.absorverDentistasAuto(novos); // vira config → próximo ciclo limpa a caixa
+        }
+      }
+    } catch (e) { /* sem permissão/sem rede — tenta na próxima sincronização */ }
   } catch (e) { console.error('Erro ao sincronizar acessos', e); }
 }
 

@@ -279,6 +279,36 @@ function TelaBase({ children }) {
   );
 }
 
+// ─── Conectar ao laboratório pelo ID (auto-cadastro): dentista digita nome + ID e entra na hora ───
+function FormEntrarLab({ email, carregando, onConectar, onSair }) {
+  const [codigo, setCodigo] = useState('');
+  const [nome, setNome] = useState('');
+  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 12, padding: '13px 14px', fontSize: 15, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', textAlign: 'center' };
+  return (
+    <TelaBase>
+      <div style={{ color: '#fff', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Conecte-se ao seu laboratório</div>
+      <div style={{ color: '#A8A29E', fontSize: 12.5, lineHeight: 1.6, marginBottom: 18 }}>
+        Digite o <b style={{ color: GOLD }}>ID do laboratório</b> (o lab te passa esse código) e o seu nome. Você entra na hora.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome / clínica" style={{ ...inputStyle, textAlign: 'left' }} />
+        <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="ID do laboratório (ex.: LAB-7K2P)"
+          autoCapitalize="characters" autoCorrect="off"
+          onKeyDown={e => { if (e.key === 'Enter') onConectar(codigo, nome); }}
+          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.12em', fontWeight: 700 }} />
+        <button onClick={() => onConectar(codigo, nome)} disabled={carregando}
+          style={{ width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', opacity: carregando ? 0.6 : 1, fontFamily: FONTE }}>
+          {carregando ? 'Conectando...' : 'Conectar ao laboratório'}
+        </button>
+      </div>
+      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, margin: '16px 0 4px' }}>Conectado como {email}</div>
+      <button onClick={onSair} style={{ background: 'transparent', color: GOLD, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE }}>
+        Entrar com outra conta
+      </button>
+    </TelaBase>
+  );
+}
+
 // ─── Tela de entrada premium: preto com brilho dourado, marca centrada e botões Apple + Google ───
 function TelaLogin({ children }) {
   return (
@@ -3802,7 +3832,7 @@ function Raiz() {
         if (s.exists()) {
           try { localStorage.setItem('specialClinicLabId', LAB); } catch (e) { }
           setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok');
-        } else setEstado('negado');
+        } else setEstado('sem-lab');
       } catch (e) {
         // Sem internet não é "acesso negado": tenta de novo sozinho. Qualquer outro erro
         // vai pra tela de acesso (que tem os botões de tentar de novo e trocar de conta)
@@ -3892,6 +3922,35 @@ function Raiz() {
     catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
   };
 
+  // Auto-cadastro pelo ID do laboratório: o dentista digita o ID e o nome e entra na hora
+  const [entrandoId, setEntrandoId] = useState(false);
+  const conectarPorId = async (codigo, nome) => {
+    const code = String(codigo || '').trim().toUpperCase();
+    const nomeD = String(nome || '').trim();
+    if (!code) { alert('Digite o ID do laboratório.'); return; }
+    if (!nomeD) { alert('Digite o nome do dentista ou da clínica.'); return; }
+    setEntrandoId(true);
+    try {
+      const email = usuario.email.toLowerCase();
+      const cod = await getDoc(doc(db, 'codigosLab', code));
+      if (!cod.exists() || !cod.data().lab) { alert('ID não encontrado. Confira o código com o seu laboratório.'); setEntrandoId(false); return; }
+      const lab = cod.data().lab;
+      // 1) registra o acesso (a regra confere o código) — precisa vir antes do índice
+      await setDoc(doc(db, 'labs', lab, 'dentistasAcesso', email), { nome: nomeD, codigo: code, auto: true, criadoEm: todayISO() });
+      // 2) caixa de entrada do laboratório (aparece na lista de dentistas dele)
+      await setDoc(doc(db, 'labs', lab, 'dentistasAuto', email), { nome: nomeD, email, codigo: code, criadoEm: todayISO() }).catch(() => { });
+      // 3) índice global e-mail → lab (agora permitido, pois já virou dentista)
+      await setDoc(doc(db, 'dentistasIndex', email), { lab, nome: nomeD }).catch(() => { });
+      LAB = lab;
+      try { localStorage.setItem('specialClinicLabId', lab); } catch (e) { }
+      setEstado('verificando');
+      setTentativa(t => t + 1); // re-verifica → acha o acesso → 'ok'
+    } catch (e) {
+      alert('Não consegui conectar ao laboratório (' + ((e && e.code) || String(e)) + '). Confira o ID e tente de novo.');
+    }
+    setEntrandoId(false);
+  };
+
   const abertura = <Abertura visivel={abrindo} />;
 
   if (usuario === undefined) return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: 14 }}>Carregando...</div></TelaBase></>;
@@ -3909,6 +3968,10 @@ function Raiz() {
   }
 
   if (estado === 'verificando') return <>{abertura}<TelaBase><div style={{ color: '#A8A29E', fontSize: 14 }}>Verificando acesso...</div></TelaBase></>;
+
+  if (estado === 'sem-lab') {
+    return <FormEntrarLab email={usuario.email} carregando={entrandoId} onConectar={conectarPorId} onSair={() => signOut(auth)} />;
+  }
 
   if (estado === 'negado') {
     return (

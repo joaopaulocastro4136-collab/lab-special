@@ -1076,6 +1076,7 @@ export default function App() {
   const [horasPorDia, setHorasPorDia] = useState(DIAS_TRABALHO_PADRAO.reduce((a, d) => { a[d] = HORAS_DIA_PADRAO; return a; }, [0, 0, 0, 0, 0, 0, 0]));
   const [autoAjuste, setAutoAjuste] = useState(false);
   const [chavePix, setChavePix] = useState('');
+  const [codigoLab, setCodigoLab] = useState(''); // ID do laboratório (convite para dentistas entrarem pelo Special Clinic)
   const [pessoas, setPessoas] = useState(1); // quantas pessoas produzem ao mesmo tempo (capacidade = horas × pessoas)
   const [ajustesDia, setAjustesDiaState] = useState({}); // capacidade sob medida de datas específicas: {'2026-07-17': {horas, pessoas}}
   const [notificacoes, setNotificacoes] = useState([]);
@@ -1141,6 +1142,7 @@ export default function App() {
           if (parsed.pessoas >= 1) setPessoas(parsed.pessoas);
           if (parsed.ajustesDia) setAjustesDiaState(parsed.ajustesDia);
           if (parsed.chavePix) setChavePix(parsed.chavePix);
+          if (parsed.codigoLab) setCodigoLab(parsed.codigoLab);
           if (parsed.diasTrabalho?.length > 0) { diasTrabalhoCarregados = parsed.diasTrabalho; setDiasTrabalho(parsed.diasTrabalho); }
           if (parsed.horasPorDia?.length === 7) {
             setHorasPorDia(parsed.horasPorDia);
@@ -1268,6 +1270,7 @@ export default function App() {
       funcionarios: patch.funcionarios ?? funcionarios,
       autoAjuste: patch.autoAjuste ?? autoAjuste,
       chavePix: patch.chavePix ?? chavePix,
+      codigoLab: patch.codigoLab ?? codigoLab,
       diasTrabalho: patch.diasTrabalho ?? diasTrabalho,
       horasPorDia: patch.horasPorDia ?? horasPorDia,
       pessoas: patch.pessoas ?? pessoas,
@@ -1279,12 +1282,24 @@ export default function App() {
     setFuncionarios(novo.funcionarios);
     setAutoAjuste(novo.autoAjuste);
     setChavePix(novo.chavePix);
+    setCodigoLab(novo.codigoLab);
     setDiasTrabalho(novo.diasTrabalho);
     setHorasPorDia(novo.horasPorDia);
     setPessoas(novo.pessoas);
     setAjustesDiaState(novo.ajustesDia);
     flashSave(() => window.storage.set('config-laboratorio', JSON.stringify(novo)));
   };
+  // ID do laboratório: código curto (sem letras/números ambíguos) que o dentista digita no Special Clinic
+  const gerarCodigoLab = () => 'LAB-' + Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+  // A sincronização (cloud-app) chama isto quando um dentista entra pelo ID: entra na lista do lab
+  useEffect(() => {
+    window.absorverDentistasAuto = (novos) => {
+      if (!novos || !novos.length) return;
+      const existentes = new Set(dentistas.map(d => String(d.email || '').toLowerCase()));
+      const add = novos.filter(n => n.email && !existentes.has(String(n.email).toLowerCase()));
+      if (add.length) persistConfig({ dentistas: [...dentistas, ...add] });
+    };
+  }, [dentistas]);
   const persistNotificacoes = (novas) => {
     setNotificacoes(novas);
     flashSave(() => window.storage.set('notificacoes-laboratorio', JSON.stringify(novas)));
@@ -2138,6 +2153,8 @@ export default function App() {
             onSetPessoas={(n) => persistConfig({ pessoas: n })}
             chavePix={chavePix}
             onSetChavePix={(v) => persistConfig({ chavePix: v })}
+            codigoLab={codigoLab}
+            onGerarCodigoLab={() => { const c = gerarCodigoLab(); persistConfig({ codigoLab: c }); return c; }}
           />
         )}
         {view === 'meu' && (
@@ -3696,7 +3713,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
   );
 }
 
-function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas }) {
+function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');
@@ -3963,6 +3980,28 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl p-4" style={{ background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 60%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 14px 30px -20px rgba(28,27,25,0.6)' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <Share2 size={15} color={GOLD} />
+          <h2 className="font-bold" style={{ color: GOLD, fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>ID do laboratório</h2>
+        </div>
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, lineHeight: 1.5, marginBottom: 12 }}>
+          Passe este ID para seus dentistas. No <b style={{ color: '#fff' }}>Special Clinic</b>, eles digitam o ID e entram na hora — sem você precisar cadastrar o e-mail antes.
+        </p>
+        {codigoLab ? (
+          <div className="flex items-center gap-2">
+            <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 12, padding: '12px 14px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '0.14em', textAlign: 'center' }}>{codigoLab}</div>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(codigoLab); alert('ID copiado: ' + codigoLab); } catch (e) { alert('ID do laboratório: ' + codigoLab); } }}
+              style={{ background: GOLD, color: INK, border: 'none', borderRadius: 12, padding: '12px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'Manrope, sans-serif', flexShrink: 0 }}>Copiar</button>
+          </div>
+        ) : (
+          <button onClick={onGerarCodigoLab}
+            style={{ width: '100%', background: GOLD, color: INK, border: 'none', borderRadius: 12, padding: 13, fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: 'Manrope, sans-serif' }}>
+            Gerar o ID do meu laboratório
+          </button>
+        )}
       </div>
 
       <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
