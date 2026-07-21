@@ -94,18 +94,43 @@ function acharNiimbotEscaneando(segundos = 6) {
   });
 }
 
+const ehAndroid = () => typeof window !== 'undefined' && window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android';
+
 export async function conectarImpressora() {
   if (aparelho) return aparelho;
   await BleClient.initialize({ androidNeverForLocation: true });
 
+  // Android: o Bluetooth precisa estar LIGADO (no iPhone o próprio sistema já pede)
+  if (ehAndroid()) {
+    let ligado = true;
+    try { ligado = await BleClient.isEnabled(); } catch (e) { ligado = true; }
+    if (!ligado) {
+      try { await BleClient.requestEnable(); }
+      catch (e) { throw new Error('Ligue o Bluetooth do celular para imprimir na maquininha.'); }
+    }
+  }
+
   // 1) tenta achar e conectar sozinha (sem lista)
-  let alvo = null;
-  try { alvo = await acharNiimbotEscaneando(6); } catch (e) { /* sem permissão de scan — cai pro seletor */ }
+  let alvo = null, erroScan = null;
+  try { alvo = await acharNiimbotEscaneando(6); } catch (e) { erroScan = e; /* sem permissão/localização — cai pro seletor */ }
 
   // 2) não achou pelo scan? abre o seletor JÁ FILTRADO só nas NIIMBOT
   if (!alvo) {
-    const disp = await BleClient.requestDevice({ namePrefix: 'B' });
-    alvo = { deviceId: disp.deviceId, nome: disp.name || 'impressora' };
+    try {
+      const disp = await BleClient.requestDevice({ namePrefix: 'B' });
+      alvo = { deviceId: disp.deviceId, nome: disp.name || 'impressora' };
+    } catch (e) {
+      const msg = String((e && (e.message || e.code)) || e);
+      // permissão negada no Android
+      if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied')) {
+        throw new Error('Permita o Bluetooth para o app nos Ajustes do Android (Bluetooth por perto) e tente de novo.');
+      }
+      // usuário fechou o seletor sem escolher
+      if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('no device')) {
+        throw new Error('Nenhuma impressora escolhida. Ligue a NIIMBOT (luz acesa), deixe perto e tente de novo.');
+      }
+      throw new Error('Não achei a maquininha. Ligue a NIIMBOT e o Bluetooth e tente de novo.' + (erroScan ? '' : ''));
+    }
   }
 
   await BleClient.connect(alvo.deviceId, () => { aparelho = null; });
