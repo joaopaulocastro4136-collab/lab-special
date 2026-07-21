@@ -1,0 +1,101 @@
+# Fábrica do app iOS Semeador (voluntário do Seja Semente): compila e envia
+# para o TestFlight. Rodar: aba Actions → "iOS Semeador → TestFlight".
+name: iOS Semeador → TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão visível (ex.: 1.0)"
+        required: false
+        default: "1.0"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Usa o Xcode mais novo disponível
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecionado: $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Instala dependências
+        run: |
+          cd seja-semente && npm ci
+          cd nativo-semeador && npm ci
+
+      - name: Gera o pacote web
+        run: cd seja-semente && node build-nativo.mjs semeador
+
+      - name: Sincroniza com o projeto iOS
+        run: cd seja-semente/nativo-semeador && npx cap sync ios
+
+      - name: Instala o certificado e o perfil de distribuição
+        env:
+          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_SENHA: ${{ secrets.P12_SENHA }}
+        run: |
+          echo "$IOS_P12_BASE64" | base64 -d > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security set-keychain-settings -lut 3600 ci.keychain
+          security import "$RUNNER_TEMP/dist.p12" -k ci.keychain -P "$P12_SENHA" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci ci.keychain > /dev/null
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          UUID=$(security cms -D -i seja-semente/nativo-semeador/ios/Semeador_AppStore.mobileprovision | plutil -extract UUID raw -o - -)
+          cp seja-semente/nativo-semeador/ios/Semeador_AppStore.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          echo "Perfil instalado: $UUID"
+
+      - name: Compila e assina (archive)
+        run: |
+          xcodebuild -project seja-semente/nativo-semeador/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
+            MARKETING_VERSION=${{ github.event.inputs.versao || '1.0' }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      - name: Exporta o IPA
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.sejasemente.semeador</key><string>Semeador AppStore</string>
+            </dict>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Grava a chave da App Store
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Envia para o TestFlight
+        run: |
+          xcrun altool --upload-app -f "$RUNNER_TEMP"/export/*.ipa -t ios \
+            --apiKey ${{ secrets.ASC_KEY_ID }} --apiIssuer ${{ secrets.ASC_ISSUER_ID }}

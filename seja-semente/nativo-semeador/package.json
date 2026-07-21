@@ -1,0 +1,11 @@
+{
+  "name": "semeador-nativo",
+  "version": "1.0.0",
+  "description": "Casca nativa (iOS) do app Semeador (voluntário do Seja Semente)",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1"
+  }
+}

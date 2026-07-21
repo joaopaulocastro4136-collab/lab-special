@@ -1,0 +1,23 @@
+# Prepara os dois apps do Seja Semente no Apple Developer: registra os bundle
+# IDs e gera os perfis de distribuição. Os .mobileprovision saem no log em
+# base64 (perfil não é segredo — fica commitado no repositório).
+name: Preparar Apple — Seja Semente
+
+on:
+  workflow_dispatch:
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Registra bundle IDs e gera os perfis na Apple
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node seja-semente/preparar-apple.mjs
