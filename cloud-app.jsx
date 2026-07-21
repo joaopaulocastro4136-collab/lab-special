@@ -295,7 +295,7 @@ async function sincronizarAcesso(configJson) {
       if (!porEmail.has(docAtual.id) && !docAtual.data().auto) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
     });
     for (const [email, d] of porEmail) {
-      setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome }).catch(() => { });
+      setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome, labNome: cfg.nomeLab || '' }).catch(() => { });
     }
     // Informações que a clínica usa: tipos completos (para criar o caso direto) e dias de trabalho (cálculo do prazo)
     batch.set(doc(db, 'labs', LAB, 'publicoClinica', 'info'), {
@@ -310,7 +310,7 @@ async function sincronizarAcesso(configJson) {
     });
     // ID do laboratório (convite por código): publica o mapa código → lab p/ o Special Clinic resolver
     if (cfg.codigoLab) {
-      batch.set(doc(db, 'codigosLab', String(cfg.codigoLab).toUpperCase()), { lab: LAB, nome: emails[0] || '' });
+      batch.set(doc(db, 'codigosLab', String(cfg.codigoLab).toUpperCase()), { lab: LAB, nome: cfg.nomeLab || emails[0] || 'Laboratório' });
     }
     await batch.commit();
 
@@ -325,7 +325,7 @@ async function sincronizarAcesso(configJson) {
         auto.forEach(a => {
           const em = a.id;
           if (jaTem.has(em)) deleteDoc(a.ref).catch(() => { }); // já virou dentista do config → limpa
-          else novos.push({ nome: a.data().nome || em, email: em, endereco: '', telefone: '', auto: true });
+          else novos.push({ nome: a.data().nome || em, email: em, endereco: a.data().endereco || '', telefone: a.data().telefone || '', auto: true });
         });
         if (novos.length && typeof window !== 'undefined' && window.absorverDentistasAuto) {
           window.absorverDentistasAuto(novos); // vira config → próximo ciclo limpa a caixa

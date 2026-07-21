@@ -1077,6 +1077,7 @@ export default function App() {
   const [autoAjuste, setAutoAjuste] = useState(false);
   const [chavePix, setChavePix] = useState('');
   const [codigoLab, setCodigoLab] = useState(''); // ID do laboratório (convite para dentistas entrarem pelo Special Clinic)
+  const [nomeLab, setNomeLab] = useState(''); // nome do laboratório (o dentista vê no seletor do Special Clinic)
   const [pessoas, setPessoas] = useState(1); // quantas pessoas produzem ao mesmo tempo (capacidade = horas × pessoas)
   const [ajustesDia, setAjustesDiaState] = useState({}); // capacidade sob medida de datas específicas: {'2026-07-17': {horas, pessoas}}
   const [notificacoes, setNotificacoes] = useState([]);
@@ -1143,6 +1144,7 @@ export default function App() {
           if (parsed.ajustesDia) setAjustesDiaState(parsed.ajustesDia);
           if (parsed.chavePix) setChavePix(parsed.chavePix);
           if (parsed.codigoLab) setCodigoLab(parsed.codigoLab);
+          if (parsed.nomeLab) setNomeLab(parsed.nomeLab);
           if (parsed.diasTrabalho?.length > 0) { diasTrabalhoCarregados = parsed.diasTrabalho; setDiasTrabalho(parsed.diasTrabalho); }
           if (parsed.horasPorDia?.length === 7) {
             setHorasPorDia(parsed.horasPorDia);
@@ -1271,6 +1273,7 @@ export default function App() {
       autoAjuste: patch.autoAjuste ?? autoAjuste,
       chavePix: patch.chavePix ?? chavePix,
       codigoLab: patch.codigoLab ?? codigoLab,
+      nomeLab: patch.nomeLab ?? nomeLab,
       diasTrabalho: patch.diasTrabalho ?? diasTrabalho,
       horasPorDia: patch.horasPorDia ?? horasPorDia,
       pessoas: patch.pessoas ?? pessoas,
@@ -1283,6 +1286,7 @@ export default function App() {
     setAutoAjuste(novo.autoAjuste);
     setChavePix(novo.chavePix);
     setCodigoLab(novo.codigoLab);
+    setNomeLab(novo.nomeLab);
     setDiasTrabalho(novo.diasTrabalho);
     setHorasPorDia(novo.horasPorDia);
     setPessoas(novo.pessoas);
@@ -2155,6 +2159,8 @@ export default function App() {
             onSetChavePix={(v) => persistConfig({ chavePix: v })}
             codigoLab={codigoLab}
             onGerarCodigoLab={() => { const c = gerarCodigoLab(); persistConfig({ codigoLab: c }); return c; }}
+            nomeLab={nomeLab}
+            onSetNomeLab={(v) => persistConfig({ nomeLab: v })}
           />
         )}
         {view === 'meu' && (
@@ -3713,7 +3719,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
   );
 }
 
-function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab }) {
+function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab, nomeLab, onSetNomeLab }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');
@@ -3990,6 +3996,8 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
         <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, lineHeight: 1.5, marginBottom: 12 }}>
           Passe este ID para seus dentistas. No <b style={{ color: '#fff' }}>Special Clinic</b>, eles digitam o ID e entram na hora — sem você precisar cadastrar o e-mail antes.
         </p>
+        <input value={nomeLab || ''} onChange={e => onSetNomeLab(e.target.value)} placeholder="Nome do laboratório (o dentista vê no app)"
+          style={{ width: '100%', background: 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, fontFamily: 'Manrope, sans-serif', outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
         {codigoLab ? (
           <div className="flex items-center gap-2">
             <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 12, padding: '12px 14px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '0.14em', textAlign: 'center' }}>{codigoLab}</div>

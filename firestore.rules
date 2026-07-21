@@ -28,6 +28,13 @@ service cloud.firestore {
       allow read, create, update: if request.auth != null && request.auth.token.email == email;
     }
 
+    // Perfil do dentista no Special Clinic: lista de laboratórios que ele conectou
+    // (multi-lab) e qual está ativo. É do próprio dentista. O acesso a cada lab
+    // continua conferido, individualmente, pelo dentistasAcesso daquele lab.
+    match /clinicaUsuarios/{email} {
+      allow read, create, update: if request.auth != null && request.auth.token.email == email;
+    }
+
     // Mapa dentista → laboratório, mantido pelo laboratório que o cadastrou.
     // O próprio dentista também pode gravar o seu, DEPOIS de já ter virado
     // dentista do lab (auto-cadastro pelo ID do laboratório).

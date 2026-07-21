@@ -280,31 +280,43 @@ function TelaBase({ children }) {
 }
 
 // ─── Conectar ao laboratório pelo ID (auto-cadastro): dentista digita nome + ID e entra na hora ───
-function FormEntrarLab({ email, carregando, onConectar, onSair }) {
+function FormEntrarLab({ email, carregando, onConectar, onSair, onVoltar, nomeInicial }) {
   const [codigo, setCodigo] = useState('');
-  const [nome, setNome] = useState('');
-  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 12, padding: '13px 14px', fontSize: 15, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box', textAlign: 'center' };
+  const [nome, setNome] = useState(nomeInicial || '');
+  const [telefone, setTelefone] = useState('');
+  const [endereco, setEndereco] = useState('');
+  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 12, padding: '13px 14px', fontSize: 15, fontFamily: FONTE, outline: 'none', boxSizing: 'border-box' };
   return (
     <TelaBase>
-      <div style={{ color: '#fff', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Conecte-se ao seu laboratório</div>
+      <div style={{ color: '#fff', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>{onVoltar ? 'Adicionar outro laboratório' : 'Conecte-se ao seu laboratório'}</div>
       <div style={{ color: '#A8A29E', fontSize: 12.5, lineHeight: 1.6, marginBottom: 18 }}>
-        Digite o <b style={{ color: GOLD }}>ID do laboratório</b> (o lab te passa esse código) e o seu nome. Você entra na hora.
+        Faça seu cadastro e digite o <b style={{ color: GOLD }}>ID do laboratório</b> (o lab te passa esse código). Você entra na hora.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome / clínica" style={{ ...inputStyle, textAlign: 'left' }} />
-        <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="ID do laboratório (ex.: LAB-7K2P)"
+        <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome / clínica *" style={inputStyle} />
+        <input value={telefone} onChange={e => setTelefone(e.target.value)} type="tel" inputMode="tel" placeholder="Telefone / WhatsApp *" style={inputStyle} />
+        <input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Endereço (opcional)" style={inputStyle} />
+        <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="ID do laboratório (ex.: LAB-7K2P) *"
           autoCapitalize="characters" autoCorrect="off"
-          onKeyDown={e => { if (e.key === 'Enter') onConectar(codigo, nome); }}
-          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.12em', fontWeight: 700 }} />
-        <button onClick={() => onConectar(codigo, nome)} disabled={carregando}
+          onKeyDown={e => { if (e.key === 'Enter') onConectar(codigo, nome, telefone, endereco); }}
+          style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, monospace', letterSpacing: '0.1em', fontWeight: 700, textAlign: 'center' }} />
+        <button onClick={() => onConectar(codigo, nome, telefone, endereco)} disabled={carregando}
           style={{ width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', opacity: carregando ? 0.6 : 1, fontFamily: FONTE }}>
           {carregando ? 'Conectando...' : 'Conectar ao laboratório'}
         </button>
       </div>
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, margin: '16px 0 4px' }}>Conectado como {email}</div>
-      <button onClick={onSair} style={{ background: 'transparent', color: GOLD, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE }}>
-        Entrar com outra conta
-      </button>
+      {onVoltar ? (
+        <button onClick={onVoltar} style={{ background: 'transparent', color: GOLD, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE, marginTop: 14 }}>
+          ‹ Voltar
+        </button>
+      ) : (
+        <>
+          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, margin: '16px 0 4px' }}>Conectado como {email}</div>
+          <button onClick={onSair} style={{ background: 'transparent', color: GOLD, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE }}>
+            Entrar com outra conta
+          </button>
+        </>
+      )}
     </TelaBase>
   );
 }
@@ -1334,7 +1346,9 @@ function GraficoFinanceiro({ meses, formatReais, nomeMes }) {
   );
 }
 
-function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) {
+function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, labs = [], labAtivo, onTrocarLab, onAddLab }) {
+  const [labSheet, setLabSheet] = useState(false);
+  const nomeLabAtivo = (labs.find(l => l.lab === labAtivo) || {}).nome || 'Laboratório';
   const [casos, setCasos] = useState([]);
   const [totalPago, setTotalPago] = useState(0);
   const [pagamentosLab, setPagamentosLab] = useState([]); // pagamentos registrados pelo laboratório (data + valor)
@@ -1828,6 +1842,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
               </button>
             ))}
           </div>
+          <button onClick={() => setLabSheet(true)} title="Trocar de laboratório"
+            style={{ display: 'flex', alignItems: 'center', gap: 7, maxWidth: 200, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '6px 13px', cursor: 'pointer', fontFamily: FONTE, marginRight: 10 }}>
+            <span style={{ fontSize: 13 }}>🧪</span>
+            <span style={{ color: '#fff', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeLabAtivo}</span>
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>▼</span>
+          </button>
           {botaoSino}
           <button onClick={() => setMeusDados(true)} title="Meus dados"
             style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 14px 5px 5px', cursor: 'pointer', fontFamily: FONTE, marginLeft: 10 }}>
@@ -1842,6 +1862,12 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
           <span style={{ color: '#fff', fontWeight: 300, fontSize: 12, letterSpacing: '0.32em' }}>SPECIAL</span>
           <span style={{ color: GOLD, fontWeight: 700, fontSize: 10, letterSpacing: '0.3em' }}>CLINIC</span>
           <div style={{ flex: 1 }} />
+          <button onClick={() => setLabSheet(true)} title="Trocar de laboratório"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: 160, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(184,147,90,0.4)', borderRadius: 999, padding: '5px 10px', cursor: 'pointer', fontFamily: FONTE }}>
+            <span style={{ fontSize: 12 }}>🧪</span>
+            <span style={{ color: '#fff', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nomeLabAtivo}</span>
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>▼</span>
+          </button>
           {botaoSino}
           <button onClick={() => setMeusDados(true)} title="Meus dados"
             style={{ width: 38, height: 38, borderRadius: 19, background: GOLD, color: INK, border: '2px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: FONTE, marginLeft: 8 }}>
@@ -1860,6 +1886,31 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento }) 
           </>
         )}
       </div>
+      )}
+
+      {/* Folha de troca de laboratório (multi-lab) */}
+      {labSheet && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', fontFamily: FONTE }} onClick={() => setLabSheet(false)}>
+          <div style={{ background: '#fff', borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 440, padding: '18px 18px calc(24px + env(safe-area-inset-bottom))', maxHeight: '76vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 44, height: 4, borderRadius: 2, background: '#D6D3D1', margin: '0 auto 16px' }} />
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#78716C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>Seus laboratórios</div>
+            {labs.map(l => {
+              const ativo = l.lab === labAtivo;
+              return (
+                <button key={l.lab} onClick={() => { setLabSheet(false); if (!ativo) onTrocarLab(l.lab); }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '13px 14px', marginBottom: 8, borderRadius: 14, border: `1.5px solid ${ativo ? GOLD : '#E7E5E4'}`, background: ativo ? '#FBF6EC' : '#fff', cursor: 'pointer', fontFamily: FONTE, textAlign: 'left' }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 17, background: ativo ? GOLD : '#F0EFEC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>🧪</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.nome || 'Laboratório'}</span>
+                  {ativo && <span style={{ fontSize: 11.5, fontWeight: 800, color: '#7A6234' }}>ativo ✓</span>}
+                </button>
+              );
+            })}
+            <button onClick={() => { setLabSheet(false); onAddLab && onAddLab(); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 13, marginTop: 4, borderRadius: 14, border: `1.5px dashed ${GOLD}`, background: 'transparent', color: '#7A6234', fontSize: 14, fontWeight: 800, cursor: 'pointer', fontFamily: FONTE }}>
+              ＋ Adicionar laboratório (ID)
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Painel de avisos do sininho */}
@@ -3784,7 +3835,9 @@ function ehMobile() { return /iPhone|iPad|iPod|Android/i.test(navigator.userAgen
 
 function Raiz() {
   const [usuario, setUsuario] = useState(undefined);
-  const [estado, setEstado] = useState('verificando'); // verificando | ok | negado
+  const [estado, setEstado] = useState('verificando'); // verificando | ok | sem-lab | add-lab | negado
+  const [labs, setLabs] = useState([]); // laboratórios conectados: [{ lab, nome }]
+  const [labAtivo, setLabAtivo] = useState(() => { try { return localStorage.getItem('specialClinicLabId') || ''; } catch (e) { return ''; } });
   const [nomeDentista, setNomeDentista] = useState('');
   const [prazoPag, setPrazoPag] = useState('');
   const [diasPag, setDiasPag] = useState(null);
@@ -3822,17 +3875,33 @@ function Raiz() {
     const email = usuario.email.toLowerCase();
     (async () => {
       try {
-        // Em qual laboratório este dentista está cadastrado? (índice global)
+        // Laboratórios conectados por este dentista (multi-lab) + retrocompat com o índice antigo
+        let lista = [];
+        let ativoSalvo = null;
+        try {
+          const u = await getDoc(doc(db, 'clinicaUsuarios', email));
+          if (u.exists()) { lista = (u.data().labs || []).filter(x => x && x.lab); ativoSalvo = u.data().ativo || null; }
+        } catch (e) { /* segue */ }
         try {
           const idx = await getDoc(doc(db, 'dentistasIndex', email));
-          if (idx.exists() && idx.data().lab) LAB = idx.data().lab;
-        } catch (e) { /* sem índice — segue no laboratório salvo/principal */ }
-        const s = await getDoc(doc(db, 'labs', LAB, 'dentistasAcesso', email));
+          if (idx.exists() && idx.data().lab && !lista.some(x => x.lab === idx.data().lab)) {
+            lista.push({ lab: idx.data().lab, nome: idx.data().labNome || 'Laboratório' });
+          }
+        } catch (e) { /* sem índice */ }
+        if (!ativo) return;
+        setLabs(lista);
+        if (lista.length === 0) { setEstado('sem-lab'); return; }
+        // Escolhe o lab ativo: o já selecionado, senão o salvo, senão o primeiro
+        const alvo = (labAtivo && lista.some(x => x.lab === labAtivo)) ? labAtivo
+          : (ativoSalvo && lista.some(x => x.lab === ativoSalvo)) ? ativoSalvo : lista[0].lab;
+        LAB = alvo;
+        if (alvo !== labAtivo) setLabAtivo(alvo);
+        try { localStorage.setItem('specialClinicLabId', alvo); } catch (e) { }
+        const s = await getDoc(doc(db, 'labs', alvo, 'dentistasAcesso', email));
         if (!ativo) return;
         if (s.exists()) {
-          try { localStorage.setItem('specialClinicLabId', LAB); } catch (e) { }
           setNomeDentista(s.data().nome); setPrazoPag(s.data().prazoPagamento || ''); setDiasPag(s.data().diasPagamento ?? null); setDataPag(s.data().dataPagamento || null); setEstado('ok');
-        } else setEstado('sem-lab');
+        } else setEstado('sem-lab'); // listado mas sem acesso nesse lab (removido) — pede o ID de novo
       } catch (e) {
         // Sem internet não é "acesso negado": tenta de novo sozinho. Qualquer outro erro
         // vai pra tela de acesso (que tem os botões de tentar de novo e trocar de conta)
@@ -3842,7 +3911,18 @@ function Raiz() {
       }
     })();
     return () => { ativo = false; clearTimeout(timer); };
-  }, [usuario, tentativa]);
+  }, [usuario, tentativa, labAtivo]);
+
+  // Troca o laboratório ativo (multi-lab): salva a escolha e reconfere o acesso do lab novo
+  const trocarLab = async (lab) => {
+    if (!lab || lab === labAtivo) return;
+    setEstado('verificando');
+    setLabAtivo(lab);
+    try { localStorage.setItem('specialClinicLabId', lab); } catch (e) { }
+    if (usuario && usuario.email) {
+      try { await setDoc(doc(db, 'clinicaUsuarios', usuario.email.toLowerCase()), { ativo: lab }, { merge: true }); } catch (e) { }
+    }
+  };
 
   useEffect(() => {
     if (estado !== 'negado') return;
@@ -3922,29 +4002,39 @@ function Raiz() {
     catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
   };
 
-  // Auto-cadastro pelo ID do laboratório: o dentista digita o ID e o nome e entra na hora
+  // Auto-cadastro pelo ID do laboratório: o dentista faz o cadastro (nome, telefone,
+  // endereço) e o ID; entra na hora. Pode repetir com outros IDs (multi-lab).
   const [entrandoId, setEntrandoId] = useState(false);
-  const conectarPorId = async (codigo, nome) => {
+  const conectarPorId = async (codigo, nome, telefone, endereco) => {
     const code = String(codigo || '').trim().toUpperCase();
     const nomeD = String(nome || '').trim();
+    const tel = String(telefone || '').trim();
+    const end = String(endereco || '').trim();
     if (!code) { alert('Digite o ID do laboratório.'); return; }
     if (!nomeD) { alert('Digite o nome do dentista ou da clínica.'); return; }
+    if (!tel) { alert('Digite o seu telefone / WhatsApp — o laboratório precisa dele para falar com você.'); return; }
     setEntrandoId(true);
     try {
       const email = usuario.email.toLowerCase();
       const cod = await getDoc(doc(db, 'codigosLab', code));
       if (!cod.exists() || !cod.data().lab) { alert('ID não encontrado. Confira o código com o seu laboratório.'); setEntrandoId(false); return; }
       const lab = cod.data().lab;
+      const nomeLab = cod.data().nome || 'Laboratório';
+      if (labs.some(x => x.lab === lab)) { alert('Você já está conectado a este laboratório.'); setEntrandoId(false); await trocarLab(lab); return; }
       // 1) registra o acesso (a regra confere o código) — precisa vir antes do índice
-      await setDoc(doc(db, 'labs', lab, 'dentistasAcesso', email), { nome: nomeD, codigo: code, auto: true, criadoEm: todayISO() });
-      // 2) caixa de entrada do laboratório (aparece na lista de dentistas dele)
-      await setDoc(doc(db, 'labs', lab, 'dentistasAuto', email), { nome: nomeD, email, codigo: code, criadoEm: todayISO() }).catch(() => { });
-      // 3) índice global e-mail → lab (agora permitido, pois já virou dentista)
+      await setDoc(doc(db, 'labs', lab, 'dentistasAcesso', email), { nome: nomeD, telefone: tel, endereco: end, codigo: code, auto: true, criadoEm: todayISO() });
+      // 2) caixa de entrada do laboratório (entra na lista de dentistas dele, com telefone/endereço)
+      await setDoc(doc(db, 'labs', lab, 'dentistasAuto', email), { nome: nomeD, email, telefone: tel, endereco: end, codigo: code, criadoEm: todayISO() }).catch(() => { });
+      // 3) perfil multi-lab do dentista: acrescenta este lab e deixa ativo
+      const novaLista = [...labs.filter(x => x.lab !== lab), { lab, nome: nomeLab }];
+      await setDoc(doc(db, 'clinicaUsuarios', email), { labs: novaLista, ativo: lab }, { merge: true }).catch(() => { });
+      // 4) índice global (retrocompat) — aponta para o lab recém-conectado
       await setDoc(doc(db, 'dentistasIndex', email), { lab, nome: nomeD }).catch(() => { });
+      setLabs(novaLista);
       LAB = lab;
       try { localStorage.setItem('specialClinicLabId', lab); } catch (e) { }
       setEstado('verificando');
-      setTentativa(t => t + 1); // re-verifica → acha o acesso → 'ok'
+      if (lab === labAtivo) setTentativa(t => t + 1); else setLabAtivo(lab); // dispara a reverificação
     } catch (e) {
       alert('Não consegui conectar ao laboratório (' + ((e && e.code) || String(e)) + '). Confira o ID e tente de novo.');
     }
@@ -3973,6 +4063,10 @@ function Raiz() {
     return <FormEntrarLab email={usuario.email} carregando={entrandoId} onConectar={conectarPorId} onSair={() => signOut(auth)} />;
   }
 
+  if (estado === 'add-lab') {
+    return <FormEntrarLab email={usuario.email} carregando={entrandoId} onConectar={conectarPorId} nomeInicial={nomeDentista} onVoltar={() => setEstado('ok')} />;
+  }
+
   if (estado === 'negado') {
     return (
       <TelaBase>
@@ -3991,7 +4085,8 @@ function Raiz() {
     );
   }
 
-  return <>{abertura}<App dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} dataPagamento={dataPag} /></>;
+  return <>{abertura}<App key={labAtivo} dentista={nomeDentista} email={usuario.email} prazoPagamento={prazoPag} diasPagamento={diasPag} dataPagamento={dataPag}
+    labs={labs} labAtivo={labAtivo} onTrocarLab={trocarLab} onAddLab={() => setEstado('add-lab')} /></>;
 }
 
 document.title = 'Special Clinic';
