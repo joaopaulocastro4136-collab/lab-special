@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -646,6 +646,28 @@ function TelaPrincipal({ usuario, aoSair }) {
     </div>
   );
 
+  if (tela === 'entradaTriagem') {
+    const pendentes = pacientes.filter(p => !p.triagem);
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+        <h2>Caixa de entrada</h2>
+        <p className="dica">Pacientes aguardando triagem:</p>
+        {pendentes.length ? pendentes.map(p => (
+          <div className="cartao" key={p.id}>
+            <div className="cartao-linha">
+              <Bolha nome={p.nome} foto={p.foto} />
+              <div>
+                <div className="cartao-topo"><strong>{p.nome}</strong><span className="chip aguardando">sem triagem</span></div>
+                <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                <button className="btn-triagem" onClick={() => setTela({ triagem: p })}>Fazer triagem</button>
+              </div>
+            </div>
+          </div>
+        )) : <div className="vazio">Tudo em dia — nenhuma triagem pendente 🌱</div>}
+      </div>
+    );
+  }
   if (tela?.area) {
     const A = tela.area;
     const filtro = buscaArea.trim().toLowerCase();
@@ -756,23 +778,17 @@ function TelaPrincipal({ usuario, aoSair }) {
         {aba === 'triagem' && (
           <>
             <h2>Triagem</h2>
-            {semTriagem.length > 0 && (
-              <>
-                <p className="dica" style={{ marginBottom: 8 }}>Aguardando triagem:</p>
-                {semTriagem.map(p => (
-                  <div className="cartao" key={p.id}>
-                    <div className="cartao-linha">
-                      <Bolha nome={p.nome} />
-                      <div>
-                        <div className="cartao-topo"><strong>{p.nome}</strong><span className="chip aguardando">sem triagem</span></div>
-                        <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
-                        <button className="btn-triagem" onClick={() => setTela({ triagem: p })}>Fazer triagem</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
+            <button className={`caixa-entrada ${semTriagem.length ? 'pendente' : 'vazia'}`} onClick={() => setTela('entradaTriagem')}>
+              <span className="entrada-icone"><Inbox size={23} strokeWidth={2.2} /></span>
+              <span className="entrada-texto">
+                <strong>Caixa de entrada</strong>
+                <span>{semTriagem.length
+                  ? `${semTriagem.length} pendente${semTriagem.length === 1 ? '' : 's'} de triagem`
+                  : 'Tudo em dia — nenhuma pendência'}</span>
+              </span>
+              {semTriagem.length > 0 && <span className="entrada-qtd">{semTriagem.length}</span>}
+              <ChevronRight size={20} strokeWidth={2.6} className="entrada-seta" />
+            </button>
             <p className="dica" style={{ margin: '10px 0 8px' }}>Pacientes por procedimento (toque para ver):</p>
             <div className="grade-areas">
               {todasAreas.map(a => {

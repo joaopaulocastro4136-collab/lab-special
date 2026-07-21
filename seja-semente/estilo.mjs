@@ -134,6 +134,22 @@ export const CSS = `
   .tracejada-texto strong { font-family: 'Fraunces', Georgia, serif; font-size: 18.5px; font-weight: 600; color: #223528; }
   .tracejada-texto span { font-size: 13px; color: #7B897F; font-weight: 600; }
   .tracejada-seta { color: #226343; flex: none; }
+
+  /* ── Caixa de entrada da triagem: vermelha com pendências, verde zerada ── */
+  .caixa-entrada { width: 100%; display: flex; align-items: center; gap: 13px; padding: 15px 16px; border-radius: 22px; cursor: pointer; text-align: left; margin-bottom: 4px; }
+  .caixa-entrada.pendente { border: 1.5px solid #EFC4B8; background: #FCEEE9; box-shadow: 0 8px 20px rgba(217,72,43,0.10); }
+  .caixa-entrada.vazia { border: 1.5px solid #BFDCC9; background: #E9F5EE; box-shadow: 0 8px 20px rgba(47,125,78,0.08); }
+  .entrada-icone { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+  .caixa-entrada.pendente .entrada-icone { background: #F6D6CC; color: #C23A1E; }
+  .caixa-entrada.vazia .entrada-icone { background: #CDE9D9; color: #226343; }
+  .entrada-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .entrada-texto strong { font-family: 'Fraunces', Georgia, serif; font-size: 18.5px; font-weight: 600; color: #223528; }
+  .entrada-texto span { font-size: 13px; font-weight: 700; }
+  .caixa-entrada.pendente .entrada-texto span { color: #B3402A; }
+  .caixa-entrada.vazia .entrada-texto span { color: #1E6B41; }
+  .entrada-qtd { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: #D9482B; color: #fff; font-weight: 800; font-size: 14.5px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .caixa-entrada.pendente .entrada-seta { color: #C23A1E; flex: none; }
+  .caixa-entrada.vazia .entrada-seta { color: #226343; flex: none; }
   .hora-fim { display: block; font-size: 11px; font-weight: 700; color: #9AA79D; }
 
   /* ── Ações da ficha, seletor e pesquisa ── */
