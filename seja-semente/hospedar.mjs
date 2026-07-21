@@ -67,7 +67,11 @@ async function publicar(siteId, pasta) {
     arquivos['/' + nome] = hash;
     conteudos[hash] = gz;
   }
-  const ver = await api('POST', `/sites/${siteId}/versions`, { config: { rewrites: [{ glob: '**', path: '/index.html' }] } });
+  const ver = await api('POST', `/sites/${siteId}/versions`, { config: {
+    rewrites: [{ glob: '**', path: '/index.html' }],
+    // Sem cache: garante que o navegador sempre pegue a versão mais nova
+    headers: [{ glob: '**', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' } }],
+  } });
   if (!ver.json.name) { console.log(`✗ versão: ${ver.status} ${JSON.stringify(ver.json).slice(0, 200)}`); return false; }
   const pop = await api('POST', `/${ver.json.name}:populateFiles`, { files: arquivos });
   for (const hash of pop.json.uploadRequiredHashes || []) {

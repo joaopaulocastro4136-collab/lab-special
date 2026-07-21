@@ -34,13 +34,16 @@ async function ligarFirebase() {
   // Dentro do aplicativo do iPhone (WebView), o jeito padrão de iniciar a
   // autenticação e o banco falha — estes dois ajustes são os recomendados:
   let auth;
-  try {
-    auth = modAuth.initializeAuth(app, {
-      persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence],
-      // Necessário para o login por janelinha/redirecionamento no navegador
-      popupRedirectResolver: modAuth.browserPopupRedirectResolver,
-    });
-  } catch (e) {
+  if (window.__entrarNativoGoogle) {
+    // iPhone (WKWebView): inicialização especial recomendada
+    try {
+      auth = modAuth.initializeAuth(app, {
+        persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence],
+        popupRedirectResolver: modAuth.browserPopupRedirectResolver,
+      });
+    } catch (e) { auth = modAuth.getAuth(app); }
+  } else {
+    // Navegador/computador: o padrão já configura o login web (Google) certo
     auth = modAuth.getAuth(app);
   }
   const db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
