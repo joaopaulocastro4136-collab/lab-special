@@ -1,6 +1,6 @@
 {
-  "versionCode": 31,
-  "versionName": "8.9",
+  "versionCode": 32,
+  "versionName": "9.0",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Pagina de dentistas com ficha e trabalhos de cada um; dentista do ID aparece automatico. Toque em Baixar para atualizar."
+  "novidades": "Impressao na maquininha NIIMBOT melhorada no Android (pede pra ligar o Bluetooth e avisa se algo faltar). Toque em Baixar para atualizar."
 }
