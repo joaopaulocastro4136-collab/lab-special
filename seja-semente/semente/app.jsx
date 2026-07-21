@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, Scan, Camera, Tag, Clock } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -722,14 +722,15 @@ function TelaPrincipal({ usuario, aoSair }) {
             <strong>Seja Semente</strong>
             <div className="status">Central · {usuario.nome}</div>
           </div>
-          <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Megaphone size={21} /></button>
+          <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Bell size={20} /></button>
+          <button className="btn-header" onClick={() => setTela('novoAviso')} title="Novo aviso"><Megaphone size={20} /></button>
         </div>
       </header>
 
       <main>
         {aba === 'cadastro' && (
           <>
-            <h2>Cadastro do paciente</h2>
+            <h2>Cadastro</h2>
             {cadastradoMsg && <div className="banner-ok">✓ {cadastradoMsg}</div>}
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -778,16 +779,26 @@ function TelaPrincipal({ usuario, aoSair }) {
                 const total = pacientes.filter(p => areasDoPaciente(p).includes(a.nome)).length;
                 return (
                   <button key={a.nome} className="caixa-area" onClick={() => setTela({ area: a })}>
-                    <span className="caixa-area-icone" style={{ background: a.cor + '22', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
+                    <span className="area-topo">
+                      <span className="caixa-area-icone" style={{ background: a.cor + '1C', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
+                      <span className="area-seta" style={{ background: a.cor + '16', color: a.cor }}><ChevronRight size={18} strokeWidth={3} /></span>
+                    </span>
                     <strong>{a.nome}</strong>
-                    <span className="caixa-area-detalhe">{total} paciente{total === 1 ? '' : 's'} · {duracaoDe(a.nome)} min</span>
+                    <span className="caixa-area-detalhe">
+                      <span className="area-qtd" style={{ color: a.cor }}><User size={14} strokeWidth={2.6} /> {total} paciente{total === 1 ? '' : 's'}</span>
+                      <i className="area-divisor" />
+                      <span className="area-tempo"><Clock size={14} strokeWidth={2.4} /> {duracaoDe(a.nome)} min</span>
+                    </span>
                   </button>
                 );
               })}
               <button className="caixa-area tracejada" onClick={() => setTela('procedimentos')}>
-                <span className="caixa-area-icone" style={{ background: '#EAF2EC', color: '#226343' }}><Clock size={26} strokeWidth={2.2} /></span>
-                <strong>Outros / tempos</strong>
-                <span className="caixa-area-detalhe">adicionar procedimento e ajustar os minutos</span>
+                <span className="tracejada-mais"><Plus size={22} strokeWidth={2.6} /></span>
+                <span className="tracejada-texto">
+                  <strong>Outros / tempos</strong>
+                  <span>Adicionar procedimento e tempo</span>
+                </span>
+                <ChevronRight size={20} className="tracejada-seta" strokeWidth={2.6} />
               </button>
             </div>
           </>
