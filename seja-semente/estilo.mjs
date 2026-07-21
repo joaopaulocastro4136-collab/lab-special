@@ -103,6 +103,7 @@ export const CSS = `
   .chip.em-atendimento { background: #D8E9FF; color: #245A9E; }
   .chip.concluída, .chip.concluído { background: #D6F1E0; color: #1E6B41; }
   .chip.prioridade { background: #FBDCD2; color: #B3402A; }
+  .codigo-grande { text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 700; letter-spacing: 3px; color: #226343; background: #EAF4EE; border: 1.5px dashed #9DBBA8; border-radius: 14px; padding: 16px; }
 
   .linha-confirma { margin-top: 12px; }
   .btn-confirmar { padding: 11px 18px; border: none; border-radius: 12px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 5px 12px rgba(47,125,78,0.28); }

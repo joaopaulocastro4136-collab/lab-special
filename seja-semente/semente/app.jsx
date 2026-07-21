@@ -471,6 +471,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
   const [cadastradoMsg, setCadastradoMsg] = useState('');
+  const [codigoGerado, setCodigoGerado] = useState('');
   const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', observacoes: '', prioridade: false });
   const [fotoNovo, setFotoNovo] = useState('');
   const [buscaPacientes, setBuscaPacientes] = useState('');
@@ -548,6 +549,17 @@ function TelaPrincipal({ usuario, aoSair }) {
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
     await addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() });
+  }
+
+  // Gera um código de acesso para liberar outra pessoa na central
+  async function gerarCodigoAcesso() {
+    const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const cod = 'SS-' + Array.from({ length: 6 }, () => letras[Math.floor(Math.random() * letras.length)]).join('');
+    if (CONFIGURADO) {
+      const { doc, setDoc, serverTimestamp } = fb.fns;
+      await setDoc(doc(fb.db, 'codigos-acesso', cod), { criadoPor: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() });
+    }
+    setCodigoGerado(cod);
   }
 
   async function cadastrarPaciente() {
@@ -1068,7 +1080,25 @@ function TelaPrincipal({ usuario, aoSair }) {
               </div>
             </div>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('novoVoluntario')}>+ Adicionar novo dentista / usuário</button>
-            <p className="dica" style={{ marginBottom: 10 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>
+            <p className="dica" style={{ marginBottom: 16 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>
+
+            <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <strong>Dar acesso à central</strong>
+              <p className="dica" style={{ margin: 0 }}>Gere um código e passe para a pessoa. Ela entra com a conta Google dela e digita o código para ter acesso à central. Cada código serve uma vez.</p>
+              {codigoGerado ? (
+                <>
+                  <div className="codigo-grande">{codigoGerado}</div>
+                  <div className="linha-botoes">
+                    <button className="btn-secundario" onClick={() => { navigator.clipboard?.writeText(codigoGerado); }}>Copiar</button>
+                    <button className="btn-secundario" onClick={() => { navigator.share?.({ text: `Seu código de acesso à central Seja Semente: ${codigoGerado}` }); }}>Compartilhar</button>
+                    <button className="btn-principal" style={{ flex: 1 }} onClick={gerarCodigoAcesso}>Gerar outro</button>
+                  </div>
+                </>
+              ) : (
+                <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigoAcesso}>Gerar código de acesso</button>
+              )}
+            </div>
+
             <button className="btn-sair" onClick={aoSair}>Sair</button>
           </>
         )}
@@ -1092,11 +1122,80 @@ function TelaPrincipal({ usuario, aoSair }) {
   );
 }
 
+// Tela pedida quando a pessoa entrou com o Google mas ainda não tem acesso
+// à central — precisa do código que a coordenação gerou
+function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(false);
+  async function enviar() {
+    setErro('');
+    setCarregando(true);
+    try {
+      const msg = await aoResgatar(codigo);
+      if (msg) setErro(msg);
+    } catch (e) {
+      setErro('Não consegui validar agora. Tente de novo.');
+    }
+    setCarregando(false);
+  }
+  return (
+    <div className="tela-login">
+      <LogoApp tamanho={104} />
+      <h1>Acesso à central</h1>
+      <p className="missao">Olá, {usuario.nome?.split(' ')[0] || 'tudo bem'}! Para entrar na central, digite o código de acesso que a coordenação te passou.</p>
+      <label className="campo-login" style={{ maxWidth: 330 }}>
+        <input placeholder="Código (ex.: SS-K7P2Q9)" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && enviar()} style={{ textAlign: 'center', letterSpacing: 1, fontWeight: 800 }} />
+      </label>
+      {erro && <div className="erro">{erro}</div>}
+      <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
+      <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+    </div>
+  );
+}
+
 function App() {
   const [pronto, setPronto] = useState(!CONFIGURADO);
   const [usuario, setUsuario] = useState(CONFIGURADO ? null : lerLocal('ss-usuario', null));
+  const [acesso, setAcesso] = useState(CONFIGURADO ? 'checando' : 'liberado'); // checando | liberado | pedir
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-usuario', usuario); }, [usuario]);
+
+  // Confere se o usuário logado tem acesso à central; o primeiro a entrar
+  // (quando ainda não há ninguém) vira o fundador automaticamente
+  useEffect(() => {
+    if (!CONFIGURADO) { setAcesso('liberado'); return; }
+    if (!usuario) { setAcesso('checando'); return; }
+    let cancelado = false;
+    (async () => {
+      try {
+        const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
+        const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
+        if (meu.exists()) { if (!cancelado) setAcesso('liberado'); return; }
+        const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
+        if (algum.empty) {
+          await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() });
+          if (!cancelado) setAcesso('liberado');
+          return;
+        }
+        if (!cancelado) setAcesso('pedir');
+      } catch (e) { if (!cancelado) setAcesso('pedir'); }
+    })();
+    return () => { cancelado = true; };
+  }, [usuario]);
+
+  async function resgatarCodigo(codigo) {
+    const cod = codigo.trim().toUpperCase();
+    const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
+    const ref = doc(fb.db, 'codigos-acesso', cod);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
+    if (snap.data().usadoPor) return 'Esse código já foi usado.';
+    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
+    await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    setAcesso('liberado');
+    return '';
+  }
 
   const [erroInicial, setErroInicial] = useState('');
 
@@ -1137,6 +1236,8 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
+  else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
   else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} />;
   return <>{conteudo}{abertura}</>;
 }

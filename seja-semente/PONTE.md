@@ -189,6 +189,34 @@ guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
 | `autorNome` | string    | `"Lucas Andrade"`                      |
 | `criadoEm`  | timestamp | data/hora                              |
 
+### `central-usuarios/{uid}` — quem tem acesso à central
+Quem escreve: **Central**. Cada pessoa autorizada a usar a central (app Seja
+Semente / programa Windows) tem um doc aqui. O **primeiro** a entrar, quando a
+coleção está vazia, vira `papel: "fundador"` automaticamente; os demais só
+entram resgatando um código de acesso (viram `papel: "equipe"`).
+
+| Campo      | Tipo      | Exemplo                    |
+|------------|-----------|----------------------------|
+| `nome`     | string    | `"João Paulo Castro"`      |
+| `email`    | string    | `"joao@gmail.com"`         |
+| `papel`    | string    | `"fundador"` ou `"equipe"` |
+| `criadoEm` | timestamp | data/hora                  |
+
+### `codigos-acesso/{codigo}` — códigos de resgate da central
+Quem escreve: **Central** (gera no Perfil). O `{codigo}` é o próprio código
+(ex.: `SS-K7P2Q9`). Cada código serve **uma vez**: ao ser resgatado, grava
+quem usou. Quem tem o código entra com a conta Google e digita para virar
+`equipe`.
+
+| Campo         | Tipo      | Exemplo              |
+|---------------|-----------|----------------------|
+| `criadoPor`   | string    | uid de quem gerou    |
+| `criadoPorNome` | string  | `"João Paulo"`       |
+| `usadoPor`    | string ou null | uid de quem resgatou (null se ainda livre) |
+| `usadoPorNome`| string    | `"Maria Souza"`      |
+| `criadoEm`    | timestamp | data/hora            |
+| `usadoEm`     | timestamp | data/hora do resgate |
+
 ### `config/procedimentos` — tipos de procedimento e tempos
 Quem escreve: **Central** (gerencia tudo) e o **Semeador** (pode adicionar
 um tipo novo pelo formulário de triagem). Documento único de configuração.
