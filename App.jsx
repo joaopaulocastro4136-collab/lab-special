@@ -1879,13 +1879,16 @@ export default function App() {
   const naClinicaLista = emAndamento.filter(c => c.naClinica);
   const provasPendentes = emAndamento.filter(c => c.provaPendente && !c.naClinica);
   const atrasados = emAndamento.filter(c => getUrgencia(c) === 'atrasado');
+  // Agenda do dia: TODOS os trabalhos com prazo naquele dia (menos os que estão
+  // fisicamente na clínica). Antes excluía prova pendente e sumia da lista — agora
+  // aparece tudo que foi agendado, batendo com o calendário.
   const trabalhoHoje = emAndamento
-    .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) <= 0)
+    .filter(c => c.status !== 'Pronto' && !c.naClinica && diasRestantes(c.prazo) <= 0)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
   // Para retirada: trabalho novo postado pelo dentista OU prova que o dentista devolveu
   const paraRetirada = emAndamento.filter(c => aguardandoRetirada(c) || (c.naClinica && c.retornoSolicitado));
   const trabalhoAmanha = emAndamento
-    .filter(c => c.status !== 'Pronto' && !c.naClinica && !c.provaPendente && diasRestantes(c.prazo) === 1)
+    .filter(c => c.status !== 'Pronto' && !c.naClinica && diasRestantes(c.prazo) === 1)
     .sort((a, b) => a.prazo.localeCompare(b.prazo));
   const prontos = casos.filter(c => c.status === 'Pronto');
   const proximosPrazos = [...emAndamento].sort((a, b) => a.prazo.localeCompare(b.prazo)).slice(0, 5);
