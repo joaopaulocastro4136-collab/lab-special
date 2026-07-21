@@ -111,16 +111,14 @@ daí o paciente aparece no Semeador do profissional e pode ir para a agenda.
 | `triagem`     | mapa ou null | ver abaixo                                  |
 | `criadoEm`    | timestamp | data/hora do cadastro                          |
 
-Campos do mapa `triagem`:
+Campos do mapa `triagem` (o voluntário que atende é definido no AGENDAMENTO,
+não na triagem):
 
-| Campo               | Tipo             | Exemplo                                  |
-|---------------------|------------------|------------------------------------------|
-| `especialidade`     | string           | `"Odontologia"` (Odontologia, Médico (clínico geral), Psicologia, Nutrição, Assistência social, Outra) |
-| `procedimento`      | string           | `"Extração"` (a lista depende da especialidade — ver ESPECIALIDADES em semente/app.jsx) |
-| `saude`             | array de strings | `["Hipertensão / pressão alta"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
-| `outrasCondicoes`   | string           | `"Insulina 2x ao dia"`                   |
-| `profissionalUid`   | string           | uid do voluntário que vai atender (doc de `voluntarios`) |
-| `profissionalNome`  | string           | `"Maria Souza"`                          |
+| Campo             | Tipo             | Exemplo                                  |
+|-------------------|------------------|------------------------------------------|
+| `area`            | string           | `"Cirurgia"` (Profilaxia, Periodontia, Dentística, Endodontia, Cirurgia, Prótese, Avaliação, Outro — ver AREAS em semente/app.jsx) |
+| `saude`           | array de strings | `["Hipertensão / pressão alta"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
+| `outrasCondicoes` | string           | `"Insulina 2x ao dia"`                   |
 
 ### `agendamentos/{id}` — agenda por dia e horário
 Quem escreve: **Central** (Windows ou app Seja Semente) e também o

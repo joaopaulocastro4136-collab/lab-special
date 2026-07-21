@@ -75,7 +75,7 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo })
           <div>
             <strong style={{ fontSize: 18 }}>{paciente.nome}</strong>
             <p className="obs">{[paciente.idade ? `${paciente.idade} anos` : '', paciente.telefone].filter(Boolean).join(' · ')}</p>
-            {t && <p>{[t.especialidade, t.procedimento].filter(Boolean).join(' · ')}{t.profissionalNome ? ` · com ${t.profissionalNome}` : ''}</p>}
+            {t && <p>{t.area || [t.especialidade, t.procedimento].filter(Boolean).join(' · ')}{t.profissionalNome ? ` · com ${t.profissionalNome}` : ''}</p>}
             {t && (t.saude?.length > 0 || t.outrasCondicoes) && (
               <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ')}</p>
             )}
