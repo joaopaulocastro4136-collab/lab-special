@@ -331,15 +331,18 @@ function tempoDoTipo(tiposTrabalho, nomeTipo) {
   if (t?.etapas?.length) return t.etapas.reduce((s, e) => s + (e.horas || 0), 0);
   return t?.tempoHoras ?? 2;
 }
+// Horas da ETAPA ATUAL (a que está sendo feita agora). Como se faz uma etapa por
+// vez, a agenda mostra só o tempo dessa etapa — não a soma de todas as que faltam.
 function tempoRestante(caso, tiposTrabalho) {
   if (caso.etapas?.length) {
-    return caso.etapas.filter(e => !e.concluida).reduce((s, e) => s + (e.horas || 0), 0);
+    const atual = caso.etapas.find(e => !e.concluida && !e.pulada);
+    return atual ? (atual.horas || 0) : 0;
   }
   return tempoDoTipo(tiposTrabalho, caso.tipoTrabalho);
 }
 function etapaAtual(caso) {
   if (!caso.etapas?.length) return null;
-  return caso.etapas.find(e => !e.concluida) || null;
+  return caso.etapas.find(e => !e.concluida && !e.pulada) || null;
 }
 function etapasDoTipo(tipo) {
   if (tipo?.etapas?.length) return tipo.etapas;
@@ -5268,7 +5271,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
         <div className="grid grid-cols-2 gap-4 text-sm mt-4 pt-4 border-t border-stone-100">
           <ItensTrabalhoCard caso={caso} tiposTrabalho={tiposTrabalho || []} onSalvar={onSalvarItens} />
           <div>
-            <div className="text-xs text-stone-400 mb-0.5">Serviço restante</div>
+            <div className="text-xs text-stone-400 mb-0.5">Etapa atual</div>
             <div className="font-medium flex items-center gap-1" style={{ color: INK }}><Hourglass size={13} style={{ color: GOLD }} /> {formatHoras(horasRestantes)}</div>
           </div>
           <div>
