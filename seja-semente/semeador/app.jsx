@@ -108,9 +108,10 @@ function TelaLogin({ aoEntrarDemo }) {
 
   return (
     <div className="tela-login">
-      <ArvoreLogo tamanho={130} />
+      <div className="login-cartao"><ArvoreLogo tamanho={128} /></div>
       <h1>Semeador</h1>
       <p className="login-sub">Aplicativo do voluntário · Seja Semente</p>
+      <p className="missao">Quem planta o bem, <em>colhe vidas</em>.</p>
       {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <span className="g">G</span> Entrar com Google
