@@ -67,6 +67,11 @@ export const CSS = `
   .campo { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #5C6B60; }
   .campo input, .campo select, .campo textarea { padding: 12px 14px; border: 1.5px solid #D4DCD2; border-radius: 12px; font-size: 16px; background: #fff; font-weight: 400; color: #1E2B22; }
   .dica { font-size: 13px; color: #7B897F; margin: 0; }
+  .caixas { display: flex; flex-wrap: wrap; gap: 8px; }
+  .caixa { display: flex; align-items: center; gap: 7px; padding: 9px 13px; border: 1.5px solid #D4DCD2; border-radius: 999px; background: #fff; font-size: 14px; font-weight: 600; color: #1E2B22; cursor: pointer; }
+  .caixa input { accent-color: #2F7D4E; margin: 0; }
+  .caixa.marcada { border-color: #2F7D4E; background: #EAF4EE; }
+  .saude { margin-top: 8px !important; font-size: 14px; color: #8A5A16; background: #FFF6E3; border-radius: 8px; padding: 6px 10px; }
   .linha-botoes { display: flex; gap: 10px; margin-top: 10px; }
   .linha-botoes .btn-principal { flex: 1; }
   .btn-secundario { flex: 1; padding: 14px; border: 1.5px solid #D4DCD2; border-radius: 12px; background: #fff; font-size: 16px; font-weight: 700; color: #5C6B60; cursor: pointer; }

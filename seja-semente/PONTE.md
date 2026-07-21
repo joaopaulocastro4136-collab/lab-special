@@ -92,18 +92,21 @@ aparece em `voluntarios`. Ao tocar em "Confirmar presença", o app grava
 `confirmados.{uid} = true` — a Central enxerga isso na hora e pode marcar
 o voluntário como confirmado na tela do Windows.
 
-### `triagens/{id}` — triagem inicial das pessoas acolhidas
+### `cadastros/{id}` — cadastro dos pacientes acolhidos
 Quem escreve: **Central** (Windows ou app Seja Semente). O Semeador não usa.
 
-| Campo         | Tipo      | Exemplo                                        |
-|---------------|-----------|------------------------------------------------|
-| `nome`        | string    | `"José da Silva"`                              |
-| `idade`       | string    | `"52"`                                         |
-| `telefone`    | string    | `"(11) 98888-1111"`                            |
-| `necessidade` | string    | `"Alimentação"` (Alimentação, Roupas, Documentos, Saúde, Moradia, Apoio / conversa, Outro) |
-| `observacoes` | string    | `"Mora perto da praça…"`                       |
-| `status`      | string    | `"aguardando"` → `"em atendimento"` → `"concluída"` |
-| `criadoEm`    | timestamp | data/hora do cadastro                          |
+| Campo             | Tipo             | Exemplo                                        |
+|-------------------|------------------|------------------------------------------------|
+| `nome`            | string           | `"José da Silva"`                              |
+| `idade`           | string           | `"52"`                                         |
+| `telefone`        | string           | `"(11) 98888-1111"`                            |
+| `especialidade`   | string           | `"Odontologia"` (Odontologia, Médico (clínico geral), Psicologia, Nutrição, Assistência social, Outra) |
+| `procedimento`    | string           | `"Extração"` (a lista depende da especialidade — ver ESPECIALIDADES em semente/app.jsx) |
+| `saude`           | array de strings | `["Hipertensão / pressão alta", "Diabetes"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
+| `outrasCondicoes` | string           | `"Insulina 2x ao dia"`                         |
+| `observacoes`     | string           | `"Sente dor há duas semanas…"`                 |
+| `status`          | string           | `"aguardando"` → `"em atendimento"` → `"concluído"` |
+| `criadoEm`        | timestamp        | data/hora do cadastro                          |
 
 ### `agendamentos/{id}` — agenda geral do projeto
 Quem escreve: **Central** (Windows ou app Seja Semente) e também o
