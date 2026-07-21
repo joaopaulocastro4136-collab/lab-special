@@ -1,5 +1,13 @@
 {
   "appId": "com.sejasemente.semeador",
   "appName": "Semeador",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
 }

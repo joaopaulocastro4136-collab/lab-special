@@ -1,5 +1,13 @@
 {
   "appId": "com.sejasemente.central",
   "appName": "Seja Semente",
-  "webDir": "www"
+  "webDir": "www",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
 }

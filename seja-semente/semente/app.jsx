@@ -116,9 +116,12 @@ function TelaLogin({ aoEntrarDemo }) {
     }
     setCarregando(true);
     try {
-      await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+      // No aplicativo instalado, usa a tela de contas do próprio iPhone;
+      // no navegador, a janelinha do Google
+      if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
+      else await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
     } catch (e) {
-      setErro('Não consegui entrar com o Google. Tente de novo.');
+      if (!String(e?.message || '').includes('cancelado')) setErro('Não consegui entrar com o Google. Tente de novo.');
     }
     setCarregando(false);
   }

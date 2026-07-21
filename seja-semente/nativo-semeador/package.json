@@ -4,6 +4,7 @@
   "description": "Casca nativa (iOS) do app Semeador (voluntário do Seja Semente)",
   "license": "ISC",
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.3.0",
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1"
