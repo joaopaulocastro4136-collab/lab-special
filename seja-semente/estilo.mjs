@@ -209,6 +209,26 @@ export const CSS = `
   nav button.ativo { color: #226343; background: #E5F3EA; }
   .icone-aba svg { display: block; }
 
+  /* ── Computador (desktop): menu na lateral esquerda, conteúdo central ── */
+  @media (min-width: 900px) {
+    nav { left: 22px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+      flex-direction: column; width: 96px; max-width: none; margin: 0; padding: 12px 8px; gap: 7px; border-radius: 30px; }
+    nav button { flex: none; padding: 12px 0 10px; border-radius: 18px; }
+    nav button span:last-child { font-size: 11px; }
+    main { max-width: 820px; padding: 30px 24px 60px; }
+    .header-titulo, header .dia-nav { max-width: 820px; margin: 0 auto; }
+    header { padding-left: 140px; padding-right: 40px; }
+    main { margin-left: 140px; margin-right: auto; }
+    .grade-areas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grade-fotos { grid-template-columns: repeat(5, 1fr); }
+    .folha { max-width: 700px; margin: 0 auto; }
+    .foto-cheia img { max-height: 82vh; }
+  }
+  @media (min-width: 1240px) {
+    main { margin: 0 auto; }
+    header { padding-left: 40px; }
+  }
+
   /* ── Abertura animada: muitas cores passam, se reúnem numa SEMENTE,
      a semente se abre e dela brota a logo (diversidade → um projeto) ── */
   .abertura { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; opacity: 1; transition: opacity 0.55s ease; }
