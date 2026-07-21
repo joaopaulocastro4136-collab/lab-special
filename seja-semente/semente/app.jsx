@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { ArvoreLogo } from '../logo.jsx';
+import { ArvoreLogo, Bolha } from '../logo.jsx';
 
 const CONFIGURADO = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('COLE');
 
@@ -297,7 +297,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     <div className="tela-principal">
       <header>
         <div className="header-titulo">
-          <span className="logo-mini">🌱</span>
+          <div className="logo-bolha"><ArvoreLogo tamanho={38} /></div>
           <div>
             <strong>Seja Semente</strong>
             <div className="status">Central · {usuario.nome}</div>
@@ -311,16 +311,21 @@ function TelaPrincipal({ usuario, aoSair }) {
             <div className="titulo-com-botao"><h2>Cadastros</h2><button className="btn-mais" onClick={() => setForm('cadastro')}>+ Novo</button></div>
             {cadastros.length ? cadastros.map(c => (
               <div className="cartao" key={c.id}>
-                <div className="cartao-topo">
-                  <strong>{c.nome}</strong>
-                  <button className={'chip ' + c.status.replace(' ', '-')} onClick={() => mudarStatus(c)}>{c.status}</button>
+                <div className="cartao-linha">
+                  <Bolha nome={c.nome} />
+                  <div>
+                    <div className="cartao-topo">
+                      <strong>{c.nome}</strong>
+                      <button className={'chip ' + c.status.replace(' ', '-')} onClick={() => mudarStatus(c)}>{c.status}</button>
+                    </div>
+                    <p>{[c.especialidade, c.procedimento].filter(Boolean).join(' · ')}</p>
+                    <p className="obs">{[c.idade ? `${c.idade} anos` : '', c.telefone].filter(Boolean).join(' · ')}</p>
+                    {(c.saude?.length > 0 || c.outrasCondicoes) && (
+                      <p className="saude">⚠️ {[...(c.saude || []), c.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                    )}
+                    {c.observacoes && <p className="obs">{c.observacoes}</p>}
+                  </div>
                 </div>
-                <p>{[c.especialidade, c.procedimento].filter(Boolean).join(' · ')}</p>
-                <p className="obs">{[c.idade ? `${c.idade} anos` : '', c.telefone].filter(Boolean).join(' · ')}</p>
-                {(c.saude?.length > 0 || c.outrasCondicoes) && (
-                  <p className="saude">⚠️ {[...(c.saude || []), c.outrasCondicoes].filter(Boolean).join(', ')}</p>
-                )}
-                {c.observacoes && <p className="obs">{c.observacoes}</p>}
               </div>
             )) : <div className="vazio">Nenhum cadastro ainda. Toque em "+ Novo".</div>}
           </>
@@ -330,12 +335,17 @@ function TelaPrincipal({ usuario, aoSair }) {
             <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setForm('agendamento')}>+ Agendar</button></div>
             {agendamentos.length ? agendamentos.map(g => (
               <div className="cartao" key={g.id}>
-                <div className="cartao-topo">
-                  <strong>{g.titulo}</strong>
-                  <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                <div className="cartao-linha">
+                  <Bolha nome={g.titulo} emoji="📅" />
+                  <div>
+                    <div className="cartao-topo">
+                      <strong>{g.titulo}</strong>
+                      <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                    </div>
+                    {g.local && <p>📍 {g.local}</p>}
+                    <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário no Semeador' : 'agendado pela central'}</p>
+                  </div>
                 </div>
-                {g.local && <p>📍 {g.local}</p>}
-                <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário no Semeador' : 'agendado pela central'}</p>
               </div>
             )) : <div className="vazio">Nada agendado ainda.</div>}
           </>
@@ -345,9 +355,14 @@ function TelaPrincipal({ usuario, aoSair }) {
             <div className="titulo-com-botao"><h2>Avisos</h2><button className="btn-mais" onClick={() => setForm('aviso')}>+ Novo</button></div>
             {avisos.length ? avisos.map(a => (
               <div className="cartao" key={a.id}>
-                <strong>{a.titulo}</strong>
-                <p>{a.texto}</p>
-                {a.autor && <div className="obs">— {a.autor}</div>}
+                <div className="cartao-linha">
+                  <Bolha nome={a.titulo} emoji="📢" />
+                  <div>
+                    <strong>{a.titulo}</strong>
+                    <p>{a.texto}</p>
+                    {a.autor && <div className="obs">— {a.autor}</div>}
+                  </div>
+                </div>
               </div>
             )) : <div className="vazio">Nenhum aviso publicado.</div>}
           </>
@@ -380,8 +395,13 @@ function TelaPrincipal({ usuario, aoSair }) {
               <h2>Equipe de voluntários</h2>
               {equipe.length ? equipe.map(v => (
                 <div className="cartao" key={v.id}>
-                  <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
-                  <p>{[v.ministerio, v.telefone].filter(Boolean).join(' · ')}</p>
+                  <div className="cartao-linha">
+                    <Bolha nome={v.nome} />
+                    <div>
+                      <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
+                      <p>{[v.ministerio, v.telefone].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </div>
                 </div>
               )) : <div className="vazio">Nenhum voluntário cadastrado.</div>}
               <button className="btn-sair" onClick={aoSair}>Sair</button>
