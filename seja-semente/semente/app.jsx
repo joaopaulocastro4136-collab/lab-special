@@ -1,8 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  SEJA SEMENTE — aplicativo central do projeto (versão mobile)
 //
-//  É a mesma central do programa Windows, no celular: triagem inicial das
-//  pessoas acolhidas, agendamentos, avisos e equipe de voluntários.
+//  É a mesma central do programa Windows, no celular: cadastro dos pacientes
+//  acolhidos (especialidade, procedimento e ficha de saúde), agendamentos,
+//  avisos e equipe de voluntários.
 //  Windows, este aplicativo e o Semeador (app do voluntário) conversam
 //  através do mesmo Firebase — o contrato de dados está em ../PONTE.md.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -17,30 +18,42 @@ let fb = null;
 
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
-  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import('firebase/auth');
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
   const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
   fb = {
     auth: getAuth(app),
     db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, query, orderBy, serverTimestamp },
+    fns: { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, query, orderBy, serverTimestamp },
   };
 }
+
+// ─── Especialidades, procedimentos e ficha de saúde ───
+const ESPECIALIDADES = {
+  'Odontologia': ['Avaliação', 'Limpeza', 'Restauração', 'Extração', 'Canal', 'Prótese', 'Outro'],
+  'Médico (clínico geral)': ['Consulta', 'Retorno', 'Encaminhamento', 'Outro'],
+  'Psicologia': ['Acolhimento', 'Sessão', 'Outro'],
+  'Nutrição': ['Avaliação', 'Acompanhamento', 'Outro'],
+  'Assistência social': ['Orientação', 'Documentos', 'Cesta básica', 'Outro'],
+  'Outra': ['Outro'],
+};
+const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
+const PROXIMO_STATUS = { 'aguardando': 'em atendimento', 'em atendimento': 'concluído', 'concluído': 'aguardando' };
 
 // ─── Dados de exemplo do modo demonstração ───
 const DEMO = {
   usuario: { uid: 'central-demo', nome: 'Coordenação (teste)' },
-  triagens: [
-    { id: 't1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', necessidade: 'Alimentação', observacoes: 'Mora perto da praça, tem dois filhos pequenos.', status: 'aguardando', criadoEm: new Date() },
-    { id: 't2', nome: 'Ana Paula', idade: '34', telefone: '', necessidade: 'Documentos', observacoes: 'Precisa tirar segunda via do RG.', status: 'em atendimento', criadoEm: new Date(Date.now() - 864e5) },
-    { id: 't3', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', necessidade: 'Saúde', observacoes: 'Encaminhado ao posto, acompanhar retorno.', status: 'concluída', criadoEm: new Date(Date.now() - 3 * 864e5) },
+  cadastros: [
+    { id: 'c1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', observacoes: 'Sente dor no dente há duas semanas.', status: 'aguardando', criadoEm: new Date() },
+    { id: 'c2', nome: 'Ana Paula', idade: '34', telefone: '', especialidade: 'Assistência social', procedimento: 'Documentos', saude: [], outrasCondicoes: '', observacoes: 'Precisa tirar segunda via do RG.', status: 'em atendimento', criadoEm: new Date(Date.now() - 864e5) },
+    { id: 'c3', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', especialidade: 'Médico (clínico geral)', procedimento: 'Consulta', saude: ['Diabetes', 'Medicação contínua'], outrasCondicoes: 'Insulina 2x ao dia', observacoes: '', status: 'concluído', criadoEm: new Date(Date.now() - 3 * 864e5) },
   ],
   agendamentos: [
     { id: 'g1', titulo: 'Entrega de cestas', data: proximoDia(6), hora: '09:00', local: 'Sede Seja Semente', responsavel: 'Coordenação', origem: 'central', criadoEm: new Date() },
     { id: 'g2', titulo: 'Atendimento José da Silva', data: proximoDia(3), hora: '14:00', local: 'Sede', responsavel: 'Maria (voluntária)', origem: 'semeador', criadoEm: new Date() },
   ],
   avisos: [
-    { id: 'a1', titulo: 'Bem-vindo à central Seja Semente!', texto: 'Este é o aplicativo central: triagem, agendamentos, avisos e equipe — a mesma central do programa Windows, no celular.', autor: 'Sistema', criadoEm: new Date() },
+    { id: 'a1', titulo: 'Bem-vindo à central Seja Semente!', texto: 'Este é o aplicativo central: cadastros, agendamentos, avisos e equipe — a mesma central do programa Windows, no celular.', autor: 'Sistema', criadoEm: new Date() },
   ],
   voluntarios: [
     { id: 'v1', nome: 'Maria Souza', ministerio: 'Acolhimento', telefone: '(11) 91234-5678', status: 'ativo', ativo: true },
@@ -69,26 +82,33 @@ function dataNascimentoBonita(iso) {
   return `${d}/${m}/${a}`;
 }
 
-const NECESSIDADES = ['Alimentação', 'Roupas', 'Documentos', 'Saúde', 'Moradia', 'Apoio / conversa', 'Outro'];
-const PROXIMO_STATUS = { 'aguardando': 'em atendimento', 'em atendimento': 'concluída', 'concluída': 'aguardando' };
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  Telas
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TelaLogin({ aoEntrar }) {
+function TelaLogin({ aoEntrarDemo }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [nome, setNome] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
-  async function entrar() {
+  async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) {
-      aoEntrar({ ...DEMO.usuario, nome: nome.trim() || DEMO.usuario.nome });
+      aoEntrarDemo({ ...DEMO.usuario });
       return;
     }
+    setCarregando(true);
+    try {
+      await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+    } catch (e) {
+      setErro('Não consegui entrar com o Google. Tente de novo.');
+    }
+    setCarregando(false);
+  }
+
+  async function entrarEmail() {
+    setErro('');
     setCarregando(true);
     try {
       await fb.fns.signInWithEmailAndPassword(fb.auth, email.trim(), senha);
@@ -102,22 +122,22 @@ function TelaLogin({ aoEntrar }) {
     <div className="tela-login">
       <ArvoreLogo tamanho={130} />
       <h1>Seja Semente</h1>
-      <p className="login-sub">Central do projeto · triagem e agendamentos</p>
-      {CONFIGURADO ? (
+      <p className="login-sub">Central do projeto · cadastros e agendamentos</p>
+      {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
+      <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
+        <span className="g">G</span> Entrar com Google
+      </button>
+      {CONFIGURADO && (
         <>
+          <div className="separador">ou com e-mail</div>
           <input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrar()} />
-        </>
-      ) : (
-        <>
-          <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>
-          <input placeholder="Seu nome" value={nome} onChange={e => setNome(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrar()} />
+          <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
+          <button className="btn-principal" onClick={entrarEmail} disabled={carregando}>
+            {carregando ? 'Entrando…' : 'Entrar'}
+          </button>
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
-      <button className="btn-principal" onClick={entrar} disabled={carregando}>
-        {carregando ? 'Entrando…' : 'Entrar'}
-      </button>
     </div>
   );
 }
@@ -126,22 +146,43 @@ function Campo({ rotulo, children }) {
   return <label className="campo"><span>{rotulo}</span>{children}</label>;
 }
 
-function FormTriagem({ aoSalvar, aoCancelar }) {
-  const [f, setF] = useState({ nome: '', idade: '', telefone: '', necessidade: NECESSIDADES[0], observacoes: '' });
+function FormCadastro({ aoSalvar, aoCancelar }) {
+  const [f, setF] = useState({
+    nome: '', idade: '', telefone: '',
+    especialidade: Object.keys(ESPECIALIDADES)[0],
+    procedimento: ESPECIALIDADES[Object.keys(ESPECIALIDADES)[0]][0],
+    saude: [], outrasCondicoes: '', observacoes: '',
+  });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const mudaEspecialidade = e => setF({ ...f, especialidade: e.target.value, procedimento: ESPECIALIDADES[e.target.value][0] });
+  const alternaSaude = c => setF({ ...f, saude: f.saude.includes(c) ? f.saude.filter(x => x !== c) : [...f.saude, c] });
   return (
     <div className="folha">
-      <h2>Nova triagem</h2>
-      <Campo rotulo="Nome"><input value={f.nome} onChange={muda('nome')} placeholder="Nome da pessoa acolhida" /></Campo>
+      <h2>Novo cadastro</h2>
+      <Campo rotulo="Nome do paciente"><input value={f.nome} onChange={muda('nome')} /></Campo>
       <Campo rotulo="Idade"><input value={f.idade} onChange={muda('idade')} inputMode="numeric" /></Campo>
       <Campo rotulo="Telefone"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" /></Campo>
-      <Campo rotulo="Principal necessidade">
-        <select value={f.necessidade} onChange={muda('necessidade')}>{NECESSIDADES.map(n => <option key={n}>{n}</option>)}</select>
+      <Campo rotulo="Especialidade">
+        <select value={f.especialidade} onChange={mudaEspecialidade}>{Object.keys(ESPECIALIDADES).map(e => <option key={e}>{e}</option>)}</select>
       </Campo>
+      <Campo rotulo="Tipo de procedimento">
+        <select value={f.procedimento} onChange={muda('procedimento')}>{ESPECIALIDADES[f.especialidade].map(p => <option key={p}>{p}</option>)}</select>
+      </Campo>
+      <div className="campo"><span>Saúde do paciente (marque o que tiver)</span>
+        <div className="caixas">
+          {CONDICOES_SAUDE.map(c => (
+            <label key={c} className={f.saude.includes(c) ? 'caixa marcada' : 'caixa'}>
+              <input type="checkbox" checked={f.saude.includes(c)} onChange={() => alternaSaude(c)} />
+              {c}
+            </label>
+          ))}
+        </div>
+      </div>
+      <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={muda('outrasCondicoes')} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
       <Campo rotulo="Observações"><textarea rows={3} value={f.observacoes} onChange={muda('observacoes')} /></Campo>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Salvar triagem</button>
+        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Salvar cadastro</button>
       </div>
     </div>
   );
@@ -184,9 +225,9 @@ function FormAviso({ aoSalvar, aoCancelar }) {
 }
 
 function TelaPrincipal({ usuario, aoSair }) {
-  const [aba, setAba] = useState('triagem');
-  const [form, setForm] = useState(null); // 'triagem' | 'agendamento' | 'aviso'
-  const [triagens, setTriagens] = useState(CONFIGURADO ? [] : DEMO.triagens);
+  const [aba, setAba] = useState('cadastro');
+  const [form, setForm] = useState(null); // 'cadastro' | 'agendamento' | 'aviso'
+  const [cadastros, setCadastros] = useState(CONFIGURADO ? [] : DEMO.cadastros);
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : DEMO.voluntarios);
@@ -196,7 +237,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const { collection, onSnapshot, query, orderBy } = fb.fns;
     const escuta = (col, ord, poe) => onSnapshot(query(collection(fb.db, col), orderBy(...ord)), s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const soltar = [
-      escuta('triagens', ['criadoEm', 'desc'], setTriagens),
+      escuta('cadastros', ['criadoEm', 'desc'], setCadastros),
       escuta('agendamentos', ['data'], setAgendamentos),
       escuta('avisos', ['criadoEm', 'desc'], setAvisos),
       escuta('voluntarios', ['nome'], setVoluntarios),
@@ -238,17 +279,17 @@ function TelaPrincipal({ usuario, aoSair }) {
     await updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca);
   }
 
-  async function mudarStatus(t) {
-    const status = PROXIMO_STATUS[t.status] || 'aguardando';
+  async function mudarStatus(c) {
+    const status = PROXIMO_STATUS[c.status] || 'aguardando';
     if (!CONFIGURADO) {
-      setTriagens(ts => ts.map(x => x.id === t.id ? { ...x, status } : x));
+      setCadastros(cs => cs.map(x => x.id === c.id ? { ...x, status } : x));
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'triagens', t.id), { status });
+    await updateDoc(doc(fb.db, 'cadastros', c.id), { status });
   }
 
-  if (form === 'triagem') return <FormTriagem aoCancelar={() => setForm(null)} aoSalvar={f => salvar('triagens', f, { status: 'aguardando', criadoEm: new Date() }, setTriagens)} />;
+  if (form === 'cadastro') return <FormCadastro aoCancelar={() => setForm(null)} aoSalvar={f => salvar('cadastros', f, { status: 'aguardando', criadoEm: new Date() }, setCadastros)} />;
   if (form === 'agendamento') return <FormAgendamento aoCancelar={() => setForm(null)} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
   if (form === 'aviso') return <FormAviso aoCancelar={() => setForm(null)} aoSalvar={f => salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos)} />;
 
@@ -265,19 +306,23 @@ function TelaPrincipal({ usuario, aoSair }) {
       </header>
 
       <main>
-        {aba === 'triagem' && (
+        {aba === 'cadastro' && (
           <>
-            <div className="titulo-com-botao"><h2>Triagem</h2><button className="btn-mais" onClick={() => setForm('triagem')}>+ Nova</button></div>
-            {triagens.length ? triagens.map(t => (
-              <div className="cartao" key={t.id}>
+            <div className="titulo-com-botao"><h2>Cadastros</h2><button className="btn-mais" onClick={() => setForm('cadastro')}>+ Novo</button></div>
+            {cadastros.length ? cadastros.map(c => (
+              <div className="cartao" key={c.id}>
                 <div className="cartao-topo">
-                  <strong>{t.nome}</strong>
-                  <button className={'chip ' + t.status.replace(' ', '-')} onClick={() => mudarStatus(t)}>{t.status}</button>
+                  <strong>{c.nome}</strong>
+                  <button className={'chip ' + c.status.replace(' ', '-')} onClick={() => mudarStatus(c)}>{c.status}</button>
                 </div>
-                <p>{t.necessidade}{t.idade ? ` · ${t.idade} anos` : ''}{t.telefone ? ` · ${t.telefone}` : ''}</p>
-                {t.observacoes && <p className="obs">{t.observacoes}</p>}
+                <p>{[c.especialidade, c.procedimento].filter(Boolean).join(' · ')}</p>
+                <p className="obs">{[c.idade ? `${c.idade} anos` : '', c.telefone].filter(Boolean).join(' · ')}</p>
+                {(c.saude?.length > 0 || c.outrasCondicoes) && (
+                  <p className="saude">⚠️ {[...(c.saude || []), c.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                )}
+                {c.observacoes && <p className="obs">{c.observacoes}</p>}
               </div>
-            )) : <div className="vazio">Nenhuma triagem ainda. Toque em "+ Nova".</div>}
+            )) : <div className="vazio">Nenhum cadastro ainda. Toque em "+ Novo".</div>}
           </>
         )}
         {aba === 'agenda' && (
@@ -346,7 +391,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       </main>
 
       <nav>
-        <button className={aba === 'triagem' ? 'ativo' : ''} onClick={() => setAba('triagem')}>📋<span>Triagem</span></button>
+        <button className={aba === 'cadastro' ? 'ativo' : ''} onClick={() => setAba('cadastro')}>📋<span>Cadastro</span></button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
         <button className={aba === 'avisos' ? 'ativo' : ''} onClick={() => setAba('avisos')}>📢<span>Avisos</span></button>
         <button className={aba === 'equipe' ? 'ativo' : ''} onClick={() => setAba('equipe')}>
@@ -367,7 +412,7 @@ function App() {
     let soltar = null;
     ligarFirebase().then(() => {
       soltar = fb.fns.onAuthStateChanged(fb.auth, u => {
-        setUsuario(u ? { uid: u.uid, email: u.email, nome: u.email } : null);
+        setUsuario(u ? { uid: u.uid, email: u.email, nome: u.displayName || u.email } : null);
         setPronto(true);
       });
     });
@@ -380,7 +425,7 @@ function App() {
   }
 
   if (!pronto) return <div className="carregando">🌱</div>;
-  if (!usuario) return <TelaLogin aoEntrar={setUsuario} />;
+  if (!usuario) return <TelaLogin aoEntrarDemo={setUsuario} />;
   return <TelaPrincipal usuario={usuario} aoSair={sair} />;
 }
 
