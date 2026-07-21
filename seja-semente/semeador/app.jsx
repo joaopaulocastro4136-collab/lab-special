@@ -35,7 +35,11 @@ async function ligarFirebase() {
   // autenticação e o banco falha — estes dois ajustes são os recomendados:
   let auth;
   try {
-    auth = modAuth.initializeAuth(app, { persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence] });
+    auth = modAuth.initializeAuth(app, {
+      persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence],
+      // Necessário para o login por janelinha/redirecionamento no navegador
+      popupRedirectResolver: modAuth.browserPopupRedirectResolver,
+    });
   } catch (e) {
     auth = modAuth.getAuth(app);
   }
