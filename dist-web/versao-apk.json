@@ -1,6 +1,6 @@
 {
-  "versionCode": 26,
-  "versionName": "8.4",
+  "versionCode": 27,
+  "versionName": "8.5",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Agenda do dia mostra as horas só da etapa atual. Toque em Baixar para atualizar."
+  "novidades": "Iniciar e parar etapa direto na agenda do dia. Toque em Baixar para atualizar."
 }
