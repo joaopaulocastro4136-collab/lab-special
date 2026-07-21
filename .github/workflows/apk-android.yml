@@ -92,6 +92,21 @@ jobs:
           java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain assembleRelease --no-daemon
           ls -la app/build/outputs/apk/release/
 
+      - name: Registra a impressão digital (SHA) do app no Firebase (login Google)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          # SHA-1 e SHA-256 da chave que ASSINOU o APK — precisam estar no Firebase,
+          # senão o "Entrar com Google" no Android falha com "developer error" (código 10).
+          SAIDA=$(keytool -list -v -keystore "$LAB_KS_ARQUIVO" -alias labspecial -storepass "$LAB_KS_SENHA" 2>/dev/null)
+          SHA1=$(echo "$SAIDA" | grep -i "SHA1:" | head -1 | sed 's/.*SHA1: *//')
+          SHA256=$(echo "$SAIDA" | grep -i "SHA256:" | head -1 | sed 's/.*SHA256: *//')
+          echo "SHA-1 do app:  $SHA1"
+          echo "SHA-256 do app: $SHA256"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          SHA1_APP="$SHA1" SHA256_APP="$SHA256" node registrar-sha-android.mjs || echo "::warning::Não consegui registrar a SHA (o build segue mesmo assim)."
+
       - name: Publica o APK e o aviso de atualização no site
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
