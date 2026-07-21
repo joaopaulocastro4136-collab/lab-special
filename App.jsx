@@ -2173,9 +2173,7 @@ export default function App() {
           <FinancasView casos={casos} comissoes={comissoes} ehGestor={ehGestor}
             pagamentos={pagamentos}
             dentistas={dentistas}
-            onSetPrazoPagamento={(nome, texto) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, prazoPagamento: texto || null } : d) })}
-            onSetDiasPagamento={(nome, dias) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, diasPagamento: dias ?? null, dataPagamento: null } : d) })}
-            onSetDataPagamento={(nome, data) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) } : d) })}
+            onSalvarCombinado={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRegistrarPagamento={registrarPagamento}
             onRemoverPagamento={removerPagamento}
             onSelect={goToDetalhe}
@@ -3736,6 +3734,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
   const [dentistaCombinado, setDentistaCombinado] = useState(null); // dentista com o editor de combinado de pagamento aberto
   const [expandido, setExpandido] = useState(null);
   const [dentExpandido, setDentExpandido] = useState(null); // dentista com a caixa aberta (accordion)
+  const [dentSecaoAberta, setDentSecaoAberta] = useState(false); // a seção Dentistas inteira: caixinha que abre/fecha
 
   const inputClass = "px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white";
 
@@ -4013,11 +4012,14 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       </div>
 
       <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
-        <div className="flex items-center gap-2 mb-3">
+        <button onClick={() => setDentSecaoAberta(a => !a)} className="w-full flex items-center gap-2 text-left" style={{ marginBottom: dentSecaoAberta ? 12 : 0 }}>
           <UserPlus size={16} color={GOLD} />
-          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
-        </div>
+          <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
+          <span className="text-xs font-bold" style={{ color: '#A8A29E' }}>{dentistas.length}</span>
+          <ChevronDown size={16} className="text-stone-400" style={{ transform: dentSecaoAberta ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+        </button>
 
+        {dentSecaoAberta && <>
         <div className="flex flex-col gap-2 mb-1">
           <input className={inputClass} value={novoDentista} onChange={e => { setNovoDentista(e.target.value); setErroDentista(''); }} placeholder="Nome do dentista ou clínica *" />
           <input type="email" className={inputClass} value={novoDentEmail} onChange={e => { setNovoDentEmail(e.target.value); setErroDentista(''); }} placeholder="E-mail Google (acesso ao Special Clinic)" />
@@ -4079,12 +4081,9 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
                 {dentistaCombinado === d.nome && (
                   <div className="mt-1.5">
                     <PrazoPagamentoEdit
-                      atual={d.prazoPagamento}
-                      onSalvar={(texto) => onUpdateDentista(d.nome, { prazoPagamento: texto || null })}
                       diasAtual={d.diasPagamento ?? null}
-                      onSalvarDias={(n) => onUpdateDentista(d.nome, { diasPagamento: n ?? null, dataPagamento: null })}
                       dataAtual={d.dataPagamento || null}
-                      onSalvarData={(data) => onUpdateDentista(d.nome, { dataPagamento: data || null, diasPagamento: data ? null : (d.diasPagamento ?? null) })} />
+                      onSalvar={(patch) => onUpdateDentista(d.nome, patch)} />
                   </div>
                 )}
                 </>}
@@ -4098,6 +4097,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
             })}
           </div>
         )}
+        </>}
       </div>
 
       <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
@@ -5708,7 +5708,7 @@ function EntregasView({ casos, provasLevar, provasNaClinica, getEndereco, getTel
 
 // ─── Finanças (só gestor): entradas, valores e comissões ───
 // Combinado de pagamento do dentista (aparece para ele no Special Clinic)
-function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtual, onSalvarData }) {
+function PrazoPagamentoEdit({ diasAtual, dataAtual, onSalvar }) {
   // Escolha fica local e SÓ grava quando toca em Salvar (nada muda sem querer)
   const [modo, setModo] = useState(dataAtual ? 'data' : (diasAtual ?? null) !== null ? 'dias' : null);
   const [dias, setDias] = useState((diasAtual ?? null) !== null ? String(diasAtual) : '');
@@ -5716,19 +5716,19 @@ function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtua
   const [salvo, setSalvo] = useState(false);
 
   const podeSalvar = modo === 'dias' ? parseInt(dias, 10) >= 0 : (modo === 'data' ? !!data : true);
+  // Grava TUDO num único patch — dois updates seguidos (dias + texto) liam o mesmo
+  // estado do render e o segundo apagava o primeiro (o combinado voltava ao anterior).
   const salvar = () => {
+    let patch;
     if (modo === 'dias') {
       const n = parseInt(dias, 10);
-      onSalvarDias(n);
-      onSalvar(`pagar até ${n} ${n === 1 ? 'dia' : 'dias'} após a entrega`);
+      patch = { diasPagamento: n, dataPagamento: null, prazoPagamento: `pagar até ${n} ${n === 1 ? 'dia' : 'dias'} após a entrega` };
     } else if (modo === 'data') {
-      onSalvarData(data);
-      onSalvar(`pagamento até ${data.split('-').reverse().join('/')}`);
+      patch = { dataPagamento: data, diasPagamento: null, prazoPagamento: `pagamento até ${data.split('-').reverse().join('/')}` };
     } else {
-      onSalvarDias(null);
-      onSalvarData(null);
-      onSalvar('');
+      patch = { diasPagamento: null, dataPagamento: null, prazoPagamento: null };
     }
+    onSalvar(patch);
     setSalvo(true);
     setTimeout(() => setSalvo(false), 2200);
   };
@@ -5808,7 +5808,7 @@ function PrazoPagamentoEdit({ atual, onSalvar, diasAtual, onSalvarDias, dataAtua
   );
 }
 
-function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSetPrazoPagamento, onSetDiasPagamento, onSetDataPagamento, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
+function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSalvarCombinado, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dentistaCobranca, setDentistaCobranca] = useState(null);
   const [valorPagamento, setValorPagamento] = useState('');
@@ -6030,12 +6030,9 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSet
                       </div>
                     )}
                     <PrazoPagamentoEdit
-                      atual={(dentistas || []).find(x => x.nome === d.nome)?.prazoPagamento}
-                      onSalvar={(texto) => onSetPrazoPagamento(d.nome, texto)}
                       diasAtual={(dentistas || []).find(x => x.nome === d.nome)?.diasPagamento ?? null}
-                      onSalvarDias={(n) => onSetDiasPagamento(d.nome, n)}
                       dataAtual={(dentistas || []).find(x => x.nome === d.nome)?.dataPagamento || null}
-                      onSalvarData={(data) => onSetDataPagamento(d.nome, data)} />
+                      onSalvar={(patch) => onSalvarCombinado(d.nome, patch)} />
                     {/* Registrar pagamento */}
                     <div className="rounded-xl p-3" style={{ background: '#F5F4F0' }}>
                       <div className="text-xs font-bold mb-2" style={{ color: INK }}>Registrar pagamento recebido:</div>

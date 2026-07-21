@@ -6,6 +6,7 @@ import {
   GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
   createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail,
+  fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
@@ -3934,7 +3935,7 @@ function Raiz() {
     setEntrando(true);
     // No app nativo (iPhone), o login usa a tela de contas do próprio aparelho
     if (window.__entrarNativo) {
-      try { await window.__entrarNativo(auth); } catch (e) { console.error(e); }
+      try { await window.__entrarNativo(auth); } catch (e) { await avisarErroLogin(e); }
       setEntrando(false);
       return;
     }
@@ -3944,10 +3945,35 @@ function Raiz() {
       await signInWithPopup(auth, provider);
     } catch (e) {
       if (e.code === 'auth/popup-blocked' || ehMobile()) {
-        try { await signInWithRedirect(auth, provider); } catch (e2) { console.error(e2); }
+        try { await signInWithRedirect(auth, provider); } catch (e2) { await avisarErroLogin(e2); }
+      } else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+        await avisarErroLogin(e);
       }
     }
     setEntrando(false);
+  };
+
+  // Mensagem clara quando o e-mail já tem conta por outro método (Google × senha)
+  const avisarErroLogin = async (e) => {
+    const code = (e && e.code) || String(e);
+    if (code === 'auth/account-exists-with-different-credential') {
+      const em = (e && e.customData && e.customData.email) || '';
+      let metodos = [];
+      try { if (em) metodos = await fetchSignInMethodsForEmail(auth, em); } catch (_) { }
+      if (metodos.includes('password')) {
+        alert('O e-mail ' + em + ' já tem conta criada com SENHA. Entre com "Entrar com e-mail e senha" aqui embaixo (se esqueceu a senha, use "Esqueci minha senha").');
+      } else if (metodos.includes('google.com')) {
+        alert('O e-mail ' + em + ' já entra com o Google. Toque em "Continuar com Google".');
+      } else if (metodos.some(m => m.indexOf('apple') !== -1)) {
+        alert('O e-mail ' + em + ' já entra com a Apple. Toque em "Continuar com Apple".');
+      } else {
+        alert('O e-mail ' + em + ' já tem conta por outro método de login. Use o mesmo jeito que você usou da primeira vez.');
+      }
+      return;
+    }
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return; // cancelamento, não é erro
+    console.error('login', e);
+    alert('Não foi possível entrar (' + code + '). Tente de novo.');
   };
 
   const entrarApple = async () => {
