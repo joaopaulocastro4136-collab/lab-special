@@ -261,7 +261,13 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [escalas, setEscalas] = useState(CONFIGURADO ? [] : lerLocal('sd-escalas', DEMO.escalas));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
-  const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
+  const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
+
+  // Meus pacientes: os que a central agendou comigo (ou designou na triagem)
+  const meusIds = new Set(agendamentos.map(g => g.pacienteId).filter(Boolean));
+  const pacientes = CONFIGURADO
+    ? todosPacientes.filter(p => meusIds.has(p.id) || p.triagem?.profissionalUid === usuario.uid)
+    : todosPacientes;
 
   // Sem Firebase, o que você faz fica salvo no aparelho
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-escalas', escalas); }, [escalas]);
@@ -276,7 +282,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   useEffect(() => {
     if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); return; }
     if (!CONFIGURADO) {
-      setFichaPaciente(pacientes.find(p => p.id === fichaId) || null);
+      setFichaPaciente(todosPacientes.find(p => p.id === fichaId) || null);
       setFichaArquivos(demoArquivos[fichaId] || []);
       return;
     }
@@ -284,7 +290,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
     const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => { s1(); s2(); };
-  }, [fichaId, pacientes, demoArquivos]);
+  }, [fichaId, todosPacientes, demoArquivos]);
 
   async function salvarArquivo(dataUrl, legenda) {
     const registro = { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '' };
@@ -317,11 +323,10 @@ function TelaPrincipal({ usuario, aoSair }) {
       snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(g => g.profissionalUid === usuario.uid))
     );
-    // Pacientes que a triagem da central designou para ESTE voluntário
+    // Todos os pacientes — o app filtra os "meus" cruzando com a agenda
     const paraPacientes = onSnapshot(
       query(collection(fb.db, 'pacientes'), orderBy('criadoEm', 'desc')),
-      snap => setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => p.triagem?.profissionalUid === usuario.uid))
+      snap => setTodosPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
     // Batimento da central: o programa Windows atualiza central/status a cada
     // minuto; se o último batimento tem menos de 3 minutos, ela está online.
@@ -384,9 +389,9 @@ function TelaPrincipal({ usuario, aoSair }) {
                       <strong>{p.nome}</strong>
                       <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
                     </div>
-                    <p>{p.triagem.especialidade} · {p.triagem.procedimento}</p>
+                    {p.triagem && <p>{p.triagem.area || [p.triagem.especialidade, p.triagem.procedimento].filter(Boolean).join(' · ')}</p>}
                     <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
-                    {(p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
+                    {p.triagem && (p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
                       <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
                     )}
                     {p.observacoes && <p className="obs">{p.observacoes}</p>}

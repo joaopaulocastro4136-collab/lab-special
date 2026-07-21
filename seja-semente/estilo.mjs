@@ -45,6 +45,8 @@ export const CSS = `
   main { flex: 1; padding: 20px 16px 110px; max-width: 560px; width: 100%; margin: 0 auto; }
   main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; margin: 8px 0 14px; letter-spacing: -0.3px; color: #223528; }
   .titulo-com-botao { display: flex; justify-content: space-between; align-items: center; }
+  .btn-header { border: none; background: rgba(255,255,255,0.16); color: #fff; width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+  .banner-ok { background: #D6F1E0; color: #1E6B41; border-radius: 13px; padding: 12px 15px; font-weight: 800; font-size: 14.5px; margin-bottom: 12px; }
   .btn-mais { border: none; border-radius: 13px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-weight: 800; font-size: 14px; padding: 10px 17px; cursor: pointer; box-shadow: 0 6px 14px rgba(47,125,78,0.32); }
 
   /* ── Cartões ── */
