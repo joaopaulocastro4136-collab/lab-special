@@ -1,6 +1,6 @@
 {
-  "versionCode": 35,
-  "versionName": "9.3",
+  "versionCode": 37,
+  "versionName": "9.5",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Agenda do dia mostra todos os trabalhos agendados; pular etapa nao deixa atrasado; download sempre atualizado. Toque em Baixar."
+  "novidades": "Trabalho com prova pendente (indo pra clinica) sai da agenda de reagendar. Toque em Baixar para atualizar."
 }
