@@ -551,6 +551,17 @@ function TelaPrincipal({ usuario, aoSair }) {
     await addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() });
   }
 
+  // Autoriza um e-mail: quem entrar com essa conta Google já cai na central
+  async function autorizarEmail(email) {
+    const e = email.trim().toLowerCase();
+    if (!e || !e.includes('@')) return 'Digite um e-mail válido.';
+    if (CONFIGURADO) {
+      const { doc, setDoc, serverTimestamp } = fb.fns;
+      await setDoc(doc(fb.db, 'central-autorizados', e), { email: e, autorizadoPor: usuario.nome || '', criadoEm: serverTimestamp() });
+    }
+    return '';
+  }
+
   // Gera um código de acesso para liberar outra pessoa na central
   async function gerarCodigoAcesso() {
     const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1082,8 +1093,10 @@ function TelaPrincipal({ usuario, aoSair }) {
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('novoVoluntario')}>+ Adicionar novo dentista / usuário</button>
             <p className="dica" style={{ marginBottom: 16 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>
 
+            <CartaoConvite aoAutorizar={autorizarEmail} />
+
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <strong>Dar acesso à central</strong>
+              <strong>Ou dar acesso por código</strong>
               <p className="dica" style={{ margin: 0 }}>Gere um código e passe para a pessoa. Ela entra com a conta Google dela e digita o código para ter acesso à central. Cada código serve uma vez.</p>
               {codigoGerado ? (
                 <>
@@ -1118,6 +1131,34 @@ function TelaPrincipal({ usuario, aoSair }) {
         </button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
+    </div>
+  );
+}
+
+// Cartão do Perfil para convidar alguém por e-mail (entra direto, sem código)
+function CartaoConvite({ aoAutorizar }) {
+  const [email, setEmail] = useState('');
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
+  const [carregando, setCarregando] = useState(false);
+  async function convidar() {
+    setErro(''); setOk('');
+    setCarregando(true);
+    try {
+      const msg = await aoAutorizar(email);
+      if (msg) setErro(msg);
+      else { setOk(`${email.trim().toLowerCase()} liberado! É só entrar com essa conta Google.`); setEmail(''); }
+    } catch (e) { setErro('Não consegui autorizar agora. Tente de novo.'); }
+    setCarregando(false);
+  }
+  return (
+    <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <strong>Dar acesso por e-mail</strong>
+      <p className="dica" style={{ margin: 0 }}>Digite o e-mail da conta Google da pessoa. Ela só entra com essa conta e já cai na central — sem precisar de código.</p>
+      <input className="busca" style={{ margin: 0 }} type="email" inputMode="email" value={email} onChange={e => { setEmail(e.target.value); setOk(''); }} onKeyDown={e => e.key === 'Enter' && convidar()} placeholder="nome@gmail.com" />
+      {erro && <div className="erro">{erro}</div>}
+      {ok && <div className="banner-ok" style={{ margin: 0 }}>✓ {ok}</div>}
+      <button className="btn-principal" style={{ maxWidth: 'none' }} disabled={!email.trim() || carregando} onClick={convidar}>{carregando ? 'Autorizando…' : 'Autorizar e-mail'}</button>
     </div>
   );
 }
@@ -1172,6 +1213,15 @@ function App() {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
         const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
         if (meu.exists()) { if (!cancelado) setAcesso('liberado'); return; }
+        // E-mail pré-autorizado pela coordenação? entra direto, sem código
+        if (usuario.email) {
+          const conv = await getDoc(doc(fb.db, 'central-autorizados', usuario.email.toLowerCase()));
+          if (conv.exists()) {
+            await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
+            if (!cancelado) setAcesso('liberado');
+            return;
+          }
+        }
         const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
         if (algum.empty) {
           await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() });
