@@ -167,6 +167,12 @@ export const CSS = `
   .entrada-qtd { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px; background: #D9482B; color: #fff; font-weight: 800; font-size: 14.5px; display: flex; align-items: center; justify-content: center; flex: none; }
   .caixa-entrada.pendente .entrada-seta { color: #C23A1E; flex: none; }
   .caixa-entrada.vazia .entrada-seta { color: #226343; flex: none; }
+
+  /* ── Sequência de agendamentos (um por procedimento) ── */
+  .linha-sequencia { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid rgba(30,43,34,0.07); border-radius: 14px; padding: 10px 12px; margin-top: 7px; box-shadow: 0 3px 8px rgba(30,43,34,0.05); }
+  .linha-sequencia strong { flex: 1; font-size: 14.5px; }
+  .seq-tempo { font-size: 12.5px; font-weight: 800; color: #55645A; white-space: nowrap; }
+  .linha-sequencia input[type="time"] { width: 92px; padding: 8px 9px; border: 1.5px solid #DBE3D8; border-radius: 10px; font-size: 14px; background: #fff; }
   .hora-fim { display: block; font-size: 11px; font-weight: 700; color: #9AA79D; }
 
   /* ── Ações da ficha, seletor e pesquisa ── */
