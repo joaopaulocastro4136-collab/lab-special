@@ -108,9 +108,11 @@ export const CSS = `
   nav { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 4px;
     background: rgba(255,255,255,0.96); backdrop-filter: blur(10px); border-radius: 24px; padding: 8px;
     box-shadow: 0 12px 34px rgba(30,43,34,0.20); max-width: 560px; margin: 0 auto; }
-  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 0 8px; border: none; background: none; font-size: 21px; color: #8A968D; cursor: pointer; border-radius: 17px; }
-  nav button span:last-child { font-size: 11px; font-weight: 800; }
+  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 8px; border: none; background: none; color: #8A968D; cursor: pointer; border-radius: 17px; }
+  nav button svg { display: block; }
+  nav button span:last-child { font-size: 10.5px; font-weight: 800; }
   nav button.ativo { color: #226343; background: #E5F3EA; }
+  .icone-aba svg { display: block; }
 `;
 
 export function paginaHTML({ titulo, descricao }) {

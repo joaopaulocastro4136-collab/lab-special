@@ -9,7 +9,15 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { ArvoreLogo, Bolha } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
+import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert } from 'lucide-react';
+import icone from '../icones/icone-semeador-1024.png';
+
+// A logo do aplicativo (a mesma do ícone), em tamanho de tela
+function LogoApp({ tamanho = 120 }) {
+  return <img src={icone} width={tamanho} height={tamanho} alt="Semeador"
+    style={{ display: 'block', borderRadius: tamanho * 0.24, boxShadow: tamanho >= 90 ? '0 12px 30px rgba(30,43,34,0.20)' : 'none' }} />;
+}
 
 // ─── Modo demonstração: enquanto o Firebase não estiver configurado, o app
 //     roda sozinho com dados de exemplo para dar pra ver e testar tudo ───
@@ -112,7 +120,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
   return (
     <div className="tela-login">
-      <div className="login-cartao"><ArvoreLogo tamanho={128} /></div>
+      <LogoApp tamanho={132} />
       <h1>Semeador</h1>
       <p className="login-sub">Aplicativo do voluntário · Seja Semente</p>
       <p className="missao">Quem planta o bem, <em>colhe vidas</em>.</p>
@@ -159,7 +167,7 @@ function TelaCadastro({ usuario, aoEnviar }) {
 function TelaAguardando({ usuario, aoSair, aoSimularAprovacao }) {
   return (
     <div className="tela-login">
-      <div className="login-logo">🕊️</div>
+      <LogoApp tamanho={110} />
       <h1>Solicitação enviada!</h1>
       <p className="login-sub">Seu cadastro foi enviado para a central Seja Semente.<br />Assim que a coordenação aprovar, você entra como voluntário — o aplicativo libera sozinho, na hora.</p>
       {!CONFIGURADO && <button className="btn-principal" onClick={aoSimularAprovacao}>(demonstração) Simular aprovação da central</button>}
@@ -171,7 +179,7 @@ function TelaAguardando({ usuario, aoSair, aoSimularAprovacao }) {
 function TelaRecusado({ aoSair }) {
   return (
     <div className="tela-login">
-      <div className="login-logo">🌱</div>
+      <LogoApp tamanho={110} />
       <h1>Cadastro não aprovado</h1>
       <p className="login-sub">A central Seja Semente não aprovou esta solicitação.<br />Fale com a coordenação se achar que foi um engano.</p>
       <button className="btn-sair" onClick={aoSair}>Sair</button>
@@ -183,7 +191,7 @@ function CartaoAviso({ aviso }) {
   return (
     <div className="cartao">
       <div className="cartao-linha">
-        <Bolha nome={aviso.titulo} emoji="📢" />
+        <Bolha nome={aviso.titulo} Icone={Megaphone} />
         <div>
           <div className="cartao-topo">
             <strong>{aviso.titulo}</strong>
@@ -202,13 +210,13 @@ function CartaoEscala({ escala, uid, aoConfirmar }) {
   return (
     <div className="cartao">
       <div className="cartao-linha">
-        <Bolha nome={escala.ministerio} emoji="🗓️" />
+        <Bolha nome={escala.ministerio} Icone={ListChecks} />
         <div>
           <div className="cartao-topo">
             <strong>{escala.ministerio}</strong>
             <span className="quando">{dataBonita(escala.data)} · {escala.hora}</span>
           </div>
-          {escala.local && <p>📍 {escala.local}</p>}
+          {escala.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{escala.local}</p>}
           <div className="linha-confirma">
             {confirmado
               ? <span className="ok">✓ Presença confirmada</span>
@@ -253,9 +261,13 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
   const [formAgenda, setFormAgenda] = useState(false);
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
-  const [escalas, setEscalas] = useState(CONFIGURADO ? [] : DEMO.escalas);
-  const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
+  const [escalas, setEscalas] = useState(CONFIGURADO ? [] : lerLocal('sd-escalas', DEMO.escalas));
+  const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
   const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
+
+  // Sem Firebase, o que você faz fica salvo no aparelho
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-escalas', escalas); }, [escalas]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-agendamentos', agendamentos); }, [agendamentos]);
   const [centralOnline, setCentralOnline] = useState(DEMO.centralOnline);
 
   // Escuta o Firestore em tempo real: qualquer coisa que a central (programa
@@ -319,7 +331,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     <div className="tela-principal">
       <header>
         <div className="header-titulo">
-          <div className="logo-bolha"><ArvoreLogo tamanho={38} /></div>
+          <div className="logo-bolha"><LogoApp tamanho={40} /></div>
           <div>
             <strong>Semeador</strong>
             <div className={centralOnline ? 'status online' : 'status'}>
@@ -357,7 +369,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                     <p>{p.triagem.especialidade} · {p.triagem.procedimento}</p>
                     <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
                     {(p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
-                      <p className="saude">⚠️ {[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                      <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
                     )}
                     {p.observacoes && <p className="obs">{p.observacoes}</p>}
                   </div>
@@ -372,13 +384,13 @@ function TelaPrincipal({ usuario, aoSair }) {
             {agendamentos.length ? agendamentos.map(g => (
               <div className="cartao" key={g.id}>
                 <div className="cartao-linha">
-                  <Bolha nome={g.titulo} emoji="📅" />
+                  <Bolha nome={g.titulo} Icone={CalendarDays} />
                   <div>
                     <div className="cartao-topo">
                       <strong>{g.titulo}</strong>
                       <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
                     </div>
-                    {g.local && <p>📍 {g.local}</p>}
+                    {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}
                     <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário' : 'agendado pela central'}</p>
                   </div>
                 </div>
@@ -406,11 +418,11 @@ function TelaPrincipal({ usuario, aoSair }) {
       </main>
 
       <nav>
-        <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}>🏠<span>Início</span></button>
-        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}>📋<span>Pacientes</span></button>
-        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
-        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}>🗓️<span>Escalas</span></button>
-        <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}>👤<span>Perfil</span></button>
+        <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}><Home size={23} /><span>Início</span></button>
+        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={23} /><span>Pacientes</span></button>
+        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={23} /><span>Agenda</span></button>
+        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}><ListChecks size={23} /><span>Escalas</span></button>
+        <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={23} /><span>Perfil</span></button>
       </nav>
     </div>
   );
@@ -418,8 +430,13 @@ function TelaPrincipal({ usuario, aoSair }) {
 
 function App() {
   const [pronto, setPronto] = useState(!CONFIGURADO);
-  const [conta, setConta] = useState(null);       // quem entrou (Google ou e-mail)
-  const [cadastro, setCadastro] = useState(null); // documento voluntarios/{uid}
+  const [conta, setConta] = useState(CONFIGURADO ? null : lerLocal('sd-conta', null));       // quem entrou (Google ou e-mail)
+  const [cadastro, setCadastro] = useState(CONFIGURADO ? null : lerLocal('sd-cadastro', null)); // documento voluntarios/{uid}
+
+  // Sem Firebase, a conta e o cadastro ficam salvos no aparelho (não pede
+  // login toda vez — comportamento de aplicativo de verdade)
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-conta', conta); }, [conta]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-cadastro', cadastro); }, [cadastro]);
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -455,7 +472,7 @@ function App() {
     setCadastro(null);
   }
 
-  if (!pronto) return <div className="carregando">🌱</div>;
+  if (!pronto) return <div className="carregando"><LogoApp tamanho={96} /></div>;
   if (!conta) return <TelaLogin aoEntrarDemo={setConta} />;
   if (!cadastro) return <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
   if (cadastro.status === 'pendente') return <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
