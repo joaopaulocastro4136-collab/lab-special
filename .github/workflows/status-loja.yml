@@ -1,0 +1,25 @@
+# Diagnóstico READ-ONLY do status na App Store (Lab e Clinic): estado da versão,
+# submissão de análise e mensagens do Resolution Center (motivo da reprovação).
+# Não altera nada. Rodar: aba Actions → "Status da loja" → Run workflow.
+name: Status da loja
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Consulta o status na App Store
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node status-loja.mjs
