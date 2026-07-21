@@ -1,0 +1,126 @@
+# Fábrica do app MAC (Catalyst) do Seja Semente central: compila a MESMA base
+# do app do iPhone para macOS e envia ao TestFlight (aba do app no Mac).
+# A assinatura Mac é efêmera: certificados e perfil são criados na hora via
+# API (preparar-assinatura-mac.mjs) — o certificado do iOS não é tocado.
+name: Mac Seja Semente → TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão visível (ex.: 3.5)"
+        required: false
+        default: "3.5"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Usa o Xcode mais novo disponível
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Instala dependências
+        run: |
+          cd seja-semente && npm ci
+          cd nativo-central && npm ci
+
+      - name: Gera o pacote web
+        run: cd seja-semente && node build-nativo.mjs semente
+
+      - name: Sincroniza com o projeto iOS
+        run: cd seja-semente/nativo-central && npx cap sync ios
+
+      - name: Cria a assinatura Mac (certificados efêmeros + perfil)
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node seja-semente/preparar-assinatura-mac.mjs
+
+      - name: Importa a assinatura no keychain
+        run: |
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security set-keychain-settings -lut 3600 ci.keychain
+          # Apple baixa os certificados em DER; importa chave (PEM) + cert
+          security import "$RUNNER_TEMP/dist-mac.key" -k ci.keychain -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/dist-mac.cer" -k ci.keychain -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/instalador.key" -k ci.keychain -T /usr/bin/productbuild -T /usr/bin/productsign
+          security import "$RUNNER_TEMP/instalador.cer" -k ci.keychain -T /usr/bin/productbuild -T /usr/bin/productsign
+          # Cadeia da Apple (WWDR G3/G4) para o codesign confiar
+          for u in https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer; do
+            curl -sSo /tmp/wwdr.cer "$u" && security import /tmp/wwdr.cer -k ci.keychain || true
+          done
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci ci.keychain > /dev/null
+          security find-identity -v ci.keychain
+          # Instala o perfil Catalyst nas duas pastas que o Xcode olha
+          UUID=$(security cms -D -i "$RUNNER_TEMP/SejaSemente_MacCatalyst.provisionprofile" | plutil -extract UUID raw -o - -)
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          cp "$RUNNER_TEMP/SejaSemente_MacCatalyst.provisionprofile" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.provisionprofile"
+          cp "$RUNNER_TEMP/SejaSemente_MacCatalyst.provisionprofile" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$UUID.provisionprofile"
+          echo "Perfil instalado: $UUID"
+
+      - name: Compila e assina (archive Catalyst)
+        run: |
+          xcodebuild -project seja-semente/nativo-central/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
+            SUPPORTS_MACCATALYST=YES \
+            DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER=NO \
+            TARGETED_DEVICE_FAMILY="1,2" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="SejaSemente MacCatalyst" \
+            CODE_SIGN_ENTITLEMENTS="App/Catalyst.entitlements" \
+            MARKETING_VERSION=${{ github.event.inputs.versao || '3.5' }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      - name: Exporta o pacote (.pkg)
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>installerSigningCertificate</key><string>3rd Party Mac Developer Installer</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.sejasemente.central</key><string>SejaSemente MacCatalyst</string>
+            </dict>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          ls -la "$RUNNER_TEMP/export"
+
+      - name: Grava a chave da App Store
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s\n' "$ASC_KEY_P8" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Envia para o TestFlight (Mac)
+        run: |
+          xcrun altool --upload-app -f "$RUNNER_TEMP"/export/*.pkg -t macos \
+            --apiKey ${{ secrets.ASC_KEY_ID }} --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
