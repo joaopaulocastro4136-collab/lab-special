@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
+import { ArvoreLogo } from '../logo.jsx';
 
 const CONFIGURADO = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('COLE');
 
@@ -99,7 +100,7 @@ function TelaLogin({ aoEntrar }) {
 
   return (
     <div className="tela-login">
-      <div className="login-logo">🌱</div>
+      <ArvoreLogo tamanho={130} />
       <h1>Seja Semente</h1>
       <p className="login-sub">Central do projeto · triagem e agendamentos</p>
       {CONFIGURADO ? (

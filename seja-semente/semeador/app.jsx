@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
+import { ArvoreLogo } from '../logo.jsx';
 
 // ─── Modo demonstração: enquanto o Firebase não estiver configurado, o app
 //     roda sozinho com dados de exemplo para dar pra ver e testar tudo ───
@@ -107,7 +108,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
   return (
     <div className="tela-login">
-      <div className="login-logo">🌱</div>
+      <ArvoreLogo tamanho={130} />
       <h1>Semeador</h1>
       <p className="login-sub">Aplicativo do voluntário · Seja Semente</p>
       {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
