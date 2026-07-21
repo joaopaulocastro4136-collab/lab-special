@@ -1,0 +1,29 @@
+# Robô geral do projeto Seja Semente: roda qualquer script da pasta
+# seja-semente/ com as credenciais da Apple e do Firebase disponíveis.
+# Rodar: aba Actions → "Robô Seja Semente" → Run workflow (escolha o script).
+name: Robô Seja Semente
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: 'Script a rodar (ex.: seja-semente/criar-firebase.mjs)'
+        required: true
+        default: 'seja-semente/checar-apps.mjs'
+
+jobs:
+  rodar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Roda o script
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node ${{ github.event.inputs.script }}
