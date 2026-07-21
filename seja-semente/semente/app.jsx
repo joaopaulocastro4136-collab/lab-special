@@ -148,8 +148,8 @@ function TelaLogin({ aoEntrarDemo }) {
       else await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
     } catch (e) {
       if (!String(e?.message || '').includes('cancelado')) {
-        const caminho = window.__entrarNativoGoogle ? 'nativo' : 'navegador';
-        setErro(`Google não entrou (${caminho}): ${e?.code || ''} ${e?.message || e}`.slice(0, 220));
+        setErro('Não consegui entrar com o Google agora. Espere uns segundos e tente de novo — se continuar, me mande um print desta tela.');
+        console.log('detalhe login Google:', e?.code || '', e?.message || e);
       }
     }
     setCarregando(false);
