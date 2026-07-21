@@ -140,18 +140,10 @@ function TelaLogin({ aoEntrarDemo }) {
       // no navegador, a janelinha do Google (com plano B de redirect)
       if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
       else {
-        const prov = new fb.fns.GoogleAuthProvider();
-        try {
-          await fb.fns.signInWithPopup(fb.auth, prov);
-        } catch (e2) {
-          const cod = String(e2?.code || '');
-          if (cod.includes('popup-blocked') || cod.includes('operation-not-supported') || cod.includes('cancelled-popup-request')) {
-            await fb.fns.signInWithRedirect(fb.auth, prov);
-            return; // a página vai navegar para o Google
-          }
-          if (cod.includes('popup-closed')) throw new Error('cancelado');
-          throw e2;
-        }
+        // No computador/navegador o mais confiável é navegar a própria
+        // página para o Google e voltar logado (janelinha é bloqueada no Mac)
+        await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
+        return; // a página vai para o Google
       }
     } catch (e) {
       if (!String(e?.message || '').includes('cancelado')) {
