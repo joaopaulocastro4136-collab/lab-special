@@ -113,6 +113,8 @@ export const CSS = `
   .caixa-area strong { font-size: 15.5px; font-weight: 800; color: #1E2B22; }
   .caixa-area-detalhe { font-size: 12px; color: #7B897F; font-weight: 600; }
   .caixa-area-icone { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+  .caixa-area.tracejada { border: 1.5px dashed #A9C0AE; background: #F6FAF6; box-shadow: none; }
+  .hora-fim { display: block; font-size: 11px; font-weight: 700; color: #9AA79D; }
 
   /* ── Ações da ficha, seletor e pesquisa ── */
   .linha-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
