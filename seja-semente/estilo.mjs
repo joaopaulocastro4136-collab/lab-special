@@ -27,6 +27,7 @@ export const CSS = `
   .btn-principal:disabled { opacity: 0.5; box-shadow: none; }
   .btn-google { width: 100%; max-width: 330px; padding: 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 14px rgba(30,43,34,0.07); }
   .btn-google .g { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from -45deg, #EA4335 110deg, #4285F4 90deg 180deg, #34A853 180deg 270deg, #FBBC05 270deg); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .link-troca { border: none; background: none; color: #226343; font-weight: 800; font-size: 14px; cursor: pointer; text-decoration: underline; padding: 4px; }
   .separador { max-width: 330px; width: 100%; display: flex; align-items: center; gap: 10px; color: #7B897F; font-size: 13px; }
   .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #DBE3D8; }
 
