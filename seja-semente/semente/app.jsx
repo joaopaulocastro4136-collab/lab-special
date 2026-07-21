@@ -1213,6 +1213,11 @@ function App() {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
         const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
         if (meu.exists()) { if (!cancelado) setAcesso('liberado'); return; }
+        // Fase de teste ABERTA: qualquer conta Google entra direto
+        try {
+          const cfg = await getDoc(doc(fb.db, 'config', 'acesso'));
+          if (cfg.exists() && cfg.data().abertoParaTeste) { if (!cancelado) setAcesso('liberado'); return; }
+        } catch (e) { /* segue o fluxo normal */ }
         // E-mail pré-autorizado pela coordenação? entra direto, sem código
         if (usuario.email) {
           const conv = await getDoc(doc(fb.db, 'central-autorizados', usuario.email.toLowerCase()));
