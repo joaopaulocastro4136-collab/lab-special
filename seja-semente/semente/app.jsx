@@ -15,7 +15,7 @@ import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
-import { ClipboardList, CalendarDays, Megaphone, Users, MapPin, TriangleAlert } from 'lucide-react';
+import { ClipboardList, CalendarDays, Megaphone, Users, MapPin, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus } from 'lucide-react';
 import icone from '../icones/icone-central-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -55,6 +55,18 @@ const ESPECIALIDADES = {
   'Outra': ['Outro'],
 };
 const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
+
+// Áreas/procedimentos da agenda (as "caixas" da tela de marcar)
+const AREAS_AGENDA = [
+  { nome: 'Profilaxia', detalhe: 'limpeza', Icone: Sparkles, cor: '#29A0CE' },
+  { nome: 'Periodontia', detalhe: 'gengiva', Icone: HeartPulse, cor: '#E24B26' },
+  { nome: 'Dentística', detalhe: 'restauração', Icone: Wrench, cor: '#5FA83C' },
+  { nome: 'Endodontia', detalhe: 'canal', Icone: Syringe, cor: '#7E4A9E' },
+  { nome: 'Cirurgia', detalhe: 'extração', Icone: Scissors, cor: '#C22326' },
+  { nome: 'Prótese', detalhe: '', Icone: Crown, cor: '#F0A912' },
+  { nome: 'Avaliação', detalhe: 'primeira consulta', Icone: ClipboardCheck, cor: '#2F7D4E' },
+  { nome: 'Outro', detalhe: 'outro procedimento', Icone: Plus, cor: '#55645A' },
+];
 const PROXIMO_STATUS = { 'triado': 'em atendimento', 'em atendimento': 'concluído', 'concluído': 'triado' };
 
 // ─── Dados de exemplo do modo demonstração ───
@@ -243,30 +255,67 @@ function FormTriagem({ paciente, profissionais, aoSalvar, aoCancelar }) {
   );
 }
 
-// 3º passo: marcar o paciente num dia e horário
-function FormMarcar({ pacientes, dataInicial, aoSalvar, aoCancelar }) {
-  const triados = pacientes.filter(p => p.triagem);
-  const [f, setF] = useState({ pacienteId: triados[0]?.id || '', data: dataInicial, hora: '09:00' });
-  const muda = k => e => setF({ ...f, [k]: e.target.value });
-  const pac = triados.find(p => p.id === f.pacienteId);
+// Marcar, passo 1: escolher a "caixa" da área/procedimento
+function EscolherArea({ aoEscolher, aoCancelar }) {
   return (
     <div className="folha">
-      <h2>Marcar na agenda</h2>
-      {triados.length === 0 && <p className="dica">Nenhum paciente com triagem feita ainda — cadastre e faça a triagem primeiro.</p>}
+      <h2>O que vai ser feito?</h2>
+      <p className="dica">Toque na área do procedimento para marcar o paciente.</p>
+      <div className="grade-areas">
+        {AREAS_AGENDA.map(a => (
+          <button key={a.nome} className="caixa-area" onClick={() => aoEscolher(a)}>
+            <span className="caixa-area-icone" style={{ background: a.cor + '22', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
+            <strong>{a.nome}</strong>
+            {a.detalhe && <span className="caixa-area-detalhe">{a.detalhe}</span>}
+          </button>
+        ))}
+      </div>
+      <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+    </div>
+  );
+}
+
+// Marcar, passo 2: paciente + dentista + dia e hora — cai direto na agenda
+// do dentista escolhido (aparece no Semeador dele)
+function FormMarcar({ area, pacientes, profissionais, dataInicial, aoSalvar, aoCancelar }) {
+  const primeiro = pacientes[0];
+  const [f, setF] = useState({
+    pacienteId: primeiro?.id || '',
+    profissionalUid: primeiro?.triagem?.profissionalUid || profissionais[0]?.id || '',
+    data: dataInicial, hora: '09:00',
+  });
+  const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const mudaPaciente = e => {
+    const p = pacientes.find(x => x.id === e.target.value);
+    setF({ ...f, pacienteId: e.target.value, profissionalUid: p?.triagem?.profissionalUid || f.profissionalUid });
+  };
+  const pac = pacientes.find(p => p.id === f.pacienteId);
+  const prof = profissionais.find(p => p.id === f.profissionalUid);
+  return (
+    <div className="folha">
+      <h2>{area.nome}{area.detalhe ? ` · ${area.detalhe}` : ''}</h2>
+      {pacientes.length === 0 && <p className="dica">Nenhum paciente cadastrado ainda — cadastre primeiro na aba Pacientes.</p>}
       <Campo rotulo="Paciente">
-        <select value={f.pacienteId} onChange={muda('pacienteId')}>
-          {triados.map(p => <option key={p.id} value={p.id}>{p.nome} — {p.triagem.procedimento}</option>)}
+        <select value={f.pacienteId} onChange={mudaPaciente}>
+          {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+      </Campo>
+      <Campo rotulo="Dentista / profissional que vai atender">
+        <select value={f.profissionalUid} onChange={muda('profissionalUid')}>
+          {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
         </select>
       </Campo>
       <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
       <Campo rotulo="Hora"><input type="time" value={f.hora} onChange={muda('hora')} /></Campo>
-      {pac && <p className="dica">Profissional: {pac.triagem.profissionalNome} · {pac.triagem.especialidade}</p>}
+      <p className="dica">O agendamento cai na hora na agenda do profissional escolhido, no Semeador dele.</p>
       <div className="linha-botoes">
-        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!pac} onClick={() => aoSalvar({
+        <button className="btn-secundario" onClick={aoCancelar}>Voltar</button>
+        <button className="btn-principal" disabled={!pac || !prof} onClick={() => aoSalvar({
+          area: area.nome,
+          titulo: area.nome + (area.detalhe ? ` (${area.detalhe})` : ''),
           pacienteId: pac.id, pacienteNome: pac.nome,
-          titulo: `${pac.triagem.procedimento} · ${pac.triagem.especialidade}`,
-          data: f.data, hora: f.hora, profissionalNome: pac.triagem.profissionalNome, profissionalUid: pac.triagem.profissionalUid,
+          profissionalUid: prof.id, profissionalNome: prof.nome,
+          data: f.data, hora: f.hora,
         })}>Marcar</button>
       </div>
     </div>
@@ -382,8 +431,12 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
 
+  // A agenda agora é só da central: o Semeador apenas mostra a agenda de
+  // cada profissional — quem marca é o Seja Semente.
+
   if (form === 'paciente') return <FormPaciente aoCancelar={() => setForm(null)} aoSalvar={f => salvar('pacientes', f, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes)} />;
-  if (form === 'marcar') return <FormMarcar pacientes={pacientes} dataInicial={dia} aoCancelar={() => setForm(null)} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
+  if (form === 'escolherArea') return <EscolherArea aoCancelar={() => setForm(null)} aoEscolher={a => setForm({ marcar: a })} />;
+  if (form?.marcar) return <FormMarcar area={form.marcar} pacientes={pacientes} profissionais={profissionais} dataInicial={dia} aoCancelar={() => setForm('escolherArea')} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
   if (form === 'aviso') return <FormAviso aoCancelar={() => setForm(null)} aoSalvar={f => salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos)} />;
   if (form?.triagem) return <FormTriagem paciente={form.triagem} profissionais={profissionais} aoCancelar={() => setForm(null)} aoSalvar={t => salvarTriagem(form.triagem, t)} />;
 
@@ -431,7 +484,7 @@ function TelaPrincipal({ usuario, aoSair }) {
         )}
         {aba === 'agenda' && (
           <>
-            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setForm('marcar')}>+ Marcar</button></div>
+            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setForm('escolherArea')}>+ Marcar</button></div>
             <div className="dia-nav">
               <button onClick={() => setDia(somaDias(dia, -1))}>‹</button>
               <div className="dia-titulo">

@@ -105,6 +105,13 @@ export const CSS = `
   .btn-remover { border: none; background: #FBEBE7; color: #B3402A; border-radius: 10px; width: 34px; height: 34px; font-size: 15px; font-weight: 800; cursor: pointer; flex: none; }
   .btn-triagem { margin-top: 10px; padding: 10px 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, #E8B457, #C08A2E); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 5px 12px rgba(192,138,46,0.30); }
 
+  /* ── Caixas de área do agendamento ── */
+  .grade-areas { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 6px; }
+  .caixa-area { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 15px 15px 13px; border: 1px solid rgba(30,43,34,0.06); border-radius: 17px; background: #fff; cursor: pointer; box-shadow: 0 5px 14px rgba(30,43,34,0.07); text-align: left; }
+  .caixa-area strong { font-size: 15.5px; font-weight: 800; color: #1E2B22; }
+  .caixa-area-detalhe { font-size: 12px; color: #7B897F; font-weight: 600; }
+  .caixa-area-icone { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
+
   /* ── Barra de abas flutuante ── */
   nav { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 4px;
     background: rgba(255,255,255,0.96); backdrop-filter: blur(10px); border-radius: 24px; padding: 8px;

@@ -54,8 +54,8 @@ const DEMO = {
     { id: 'e2', data: proximoDia(0), hora: '17:30', ministerio: 'Distribuição', local: 'Praça Central', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: { 'demo-1': true } },
   ],
   agendamentos: [
-    { id: 'g1', titulo: 'Entrega de cestas', data: proximoDia(6), hora: '09:00', local: 'Sede Seja Semente', responsavel: 'Coordenação', origem: 'central' },
-    { id: 'g2', titulo: 'Visita à família do José', data: proximoDia(3), hora: '15:00', local: 'Praça Central', responsavel: 'Maria', origem: 'semeador' },
+    { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
   ],
   pacientes: [
     { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
@@ -251,34 +251,12 @@ function Vazio({ texto }) {
   return <div className="vazio">{texto}</div>;
 }
 
-function hojeISO() { return new Date().toISOString().slice(0, 10); }
-
 function Campo({ rotulo, children }) {
   return <label className="campo"><span>{rotulo}</span>{children}</label>;
 }
 
-function FormAgendamento({ aoSalvar, aoCancelar }) {
-  const [f, setF] = useState({ titulo: '', data: hojeISO(), hora: '09:00', local: '' });
-  const muda = k => e => setF({ ...f, [k]: e.target.value });
-  return (
-    <div className="folha">
-      <h2>Novo agendamento</h2>
-      <Campo rotulo="O quê"><input value={f.titulo} onChange={muda('titulo')} placeholder="Ex.: Visita à família do José" /></Campo>
-      <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
-      <Campo rotulo="Hora"><input type="time" value={f.hora} onChange={muda('hora')} /></Campo>
-      <Campo rotulo="Local"><input value={f.local} onChange={muda('local')} /></Campo>
-      <p className="dica">O agendamento aparece na hora na central Seja Semente e para os outros voluntários.</p>
-      <div className="linha-botoes">
-        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.titulo.trim()} onClick={() => aoSalvar(f)}>Agendar</button>
-      </div>
-    </div>
-  );
-}
-
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
-  const [formAgenda, setFormAgenda] = useState(false);
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [escalas, setEscalas] = useState(CONFIGURADO ? [] : lerLocal('sd-escalas', DEMO.escalas));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
@@ -303,9 +281,11 @@ function TelaPrincipal({ usuario, aoSair }) {
       snap => setEscalas(snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(e => e.voluntarios?.some(v => v.uid === usuario.uid)))
     );
+    // A agenda do voluntário: só o que a central marcou PARA ELE
     const paraAgenda = onSnapshot(
       query(collection(fb.db, 'agendamentos'), orderBy('data')),
-      snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(g => g.profissionalUid === usuario.uid))
     );
     // Pacientes que a triagem da central designou para ESTE voluntário
     const paraPacientes = onSnapshot(
@@ -332,19 +312,6 @@ function TelaPrincipal({ usuario, aoSair }) {
     await updateDoc(doc(fb.db, 'escalas', escala.id), { [`confirmados.${usuario.uid}`]: true });
   }
 
-  async function agendar(f) {
-    const novo = { ...f, responsavel: usuario.nome, origem: 'semeador' };
-    if (!CONFIGURADO) {
-      setAgendamentos(gs => [...gs, { id: 'novo-' + gs.length, ...novo }].sort((a, b) => a.data.localeCompare(b.data)));
-      setFormAgenda(false);
-      return;
-    }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'agendamentos'), { ...novo, criadoEm: serverTimestamp() });
-    setFormAgenda(false);
-  }
-
-  if (formAgenda) return <FormAgendamento aoCancelar={() => setFormAgenda(false)} aoSalvar={agendar} />;
 
   return (
     <div className="tela-principal">
@@ -399,22 +366,23 @@ function TelaPrincipal({ usuario, aoSair }) {
         )}
         {aba === 'agenda' && (
           <>
-            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setFormAgenda(true)}>+ Agendar</button></div>
+            <h2>Minha agenda</h2>
             {agendamentos.length ? agendamentos.map(g => (
               <div className="cartao" key={g.id}>
                 <div className="cartao-linha">
-                  <Bolha nome={g.titulo} Icone={CalendarDays} />
+                  <Bolha nome={g.area || g.titulo} Icone={CalendarDays} />
                   <div>
                     <div className="cartao-topo">
-                      <strong>{g.titulo}</strong>
+                      <strong>{g.pacienteNome || g.titulo}</strong>
                       <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
                     </div>
+                    {g.pacienteNome && <p>{g.titulo}</p>}
                     {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}
-                    <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário' : 'agendado pela central'}</p>
+                    <p className="obs">marcado pela central Seja Semente</p>
                   </div>
                 </div>
               </div>
-            )) : <Vazio texto="Nada agendado ainda. Toque em + Agendar." />}
+            )) : <Vazio texto="Nada na sua agenda ainda — quando a central marcar um paciente para você, ele aparece aqui." />}
           </>
         )}
         {aba === 'perfil' && (
