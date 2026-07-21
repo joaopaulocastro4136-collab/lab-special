@@ -1,0 +1,26 @@
+{
+  "name": "seja-semente-mac",
+  "version": "3.5.0",
+  "description": "Seja Semente — Central (aplicativo para Mac)",
+  "main": "main.js",
+  "scripts": {
+    "dist": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.sejasemente.central.mac",
+    "productName": "Seja Semente",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "build/icon.png"],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "category": "public.app-category.medical",
+      "icon": "build/icon.png",
+      "identity": null
+    },
+    "dmg": { "title": "Seja Semente" }
+  }
+}
