@@ -1298,10 +1298,10 @@ export default function App() {
   // A sincronização (cloud-app) chama isto quando um dentista entra pelo ID: entra na lista do lab
   useEffect(() => {
     window.absorverDentistasAuto = (novos) => {
-      if (!novos || !novos.length) return;
-      const existentes = new Set(dentistas.map(d => String(d.email || '').toLowerCase()));
-      const add = novos.filter(n => n.email && !existentes.has(String(n.email).toLowerCase()));
+      const existentesAntes = new Set(dentistas.map(d => String(d.email || '').toLowerCase()));
+      const add = (novos || []).filter(n => n.email && !existentesAntes.has(String(n.email).toLowerCase()));
       if (add.length) persistConfig({ dentistas: [...dentistas, ...add] });
+      return existentesAntes; // quem JÁ estava (a nuvem usa pra limpar a caixa de entrada com segurança)
     };
   }, [dentistas]);
   const persistNotificacoes = (novas) => {
@@ -2151,6 +2151,7 @@ export default function App() {
             onUpdateFuncionario={(id, patch) => persistConfig({ funcionarios: funcionarios.map(f => f.id === id ? { ...f, ...patch } : f) })}
             onRemoveFuncionario={(id) => { persistConfig({ funcionarios: funcionarios.filter(f => f.id !== id) }); if (usuarioAtivoId === id) trocarUsuario(null); }}
             onAbrirEquipe={() => setView('equipe')}
+            onAbrirDentistas={() => setView('dentistas')}
             autoAjuste={autoAjuste}
             onSetAutoAjuste={(v) => persistConfig({ autoAjuste: v })}
             pessoas={pessoas}
@@ -2189,6 +2190,14 @@ export default function App() {
         )}
         {view === 'notificacoes' && (
           <NotificacoesView notificacoes={notificacoes} onAbrirCaso={(casoId) => { if (casoId && casos.some(c => c.id === casoId)) goToDetalhe(casoId); }} onMarcarLidas={marcarNotificacoesLidas} onLimpar={() => persistNotificacoes([])} />
+        )}
+        {view === 'dentistas' && (
+          <DentistasView dentistas={dentistas} casos={casos}
+            onAddDentista={(d) => persistConfig({ dentistas: [...dentistas, d] })}
+            onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
+            onRemoveDentista={(nome) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== nome) })}
+            onVerCaso={goToDetalhe}
+            onVoltar={() => setView('ajustes')} />
         )}
       </div>
 
@@ -3717,7 +3726,173 @@ function ChavePixCard({ chavePix, onSalvar }) {
   );
 }
 
-function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab, nomeLab, onSetNomeLab }) {
+// Página dedicada de dentistas: lista → toca num dentista → ficha completa dele
+// (e-mail, telefone, endereço, combinado de pagamento) + os trabalhos só dele.
+function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onVoltar }) {
+  const [sel, setSel] = useState(null); // dentista aberto (nome)
+  const [verTrabalhos, setVerTrabalhos] = useState(false);
+  const [combinadoAberto, setCombinadoAberto] = useState(false);
+  const [confRemover, setConfRemover] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoEmail, setNovoEmail] = useState('');
+  const [novoEndereco, setNovoEndereco] = useState('');
+  const [novoTelefone, setNovoTelefone] = useState('');
+  const [erro, setErro] = useState('');
+  const [addAberto, setAddAberto] = useState(false);
+  const inputClass = 'w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white';
+
+  const dentista = sel ? dentistas.find(d => d.nome === sel) : null;
+  const trabalhosDoDentista = sel ? casos.filter(c => c.dentista === sel) : [];
+
+  const addDentista = () => {
+    const nome = novoNome.trim(), endereco = novoEndereco.trim(), telefone = novoTelefone.trim();
+    if (!nome || !endereco || !telefone) { setErro('Preencha nome, endereço e telefone.'); return; }
+    if (dentistas.some(d => d.nome.toLowerCase() === nome.toLowerCase())) { setErro('Esse dentista já está cadastrado.'); return; }
+    const email = novoEmail.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErro('E-mail inválido.'); return; }
+    onAddDentista({ nome, endereco, telefone, email: email || null });
+    setNovoNome(''); setNovoEmail(''); setNovoEndereco(''); setNovoTelefone(''); setErro(''); setAddAberto(false);
+  };
+
+  // ── Ficha de um dentista ──
+  if (dentista) {
+    const campo = (rot, val, onSalvar, tipo) => (
+      <div className="mb-2.5">
+        <div className="text-xs font-bold mb-1" style={{ color: '#A8A29E', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{rot}</div>
+        <input type={tipo || 'text'} className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white" value={val || ''} onChange={e => onSalvar(e.target.value)} placeholder={`—`} />
+      </div>
+    );
+    return (
+      <div>
+        <button onClick={() => { setSel(null); setVerTrabalhos(false); setCombinadoAberto(false); setConfRemover(false); }} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
+          <ChevronLeft size={18} /> Dentistas
+        </button>
+
+        {/* Cartão de identidade */}
+        <div className="rounded-2xl p-5 mb-4" style={{ background: 'linear-gradient(150deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)' }}>
+          <div className="flex items-center gap-3">
+            <span style={{ width: 52, height: 52, borderRadius: 26, background: GOLD, color: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, flexShrink: 0 }}>
+              {(dentista.nome || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <div className="text-white font-extrabold text-lg truncate">{dentista.nome}</div>
+              <div className="text-xs" style={{ color: GOLD }}>{dentista.auto ? 'Entrou pelo ID do laboratório' : (dentista.email ? 'Cadastrado com e-mail' : 'Cadastrado pelo laboratório')}</div>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={() => setVerTrabalhos(v => !v)} className="w-full mb-4 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
+          <ClipboardList size={16} /> {verTrabalhos ? 'Ocultar trabalhos' : `Ver trabalhos de ${dentista.nome.split(/\s+/)[0]}`} ({trabalhosDoDentista.length})
+        </button>
+
+        {verTrabalhos && (
+          <div className="flex flex-col gap-2 mb-4">
+            {trabalhosDoDentista.length === 0
+              ? <div className="text-xs text-stone-400 text-center py-6 rounded-2xl bg-white border border-stone-200">Nenhum trabalho deste dentista.</div>
+              : trabalhosDoDentista.map(c => <CasoCard key={c.id} caso={c} onClick={() => onVerCaso(c.id)} />)}
+          </div>
+        )}
+
+        {/* Dados editáveis */}
+        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-4">
+          <div className="text-xs font-bold mb-3" style={{ color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Cadastro</div>
+          {campo('E-mail (acesso ao Special Clinic)', dentista.email, (v) => onUpdateDentista(dentista.nome, { email: v.trim().toLowerCase() || null }), 'email')}
+          {campo('Telefone / WhatsApp', dentista.telefone, (v) => onUpdateDentista(dentista.nome, { telefone: v }), 'tel')}
+          {campo('Endereço', dentista.endereco, (v) => onUpdateDentista(dentista.nome, { endereco: v }))}
+          <div className="flex items-center gap-2 mt-1">
+            {dentista.endereco && (
+              <a href={mapsUrl(dentista.endereco)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: '#E8F0FE', color: '#1A73E8' }}><MapPin size={12} /> Ver no Maps</a>
+            )}
+            {dentista.telefone && (
+              <a href={`https://wa.me/${String(dentista.telefone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: '#DCF8E4', color: '#166B3A' }}><Send size={12} /> WhatsApp</a>
+            )}
+          </div>
+          <div className="text-xs text-stone-400 mt-3 leading-relaxed">🔒 A senha é privada e protegida — nem o laboratório vê. Se o dentista esquecer, ele mesmo redefine pelo "Esqueci minha senha" no Special Clinic.</div>
+        </div>
+
+        {/* Combinado de pagamento */}
+        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-4">
+          <button onClick={() => setCombinadoAberto(a => !a)} className="w-full flex items-center gap-2 text-left">
+            <DollarSign size={15} color={GOLD} />
+            <span className="text-xs font-bold flex-1" style={{ color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Combinado de pagamento</span>
+            <ChevronDown size={16} className="text-stone-400" style={{ transform: combinadoAberto ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+          </button>
+          {combinadoAberto && (
+            <div className="mt-3">
+              <PrazoPagamentoEdit diasAtual={dentista.diasPagamento ?? null} dataAtual={dentista.dataPagamento || null} onSalvar={(patch) => onUpdateDentista(dentista.nome, patch)} />
+            </div>
+          )}
+        </div>
+
+        {!confRemover ? (
+          <button onClick={() => setConfRemover(true)} className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#FBEBEA', color: '#B42318' }}>
+            <Trash2 size={13} /> Remover dentista
+          </button>
+        ) : (
+          <div className="rounded-xl p-3" style={{ background: '#FBEBEA' }}>
+            <div className="text-xs font-bold mb-2" style={{ color: '#B42318' }}>Remover {dentista.nome}? Ele perde o acesso ao Special Clinic.</div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfRemover(false)} className="flex-1 py-2 rounded-lg text-xs font-bold border border-stone-200 bg-white text-stone-600">Cancelar</button>
+              <button onClick={() => { onRemoveDentista(dentista.nome); setSel(null); }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Remover</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Lista de dentistas ──
+  return (
+    <div>
+      <button onClick={onVoltar} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
+        <ChevronLeft size={18} /> Ajustes
+      </button>
+      <div className="flex items-center justify-between mb-3">
+        <h1 className="font-extrabold text-xl" style={{ color: INK }}>Dentistas / Clínicas</h1>
+        <span className="text-sm font-bold" style={{ color: '#A8A29E' }}>{dentistas.length}</span>
+      </div>
+
+      <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold text-white" style={{ background: INK }}>
+        <UserPlus size={16} /> {addAberto ? 'Fechar' : 'Adicionar dentista'}
+      </button>
+      {addAberto && (
+        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+          <input className={inputClass} value={novoNome} onChange={e => { setNovoNome(e.target.value); setErro(''); }} placeholder="Nome do dentista ou clínica *" />
+          <input type="email" className={inputClass} value={novoEmail} onChange={e => { setNovoEmail(e.target.value); setErro(''); }} placeholder="E-mail (acesso ao Special Clinic)" />
+          <input className={inputClass} value={novoEndereco} onChange={e => { setNovoEndereco(e.target.value); setErro(''); }} placeholder="Endereço da clínica *" />
+          <input type="tel" className={inputClass} value={novoTelefone} onChange={e => { setNovoTelefone(e.target.value); setErro(''); }} placeholder="Telefone / WhatsApp *" />
+          {erro && <div className="text-xs text-red-600 font-medium">{erro}</div>}
+          <button onClick={addDentista} className="py-2.5 rounded-xl text-white font-bold text-sm" style={{ background: GOLD, color: INK }}>Salvar dentista</button>
+        </div>
+      )}
+
+      {dentistas.length === 0 ? (
+        <div className="text-xs text-stone-400 mt-3 text-center py-8 rounded-2xl bg-white border border-stone-200">Nenhum dentista ainda. Adicione um ou passe o ID do laboratório para o dentista entrar sozinho.</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {dentistas.map(d => {
+            const nTrab = casos.filter(c => c.dentista === d.nome).length;
+            return (
+              <button key={d.nome} onClick={() => setSel(d.nome)} className="w-full text-left rounded-2xl p-3.5 bg-white border border-stone-200 flex items-center gap-3">
+                <span style={{ width: 42, height: 42, borderRadius: 21, background: GOLD_SOFT, color: '#7A6234', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, flexShrink: 0 }}>
+                  {(d.nome || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate" style={{ color: INK }}>{d.nome}</div>
+                  <div className="text-xs text-stone-400 truncate">{d.telefone || 'sem telefone'}{nTrab > 0 ? ` • ${nTrab} ${nTrab === 1 ? 'trabalho' : 'trabalhos'}` : ''}</div>
+                </div>
+                {d.auto && <span className="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0" style={{ background: '#F6EEDD', color: '#7A6234' }}>ID</span>}
+                <ChevronDown size={16} className="text-stone-300 flex-shrink-0" style={{ transform: 'rotate(-90deg)' }} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, onAbrirDentistas, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab, nomeLab, onSetNomeLab }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
   const [novoTelefone, setNovoTelefone] = useState('');
@@ -4012,14 +4187,14 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
       </div>
 
       <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
-        <button onClick={() => setDentSecaoAberta(a => !a)} className="w-full flex items-center gap-2 text-left" style={{ marginBottom: dentSecaoAberta ? 12 : 0 }}>
+        <button onClick={onAbrirDentistas} className="w-full flex items-center gap-2 text-left">
           <UserPlus size={16} color={GOLD} />
           <h2 className="font-bold flex-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Dentistas / Clínicas</h2>
           <span className="text-xs font-bold" style={{ color: '#A8A29E' }}>{dentistas.length}</span>
-          <ChevronDown size={16} className="text-stone-400" style={{ transform: dentSecaoAberta ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+          <span className="text-lg" style={{ color: '#D0C6B4' }}>›</span>
         </button>
 
-        {dentSecaoAberta && <>
+        {false && <>
         <div className="flex flex-col gap-2 mb-1">
           <input className={inputClass} value={novoDentista} onChange={e => { setNovoDentista(e.target.value); setErroDentista(''); }} placeholder="Nome do dentista ou clínica *" />
           <input type="email" className={inputClass} value={novoDentEmail} onChange={e => { setNovoDentEmail(e.target.value); setErroDentista(''); }} placeholder="E-mail Google (acesso ao Special Clinic)" />

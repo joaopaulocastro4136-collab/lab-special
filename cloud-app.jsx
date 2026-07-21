@@ -284,15 +284,16 @@ async function sincronizarAcesso(configJson) {
       if (d.email) porEmail.set(String(d.email).toLowerCase(), d);
     }
     const batch = writeBatch(db);
-    // Não apaga quem entrou pelo ID do laboratório (auto) e ainda não foi absorvido na lista
-    atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id) && !docAtual.data().auto) batch.delete(docAtual.ref); });
+    // Fora do config → tira o acesso. Quem acabou de entrar pelo ID é re-adicionado
+    // pela absorção (que roda logo depois) e o acesso é recriado no ciclo seguinte.
+    atuais.forEach(docAtual => { if (!porEmail.has(docAtual.id)) batch.delete(docAtual.ref); });
     for (const [email, d] of porEmail) {
       batch.set(doc(db, 'labs', LAB, 'dentistasAcesso', email), { nome: d.nome, prazoPagamento: d.prazoPagamento || null, diasPagamento: d.diasPagamento ?? null, dataPagamento: d.dataPagamento || null });
     }
     // Índice global dentista → laboratório (o Special Clinic usa p/ achar o lab certo).
     // Fora do lote: se o dentista já pertence a outro laboratório, só essa escrita falha.
     atuais.forEach(docAtual => {
-      if (!porEmail.has(docAtual.id) && !docAtual.data().auto) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
+      if (!porEmail.has(docAtual.id)) deleteDoc(doc(db, 'dentistasIndex', docAtual.id)).catch(() => { });
     });
     for (const [email, d] of porEmail) {
       setDoc(doc(db, 'dentistasIndex', email), { lab: LAB, nome: d.nome, labNome: cfg.nomeLab || '' }).catch(() => { });
@@ -313,26 +314,30 @@ async function sincronizarAcesso(configJson) {
       batch.set(doc(db, 'codigosLab', String(cfg.codigoLab).toUpperCase()), { lab: LAB, nome: cfg.nomeLab || emails[0] || 'Laboratório' });
     }
     await batch.commit();
-
-    // Absorve quem se cadastrou pelo ID: entra na lista de dentistas do laboratório (config).
-    // Só apaga da caixa de entrada quem JÁ está no config (evita perder o cadastro se a
-    // ponte com a tela ainda não estiver pronta) — os novos ficam para o próximo ciclo.
-    try {
-      const auto = await getDocs(collection(db, 'labs', LAB, 'dentistasAuto'));
-      if (!auto.empty) {
-        const jaTem = new Set((cfg.dentistas || []).map(d => String(d.email || '').toLowerCase()).filter(Boolean));
-        const novos = [];
-        auto.forEach(a => {
-          const em = a.id;
-          if (jaTem.has(em)) deleteDoc(a.ref).catch(() => { }); // já virou dentista do config → limpa
-          else novos.push({ nome: a.data().nome || em, email: em, endereco: a.data().endereco || '', telefone: a.data().telefone || '', auto: true });
-        });
-        if (novos.length && typeof window !== 'undefined' && window.absorverDentistasAuto) {
-          window.absorverDentistasAuto(novos); // vira config → próximo ciclo limpa a caixa
-        }
-      }
-    } catch (e) { /* sem permissão/sem rede — tenta na próxima sincronização */ }
+    await absorverAuto();
   } catch (e) { console.error('Erro ao sincronizar acessos', e); }
+}
+
+// Absorve quem se cadastrou pelo ID: entra na lista de dentistas do laboratório (config).
+// Roda ao abrir o app E ao salvar config — assim o dentista aparece sem depender de
+// o gestor mexer em nada. Só apaga da caixa de entrada quem JÁ estava no config
+// (os recém-adicionados são apagados no ciclo seguinte, quando o estado já refletiu).
+async function absorverAuto() {
+  try {
+    const auto = await getDocs(collection(db, 'labs', LAB, 'dentistasAuto'));
+    if (auto.empty) return;
+    const novos = [];
+    const refs = {};
+    auto.forEach(a => {
+      const em = a.id;
+      refs[em] = a.ref;
+      novos.push({ nome: a.data().nome || em, email: em, endereco: a.data().endereco || '', telefone: a.data().telefone || '', auto: true });
+    });
+    if (typeof window !== 'undefined' && window.absorverDentistasAuto) {
+      const jaEstavam = window.absorverDentistasAuto(novos) || new Set(); // adiciona os novos e devolve os que JÁ estavam
+      novos.forEach(n => { const em = String(n.email).toLowerCase(); if (jaEstavam.has(em) && refs[em]) deleteDoc(refs[em]).catch(() => { }); });
+    }
+  } catch (e) { /* sem permissão/sem rede — tenta na próxima */ }
 }
 
 // ─── Notificações push (avisos com o celular bloqueado, estilo WhatsApp) ───
@@ -688,7 +693,7 @@ function CloudRoot({ entrarNativo }) {
     if (!usuario) return;
     let ativo = true;
     if (tentativa === 0) setAcesso('verificando'); // nas reverificações silenciosas, mantém a tela atual
-    const abrir = () => { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); };
+    const abrir = () => { instalarStorage(); instalarArquivos(); instalarIA(); instalarNuvemCasos(); logarAbertura(usuario.email); setAcesso('ok'); setTimeout(() => { absorverAuto(); }, 2500); };
     (async () => {
       try {
         const r = await resolverLaboratorio(usuario, forcarLabNovo.current);
