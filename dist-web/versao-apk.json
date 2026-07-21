@@ -1,6 +1,6 @@
 {
-  "versionCode": 38,
-  "versionName": "9.6",
+  "versionCode": 39,
+  "versionName": "9.7",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Ao adicionar um trabalho, item sem valor mostra tarja vermelha pra você definir o valor depois; quantidade e vários itens sempre disponiveis. Ficha A4 mostra os itens do trabalho, gerada na hora. Toque em Baixar para atualizar."
+  "novidades": "Pular etapa não trava mais o trabalho: ele fica em produção pra você finalizar quando quiser, sem cair pra entrega sozinho. Mais a tarja vermelha de item sem valor e a ficha A4 com os itens. Toque em Baixar para atualizar."
 }
