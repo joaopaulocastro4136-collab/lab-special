@@ -2633,6 +2633,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
   const [adicionandoDia, setAdicionandoDia] = useState(false);
+  const [adicNaAgenda, setAdicNaAgenda] = useState(false); // seletor pra trazer um trabalho EXISTENTE pra este dia
   const [editandoCarga, setEditandoCarga] = useState(false);
 
   // Horas-base (por pessoa) de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado
@@ -3012,11 +3013,38 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         )}
       </div>
 
-      {onNovo && (
-        <button onClick={onNovo} className="w-full mb-3 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
-          <Plus size={17} /> Adicionar trabalho {dia === 'hoje' ? 'pra hoje' : 'pra amanhã'}
-        </button>
-      )}
+      {/* Trazer pra este dia um trabalho que JÁ existe (reagendar) — não cria trabalho novo */}
+      {(dia === 'hoje' || dia === 'amanha') && (() => {
+        const alvoISO = dia === 'hoje' ? todayISO() : addDias(todayISO(), 1);
+        const jaNoDia = new Set(casos.map(c => c.id));
+        const disponiveis = casosAgenda.filter(c => !jaNoDia.has(c.id) && !c.naClinica && c.status !== 'Pronto').sort((a, b) => (a.prazo || '').localeCompare(b.prazo || ''));
+        return !adicNaAgenda ? (
+          <button onClick={() => setAdicNaAgenda(true)} className="w-full mb-3 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 border border-dashed" style={{ borderColor: GOLD, color: '#7A6234', background: GOLD_SOFT }}>
+            <Plus size={16} /> Trazer um trabalho pra {dia === 'hoje' ? 'hoje' : 'amanhã'}
+          </button>
+        ) : (
+          <div className="mb-3 rounded-2xl border border-stone-200 overflow-hidden bg-white">
+            <div className="flex items-center justify-between px-3 py-2.5" style={{ background: '#F5F4F0' }}>
+              <span className="text-xs font-bold" style={{ color: INK }}>Escolha o trabalho que vem pra {dia === 'hoje' ? 'hoje' : 'amanhã'}:</span>
+              <button onClick={() => setAdicNaAgenda(false)} className="p-1"><X size={14} className="text-stone-400" /></button>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+              {disponiveis.length === 0 ? (
+                <div className="text-xs text-stone-400 text-center py-5">Nenhum outro trabalho em andamento pra trazer.</div>
+              ) : disponiveis.map((c, i) => (
+                <button key={c.id} onClick={() => { onMoverDia(c.id, dia); setAdicNaAgenda(false); }}
+                  className="w-full text-left flex items-center gap-2 px-3 py-2.5" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
+                    <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
+                  </div>
+                  <span className="text-xs flex-shrink-0" style={{ color: diasRestantes(c.prazo) < 0 ? '#B42318' : '#A8A29E' }}>{formatDateBR(c.prazo)} →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {casos.length === 0 ? (
         <div className="text-center py-12 px-4 rounded-2xl bg-white border border-stone-200">
