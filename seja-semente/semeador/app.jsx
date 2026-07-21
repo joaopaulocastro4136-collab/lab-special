@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { ArvoreLogo } from '../logo.jsx';
+import { ArvoreLogo, Bolha } from '../logo.jsx';
 
 // ─── Modo demonstração: enquanto o Firebase não estiver configurado, o app
 //     roda sozinho com dados de exemplo para dar pra ver e testar tudo ───
@@ -177,12 +177,17 @@ function TelaRecusado({ aoSair }) {
 function CartaoAviso({ aviso }) {
   return (
     <div className="cartao">
-      <div className="cartao-topo">
-        <strong>{aviso.titulo}</strong>
-        <span className="quando">{horaBonita(aviso.criadoEm)}</span>
+      <div className="cartao-linha">
+        <Bolha nome={aviso.titulo} emoji="📢" />
+        <div>
+          <div className="cartao-topo">
+            <strong>{aviso.titulo}</strong>
+            <span className="quando">{horaBonita(aviso.criadoEm)}</span>
+          </div>
+          <p>{aviso.texto}</p>
+          {aviso.autor && <div className="autor">— {aviso.autor}</div>}
+        </div>
       </div>
-      <p>{aviso.texto}</p>
-      {aviso.autor && <div className="autor">— {aviso.autor}</div>}
     </div>
   );
 }
@@ -191,15 +196,20 @@ function CartaoEscala({ escala, uid, aoConfirmar }) {
   const confirmado = !!escala.confirmados?.[uid];
   return (
     <div className="cartao">
-      <div className="cartao-topo">
-        <strong>{escala.ministerio}</strong>
-        <span className="quando">{dataBonita(escala.data)} · {escala.hora}</span>
-      </div>
-      {escala.local && <p>📍 {escala.local}</p>}
-      <div className="linha-confirma">
-        {confirmado
-          ? <span className="ok">✓ Presença confirmada</span>
-          : <button className="btn-confirmar" onClick={() => aoConfirmar(escala)}>Confirmar presença</button>}
+      <div className="cartao-linha">
+        <Bolha nome={escala.ministerio} emoji="🗓️" />
+        <div>
+          <div className="cartao-topo">
+            <strong>{escala.ministerio}</strong>
+            <span className="quando">{dataBonita(escala.data)} · {escala.hora}</span>
+          </div>
+          {escala.local && <p>📍 {escala.local}</p>}
+          <div className="linha-confirma">
+            {confirmado
+              ? <span className="ok">✓ Presença confirmada</span>
+              : <button className="btn-confirmar" onClick={() => aoConfirmar(escala)}>Confirmar presença</button>}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -297,11 +307,11 @@ function TelaPrincipal({ usuario, aoSair }) {
     <div className="tela-principal">
       <header>
         <div className="header-titulo">
-          <span className="logo-mini">🌱</span>
+          <div className="logo-bolha"><ArvoreLogo tamanho={38} /></div>
           <div>
             <strong>Semeador</strong>
             <div className={centralOnline ? 'status online' : 'status'}>
-              {centralOnline ? '● Central conectada' : '○ Central offline'}
+              {centralOnline ? '● Central conectada' : '○ Central offline'} · {usuario.nome?.split(' ')[0]}
             </div>
           </div>
         </div>
@@ -325,12 +335,17 @@ function TelaPrincipal({ usuario, aoSair }) {
             <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setFormAgenda(true)}>+ Agendar</button></div>
             {agendamentos.length ? agendamentos.map(g => (
               <div className="cartao" key={g.id}>
-                <div className="cartao-topo">
-                  <strong>{g.titulo}</strong>
-                  <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                <div className="cartao-linha">
+                  <Bolha nome={g.titulo} emoji="📅" />
+                  <div>
+                    <div className="cartao-topo">
+                      <strong>{g.titulo}</strong>
+                      <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                    </div>
+                    {g.local && <p>📍 {g.local}</p>}
+                    <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário' : 'agendado pela central'}</p>
+                  </div>
                 </div>
-                {g.local && <p>📍 {g.local}</p>}
-                <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário' : 'agendado pela central'}</p>
               </div>
             )) : <Vazio texto="Nada agendado ainda. Toque em + Agendar." />}
           </>
@@ -339,10 +354,15 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <h2>Meu perfil</h2>
             <div className="cartao">
-              <p><strong>{usuario.nome}</strong></p>
-              {usuario.ministerio && <p>Ministério: {usuario.ministerio}</p>}
-              {usuario.email && <p>{usuario.email}</p>}
-              {usuario.telefone && <p>{usuario.telefone}</p>}
+              <div className="cartao-linha">
+                <Bolha nome={usuario.nome} />
+                <div>
+                  <p style={{ marginTop: 0 }}><strong>{usuario.nome}</strong></p>
+                  {usuario.ministerio && <p>Ministério: {usuario.ministerio}</p>}
+                  {usuario.email && <p>{usuario.email}</p>}
+                  {usuario.telefone && <p>{usuario.telefone}</p>}
+                </div>
+              </div>
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
           </>
