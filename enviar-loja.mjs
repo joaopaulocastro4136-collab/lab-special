@@ -12,6 +12,63 @@ const BUNDLE = process.env.BUNDLE || 'com.laboratorio.special';
 const VERSAO = (process.env.VERSAO || '').trim();
 const URL_SUPORTE = 'https://laboratorio-special.web.app/suporte.html';
 
+// Só o Lab tem o histórico de recusa por Guideline 3.2 — reforça ficha + notas.
+const EH_LAB = BUNDLE === 'com.laboratorio.special';
+
+const DESCRICAO_LAB = `O Special Lab é o sistema de gestão completo para laboratórios de prótese dentária — qualquer laboratório pode criar sua conta gratuitamente e começar a usar na hora.
+
+CRIE A CONTA DO SEU LABORATÓRIO
+Entre com Apple ou Google e o espaço de trabalho do seu laboratório é criado automaticamente. Sem convite, sem cadastro prévio, sem custo.
+
+PRODUÇÃO ORGANIZADA
+• Casos com etapas por tipo de trabalho e cronômetro de execução
+• Agenda de entregas com prazos que respeitam seus dias de trabalho
+• Fotos, vídeos e arquivos anexados a cada trabalho
+
+CONECTADO AO DENTISTA
+• Convide seus dentistas parceiros: eles acompanham tudo pelo aplicativo Special Clinic
+• Pedidos chegam do consultório com fotos e arquivos
+• Aprovação de provas com aviso no celular do dentista
+
+FINANCEIRO SEM PLANILHA
+• Fechamento do mês por dentista e por tipo de trabalho
+• Comissões da equipe calculadas automaticamente
+• Recebimentos com Pix
+
+E AINDA
+• Notificações no celular a cada acontecimento importante
+• IA Special: simulação do novo sorriso a partir da foto do paciente
+• Funciona no iPhone, iPad, Android e no navegador
+
+Feito por quem vive a rotina de laboratório, para laboratórios de todos os tamanhos.`;
+
+const NOTAS_LAB = `Lab Special is a general-purpose management platform for ANY dental prosthesis laboratory. It is FREE and open to the public. It is NOT restricted to a single business, company, or organization.
+
+HOW ANY LABORATORY GETS AN ACCOUNT (no invitation, no approval, no fee):
+1. On the first screen, tap "Continuar com Apple" (or Google).
+2. A brand-new, independent laboratory workspace is created automatically and instantly.
+3. You are immediately inside the app with full access to every feature.
+
+STEP-BY-STEP TO SEE THE FEATURES (about 2 minutes):
+1. Sign in with Apple -> a fresh workspace opens right away.
+2. Open "Ajustes" (Settings) -> add a dentist (name/address/phone); optionally add a work type with stages.
+3. Tap the "+" button -> create a case: choose patient, dentist and work item, then save.
+4. Open the case -> start/stop the stage timer, track hours and delivery days, attach photos/files, print the work sheet, and mark it delivered.
+5. "Agenda" shows the day's schedule; "Financeiro" shows monthly totals and team commissions.
+
+Every feature is available to any user. There is no paid content — the app is 100% free.
+
+The companion app for dentists, "Special Clinic", is already live on the App Store; partner dentists follow their cases and send requests through it.
+
+If you prefer to review with a PRE-POPULATED DEMO ACCOUNT instead of creating your own workspace, we will gladly provide one — email joaopaulocastro41@gmail.com and we set it up immediately.
+
+Answers to the 3.2 review questions:
+1. The app is NOT restricted to users of a single company — any dental laboratory can create its own account.
+2. It is not limited to a specific group of companies: any dental prosthesis laboratory can become a user, each with an independent workspace.
+3. All features are available to the general public: production management, scheduling, team commissions, finances, and integration with partner dentists.
+4. To get an account: simply sign in with Apple or Google on the first screen — a new workspace is created automatically, no invitation or affiliation required.
+5. The app is completely free; there is no paid content.`;
+
 function jwt() {
   const agora = Math.floor(Date.now() / 1000);
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -102,11 +159,35 @@ const locs = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreVersion
 for (const loc of ((locs.dados && locs.dados.data) || [])) {
   const atributos = { supportUrl: URL_SUPORTE };
   if (jaPublicado) atributos.whatsNew = NOVIDADES;
+  if (EH_LAB) atributos.description = DESCRICAO_LAB; // reforça o modelo multi-laboratório (regra 3.2)
   const atualiza = await api('PATCH', `/v1/appStoreVersionLocalizations/${loc.id}`, {
     data: { type: 'appStoreVersionLocalizations', id: loc.id, attributes: atributos },
   });
   if (atualiza.status >= 300) falha(`não consegui atualizar a ficha (${loc.attributes.locale})`, atualiza);
-  console.log(`Ficha (${loc.attributes.locale}): URL de suporte${jaPublicado ? ' + novidades' : ''} ✓`);
+  console.log(`Ficha (${loc.attributes.locale}): URL de suporte${jaPublicado ? ' + novidades' : ''}${EH_LAB ? ' + descrição multi-lab' : ''} ✓`);
+}
+
+// 6b. Notas ao analista reforçadas (resposta ao Guideline 3.2) — só o Lab precisa
+if (EH_LAB) {
+  const det = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreReviewDetail`);
+  if (det.dados && det.dados.data) {
+    const d = det.dados.data;
+    const r = await api('PATCH', `/v1/appStoreReviewDetails/${d.id}`, {
+      data: { type: 'appStoreReviewDetails', id: d.id, attributes: { notes: NOTAS_LAB, demoAccountRequired: false } },
+    });
+    if (r.status >= 300) falha('não consegui atualizar as notas ao analista', r);
+    console.log('Notas ao analista reforçadas ✓');
+  } else {
+    const r = await api('POST', '/v1/appStoreReviewDetails', {
+      data: {
+        type: 'appStoreReviewDetails',
+        attributes: { notes: NOTAS_LAB, demoAccountRequired: false, contactFirstName: 'Joao Paulo', contactLastName: 'de Castro', contactEmail: 'joaopaulocastro41@gmail.com', contactPhone: '+5574999999999' },
+        relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: versao.id } } },
+      },
+    });
+    if (r.status >= 300) falha('não consegui criar as notas ao analista', r);
+    console.log('Notas ao analista criadas ✓');
+  }
 }
 
 // 7. Envio para a análise. Estados possíveis de um envio aberto:
