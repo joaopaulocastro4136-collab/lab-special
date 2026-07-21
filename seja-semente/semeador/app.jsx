@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { FIREBASE_CONFIG } from './firebase-config.js';
+import { FIREBASE_CONFIG } from '../firebase-config.js';
 
 // ─── Modo demonstração: enquanto o Firebase não estiver configurado, o app
 //     roda sozinho com dados de exemplo para dar pra ver e testar tudo ───
@@ -19,12 +19,12 @@ let fb = null; // { auth, db, fns } — só existe quando o Firebase está ligad
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
   const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import('firebase/auth');
-  const { getFirestore, collection, doc, onSnapshot, updateDoc, query, orderBy } = await import('firebase/firestore');
+  const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
   fb = {
     auth: getAuth(app),
     db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, signOut, collection, doc, onSnapshot, updateDoc, query, orderBy },
+    fns: { onAuthStateChanged, signInWithEmailAndPassword, signOut, collection, doc, onSnapshot, addDoc, updateDoc, query, orderBy, serverTimestamp },
   };
 }
 
@@ -38,6 +38,10 @@ const DEMO = {
   escalas: [
     { id: 'e1', data: proximoDia(6), hora: '08:00', ministerio: 'Acolhimento', local: 'Sede Seja Semente', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: {} },
     { id: 'e2', data: proximoDia(0), hora: '17:30', ministerio: 'Distribuição', local: 'Praça Central', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: { 'demo-1': true } },
+  ],
+  agendamentos: [
+    { id: 'g1', titulo: 'Entrega de cestas', data: proximoDia(6), hora: '09:00', local: 'Sede Seja Semente', responsavel: 'Coordenação', origem: 'central' },
+    { id: 'g2', titulo: 'Visita à família do José', data: proximoDia(3), hora: '15:00', local: 'Praça Central', responsavel: 'Maria', origem: 'semeador' },
   ],
   centralOnline: false,
 };
@@ -150,10 +154,37 @@ function Vazio({ texto }) {
   return <div className="vazio">{texto}</div>;
 }
 
+function hojeISO() { return new Date().toISOString().slice(0, 10); }
+
+function Campo({ rotulo, children }) {
+  return <label className="campo"><span>{rotulo}</span>{children}</label>;
+}
+
+function FormAgendamento({ aoSalvar, aoCancelar }) {
+  const [f, setF] = useState({ titulo: '', data: hojeISO(), hora: '09:00', local: '' });
+  const muda = k => e => setF({ ...f, [k]: e.target.value });
+  return (
+    <div className="folha">
+      <h2>Novo agendamento</h2>
+      <Campo rotulo="O quê"><input value={f.titulo} onChange={muda('titulo')} placeholder="Ex.: Visita à família do José" /></Campo>
+      <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
+      <Campo rotulo="Hora"><input type="time" value={f.hora} onChange={muda('hora')} /></Campo>
+      <Campo rotulo="Local"><input value={f.local} onChange={muda('local')} /></Campo>
+      <p className="dica">O agendamento aparece na hora na central Seja Semente e para os outros voluntários.</p>
+      <div className="linha-botoes">
+        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={!f.titulo.trim()} onClick={() => aoSalvar(f)}>Agendar</button>
+      </div>
+    </div>
+  );
+}
+
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
+  const [formAgenda, setFormAgenda] = useState(false);
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [escalas, setEscalas] = useState(CONFIGURADO ? [] : DEMO.escalas);
+  const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
   const [centralOnline, setCentralOnline] = useState(DEMO.centralOnline);
 
   // Escuta o Firestore em tempo real: qualquer coisa que a central (programa
@@ -170,6 +201,10 @@ function TelaPrincipal({ usuario, aoSair }) {
       snap => setEscalas(snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(e => e.voluntarios?.some(v => v.uid === usuario.uid)))
     );
+    const paraAgenda = onSnapshot(
+      query(collection(fb.db, 'agendamentos'), orderBy('data')),
+      snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
     // Batimento da central: o programa Windows atualiza central/status a cada
     // minuto; se o último batimento tem menos de 3 minutos, ela está online.
     const paraCentral = onSnapshot(doc(fb.db, 'central', 'status'), snap => {
@@ -177,7 +212,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       const ultimo = s?.atualizadoEm?.toDate?.();
       setCentralOnline(!!ultimo && Date.now() - ultimo.getTime() < 3 * 60 * 1000);
     });
-    return () => { paraAvisos(); paraEscalas(); paraCentral(); };
+    return () => { paraAvisos(); paraEscalas(); paraAgenda(); paraCentral(); };
   }, [usuario.uid]);
 
   async function confirmar(escala) {
@@ -188,6 +223,20 @@ function TelaPrincipal({ usuario, aoSair }) {
     const { doc, updateDoc } = fb.fns;
     await updateDoc(doc(fb.db, 'escalas', escala.id), { [`confirmados.${usuario.uid}`]: true });
   }
+
+  async function agendar(f) {
+    const novo = { ...f, responsavel: usuario.nome, origem: 'semeador' };
+    if (!CONFIGURADO) {
+      setAgendamentos(gs => [...gs, { id: 'novo-' + gs.length, ...novo }].sort((a, b) => a.data.localeCompare(b.data)));
+      setFormAgenda(false);
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'agendamentos'), { ...novo, criadoEm: serverTimestamp() });
+    setFormAgenda(false);
+  }
+
+  if (formAgenda) return <FormAgendamento aoCancelar={() => setFormAgenda(false)} aoSalvar={agendar} />;
 
   return (
     <div className="tela-principal">
@@ -216,6 +265,21 @@ function TelaPrincipal({ usuario, aoSair }) {
             {escalas.length ? escalas.map(e => <CartaoEscala key={e.id} escala={e} uid={usuario.uid} aoConfirmar={confirmar} />) : <Vazio texto="Você ainda não está em nenhuma escala." />}
           </>
         )}
+        {aba === 'agenda' && (
+          <>
+            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setFormAgenda(true)}>+ Agendar</button></div>
+            {agendamentos.length ? agendamentos.map(g => (
+              <div className="cartao" key={g.id}>
+                <div className="cartao-topo">
+                  <strong>{g.titulo}</strong>
+                  <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
+                </div>
+                {g.local && <p>📍 {g.local}</p>}
+                <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário' : 'agendado pela central'}</p>
+              </div>
+            )) : <Vazio texto="Nada agendado ainda. Toque em + Agendar." />}
+          </>
+        )}
         {aba === 'perfil' && (
           <>
             <h2>Meu perfil</h2>
@@ -231,7 +295,8 @@ function TelaPrincipal({ usuario, aoSair }) {
 
       <nav>
         <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}>🏠<span>Início</span></button>
-        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}>📅<span>Escalas</span></button>
+        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}>🗓️<span>Escalas</span></button>
+        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}>👤<span>Perfil</span></button>
       </nav>
     </div>

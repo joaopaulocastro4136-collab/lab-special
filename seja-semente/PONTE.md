@@ -1,27 +1,36 @@
-# Ponte Semeador ↔ Central (programa Windows)
+# Ponte do projeto Seja Semente
 
-Este documento é o **contrato de comunicação** entre o aplicativo Semeador
-(celular do voluntário) e a Central (programa Windows instalado na máquina
-do Seja Semente). Os dois lados não se conectam diretamente um ao outro —
-eles conversam através do **mesmo banco de dados na nuvem (Firebase /
-Firestore)**, em tempo real:
+Este documento é o **contrato de comunicação** entre as três pontas do
+projeto:
+
+1. **Programa Windows** (a Central instalada na máquina do projeto — em
+   desenvolvimento no seu computador)
+2. **Aplicativo Seja Semente** (`semente/`) — a mesma Central, em versão
+   mobile: triagem inicial, agendamentos, avisos e equipe
+3. **Aplicativo Semeador** (`semeador/`) — o app do voluntário: vê avisos,
+   escalas e agenda, confirma presença e pode agendar
+
+Nenhuma ponta se conecta diretamente na outra — todas conversam através
+do **mesmo banco de dados na nuvem (Firebase / Firestore)**, em tempo real:
 
 ```
-  Programa Windows (Central)          Aplicativo Semeador (voluntário)
-          │                                      │
-          │  escreve avisos, escalas,            │  lê tudo em tempo real,
-          │  cadastro de voluntários             │  confirma presença
-          ▼                                      ▼
-        ┌──────────────────────────────────────────┐
-        │        Firebase · projeto seja-semente    │
-        │        (Firestore + Authentication)       │
-        └──────────────────────────────────────────┘
+  Programa Windows        App Seja Semente         App Semeador
+     (Central)            (Central mobile)         (voluntário)
+         │                       │                       │
+         │  triagens, agenda,    │  as mesmas coisas,    │  lê tudo, confirma
+         │  avisos, escalas,     │  no celular           │  presença e agenda
+         │  voluntários          │                       │
+         ▼                       ▼                       ▼
+       ┌───────────────────────────────────────────────────┐
+       │         Firebase · projeto seja-semente            │
+       │         (Firestore + Authentication)               │
+       └───────────────────────────────────────────────────┘
 ```
 
 Vantagens desse desenho: funciona de qualquer lugar (não precisa estar na
 mesma rede), é em tempo real (o que a Central escreve aparece na hora no
-celular), e cada lado pode ser desenvolvido de forma independente — basta
-os dois respeitarem este contrato.
+celular), e cada ponta pode ser desenvolvida de forma independente — basta
+todas respeitarem este contrato.
 
 > **Importante ao desenvolver o programa Windows:** use o MESMO projeto
 > Firebase (`seja-semente`) e siga os nomes de coleções e campos abaixo,
@@ -68,9 +77,36 @@ aparece em `voluntarios`. Ao tocar em "Confirmar presença", o app grava
 `confirmados.{uid} = true` — a Central enxerga isso na hora e pode marcar
 o voluntário como confirmado na tela do Windows.
 
+### `triagens/{id}` — triagem inicial das pessoas acolhidas
+Quem escreve: **Central** (Windows ou app Seja Semente). O Semeador não usa.
+
+| Campo         | Tipo      | Exemplo                                        |
+|---------------|-----------|------------------------------------------------|
+| `nome`        | string    | `"José da Silva"`                              |
+| `idade`       | string    | `"52"`                                         |
+| `telefone`    | string    | `"(11) 98888-1111"`                            |
+| `necessidade` | string    | `"Alimentação"` (Alimentação, Roupas, Documentos, Saúde, Moradia, Apoio / conversa, Outro) |
+| `observacoes` | string    | `"Mora perto da praça…"`                       |
+| `status`      | string    | `"aguardando"` → `"em atendimento"` → `"concluída"` |
+| `criadoEm`    | timestamp | data/hora do cadastro                          |
+
+### `agendamentos/{id}` — agenda geral do projeto
+Quem escreve: **Central** (Windows ou app Seja Semente) e também o
+**Semeador** (o voluntário pode agendar). Todos leem.
+
+| Campo         | Tipo      | Exemplo                                    |
+|---------------|-----------|--------------------------------------------|
+| `titulo`      | string    | `"Entrega de cestas"`                      |
+| `data`        | string `AAAA-MM-DD` | `"2026-07-25"`                   |
+| `hora`        | string `HH:MM` | `"09:00"`                             |
+| `local`       | string    | `"Sede Seja Semente"`                      |
+| `responsavel` | string    | `"Maria"`                                  |
+| `origem`      | string    | `"central"` ou `"semeador"`                |
+| `criadoEm`    | timestamp | data/hora da criação                       |
+
 ### `central/status` — batimento da Central
-Quem escreve: **Central**, a cada 1 minuto enquanto o programa Windows
-estiver aberto. O aplicativo usa isso para mostrar "Central conectada"
+Quem escreve: **Central** (o programa Windows e também o app Seja Semente),
+a cada 1 minuto enquanto estiver aberta. O Semeador usa isso para mostrar "Central conectada"
 ou "Central offline" (considera online se o último batimento tem menos
 de 3 minutos).
 

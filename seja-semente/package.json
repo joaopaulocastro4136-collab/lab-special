@@ -1,0 +1,19 @@
+{
+  "name": "seja-semente",
+  "version": "1.0.0",
+  "description": "Projeto Seja Semente — aplicativo central (triagem e agendamentos) e aplicativo Semeador do voluntário",
+  "type": "module",
+  "scripts": {
+    "build:semente": "node semente/build.mjs",
+    "servir:semente": "node semente/serve.mjs",
+    "build:semeador": "node semeador/build.mjs",
+    "servir:semeador": "node semeador/serve.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "esbuild": "^0.28.1",
+    "firebase": "^12.16.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}
