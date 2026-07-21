@@ -174,3 +174,16 @@ Central só aprova (fluxo descrito acima em `voluntarios/{uid}`).
 
 No console do Firebase, ative os provedores **Google** e **E-mail/senha**
 em Authentication → Sign-in method.
+
+### `pacientes/{id}/arquivos/{id}` — fotos e arquivos da ficha
+Quem escreve: o **dentista no Semeador** e a **Central**. Todos os que podem
+ver o paciente leem. As fotos são comprimidas no aparelho (~1000px JPEG) e
+guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
+
+| Campo       | Tipo      | Exemplo                                |
+|-------------|-----------|----------------------------------------|
+| `dataUrl`   | string    | `data:image/jpeg;base64,...`           |
+| `legenda`   | string    | `"Extração do dente 36 concluída"`     |
+| `autorUid`  | string    | uid de quem adicionou                  |
+| `autorNome` | string    | `"Lucas Andrade"`                      |
+| `criadoEm`  | timestamp | data/hora                              |

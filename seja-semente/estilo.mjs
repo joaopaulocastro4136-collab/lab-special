@@ -112,6 +112,18 @@ export const CSS = `
   .caixa-area-detalhe { font-size: 12px; color: #7B897F; font-weight: 600; }
   .caixa-area-icone { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
 
+  /* ── Ficha do paciente: fotos e arquivos ── */
+  .btn-voltar { align-self: flex-start; display: flex; align-items: center; gap: 4px; border: none; background: none; color: #226343; font-weight: 800; font-size: 15px; cursor: pointer; padding: 2px 0; }
+  .btn-foto { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; border: 1.5px dashed #2F7D4E; border-radius: 14px; background: #EAF4EE; color: #226343; font-weight: 800; font-size: 15px; cursor: pointer; }
+  .grade-fotos { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+  .foto-mini { border: none; padding: 0; background: none; cursor: pointer; border-radius: 13px; overflow: hidden; aspect-ratio: 1; box-shadow: 0 4px 10px rgba(30,43,34,0.10); }
+  .foto-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foto-cheia { position: fixed; inset: 0; background: rgba(12,18,14,0.93); z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 14px; }
+  .foto-cheia img { max-width: 100%; max-height: 74vh; border-radius: 14px; }
+  .foto-fechar { position: absolute; top: max(18px, env(safe-area-inset-top)); right: 18px; border: none; background: rgba(255,255,255,0.16); color: #fff; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .foto-info { color: #fff; text-align: center; display: flex; flex-direction: column; gap: 3px; }
+  .foto-info span { font-size: 13px; opacity: 0.75; }
+
   /* ── Barra de abas flutuante ── */
   nav { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 4px;
     background: rgba(255,255,255,0.96); backdrop-filter: blur(10px); border-radius: 24px; padding: 8px;
