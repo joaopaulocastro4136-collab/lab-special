@@ -1,6 +1,6 @@
 {
-  "versionCode": 29,
-  "versionName": "8.7",
+  "versionCode": 30,
+  "versionName": "8.8",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Multi-laboratorio: o dentista conecta varios labs pelo ID e troca no topo. Toque em Baixar para atualizar."
+  "novidades": "Correcoes: login Google, combinado de pagamento que nao salvava e lista de dentistas recolhivel. Toque em Baixar para atualizar."
 }
