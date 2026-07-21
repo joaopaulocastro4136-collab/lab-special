@@ -396,7 +396,9 @@ function expandirPorItem(casos) {
 }
 function etapasCompletas(caso) {
   if (!caso.etapas?.length) return true;
-  return caso.etapas.every(e => e.concluida);
+  // Etapa pulada conta como resolvida (não vai ser feita) — igual à lógica de concluir.
+  // Sem isso, pular etapas travava o trabalho: não dava pra finalizar e ficava num limbo.
+  return caso.etapas.every(e => e.concluida || e.pulada);
 }
 function enderecoDe(dentistas, nome) {
   const d = dentistas.find(d => d.nome === nome);
@@ -1654,7 +1656,18 @@ export default function App() {
     // Pular etapa ENCURTA o trabalho — nunca pode jogar o prazo pro passado (ficaria
     // "atrasado" sem estar). Se o cálculo cair antes de hoje, mantém no mínimo hoje.
     if (prazo < todayISO()) prazo = proximoDiaUtil(todayISO(), diasTrabalho);
-    updateCaso(casoId, { etapas: novasEtapas, prazo });
+    const patch = { etapas: novasEtapas, prazo };
+    // Pular etapa é planejamento DENTRO do laboratório — o trabalho continua em produção,
+    // nunca deve ficar preso em "aguardando entrega/prova" nem virar sozinho pra entrega.
+    const temEtapaAtiva = novasEtapas.some(e => !e.concluida && !e.pulada);
+    if (!temEtapaAtiva && caso.provaPendente && !caso.naClinica) {
+      // Todas as etapas resolvidas (feitas ou puladas): sai do limbo "para entrega".
+      // Fica pronto pra VOCÊ finalizar quando quiser — não some pra entrega sozinho.
+      patch.provaPendente = false;
+    }
+    // Se estava marcado como Pronto e o "des-pular" trouxe uma etapa de volta, destrava.
+    if (temEtapaAtiva && caso.status === 'Pronto') { patch.status = 'Em Produção'; patch.dataFinalizado = null; }
+    updateCaso(casoId, patch);
   };
 
   const toggleClinica = (casoId) => {
