@@ -1,6 +1,6 @@
 {
-  "versionCode": 30,
-  "versionName": "8.8",
+  "versionCode": 31,
+  "versionName": "8.9",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Correcoes: login Google, combinado de pagamento que nao salvava e lista de dentistas recolhivel. Toque em Baixar para atualizar."
+  "novidades": "Pagina de dentistas com ficha e trabalhos de cada um; dentista do ID aparece automatico. Toque em Baixar para atualizar."
 }
