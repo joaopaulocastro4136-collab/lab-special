@@ -130,7 +130,7 @@ export function paginaHTML({ titulo, descricao }) {
 <meta name="apple-mobile-web-app-title" content="${titulo}">
 <meta name="theme-color" content="#2F7D4E">
 <link rel="manifest" href="manifest.webmanifest">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>${CSS}</style>
 </head>
 <body>

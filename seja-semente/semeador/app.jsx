@@ -27,14 +27,19 @@ let fb = null; // { auth, db, fns } — só existe quando o Firebase está ligad
 
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
-  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
-  const { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
+  const modAuth = await import('firebase/auth');
+  const modFs = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
-  fb = {
-    auth: getAuth(app),
-    db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, query, orderBy, serverTimestamp },
-  };
+  // Dentro do aplicativo do iPhone (WebView), o jeito padrão de iniciar a
+  // autenticação e o banco falha — estes dois ajustes são os recomendados:
+  let auth;
+  try {
+    auth = modAuth.initializeAuth(app, { persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence] });
+  } catch (e) {
+    auth = modAuth.getAuth(app);
+  }
+  const db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  fb = { auth, db, fns: { ...modAuth, ...modFs } };
 }
 
 // ─── Dados de exemplo do modo demonstração ───
@@ -446,8 +451,14 @@ function App() {
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-conta', conta); }, [conta]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-cadastro', cadastro); }, [cadastro]);
 
+  const [erroInicial, setErroInicial] = useState('');
+
   useEffect(() => {
     if (!CONFIGURADO) return;
+    // Qualquer erro na largada vira tela visível (nada de app "que não abre")
+    const pega = (e) => setErroInicial(atual => atual || String(e?.reason?.message || e?.message || e?.type || e));
+    window.addEventListener('unhandledrejection', pega);
+    window.addEventListener('error', pega);
     let soltarAuth = null, soltarDoc = null;
     ligarFirebase().then(() => {
       soltarAuth = fb.fns.onAuthStateChanged(fb.auth, u => {
@@ -463,8 +474,8 @@ function App() {
           setPronto(true);
         });
       });
-    });
-    return () => { soltarDoc?.(); soltarAuth?.(); };
+    }).catch(e => { setErroInicial(String(e?.message || e)); setPronto(true); });
+    return () => { soltarDoc?.(); soltarAuth?.(); window.removeEventListener('unhandledrejection', pega); window.removeEventListener('error', pega); };
   }, []);
 
   async function enviarCadastro(f) {
@@ -480,6 +491,14 @@ function App() {
     setCadastro(null);
   }
 
+  if (erroInicial) return (
+    <div className="tela-login">
+      <LogoApp tamanho={110} />
+      <h1>Ops, algo travou</h1>
+      <p className="login-sub">Erro técnico na largada — manda um print desta tela:<br /><b>{erroInicial}</b></p>
+      <button className="btn-principal" onClick={() => window.location.reload()}>Tentar de novo</button>
+    </div>
+  );
   if (!pronto) return <div className="carregando"><LogoApp tamanho={96} /></div>;
   if (!conta) return <TelaLogin aoEntrarDemo={setConta} />;
   if (!cadastro) return <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
