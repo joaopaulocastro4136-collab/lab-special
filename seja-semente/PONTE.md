@@ -93,8 +93,10 @@ aparece em `voluntarios`. Ao tocar em "Confirmar presença", o app grava
 o voluntário como confirmado na tela do Windows.
 
 ### `pacientes/{id}` — pacientes acolhidos (cadastro + triagem)
-Quem escreve: **Central** (Windows ou app Seja Semente). O Semeador lê os
-pacientes cuja triagem designou o voluntário logado.
+Quem escreve: **Central** (Windows ou app Seja Semente) e também o
+**Semeador** (o dentista pode fazer/refazer a TRIAGEM pelo aplicativo —
+grava os campos `triagem` e `status` do paciente, igual à central). O
+Semeador lê todos os pacientes e destaca os designados ao voluntário logado.
 
 **Fluxo:** 1) o CADASTRO cria o paciente (`status: "cadastrado"`, `triagem:
 null`); 2) a TRIAGEM preenche o campo `triagem` (procedimento, saúde e o
@@ -187,7 +189,8 @@ guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
 | `criadoEm`  | timestamp | data/hora                              |
 
 ### `config/procedimentos` — tipos de procedimento e tempos
-Quem escreve: **Central**. Documento único de configuração.
+Quem escreve: **Central** (gerencia tudo) e o **Semeador** (pode adicionar
+um tipo novo pelo formulário de triagem). Documento único de configuração.
 
 | Campo            | Tipo                       | Exemplo                          |
 |------------------|----------------------------|----------------------------------|
