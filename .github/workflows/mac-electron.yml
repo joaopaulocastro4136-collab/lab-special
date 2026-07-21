@@ -1,0 +1,40 @@
+# Empacota o Seja Semente como aplicativo Mac (.dmg) via Electron.
+# Abre a versão web hospedada; roda em Mac Intel e Apple Silicon.
+# Rodar: aba Actions → "Mac Seja Semente (.dmg)" → Run workflow.
+# O .dmg fica em "Artefatos" da execução, para baixar e instalar.
+name: Mac Seja Semente (.dmg)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Garante o ícone do app
+        run: |
+          cd seja-semente/mac-app
+          mkdir -p build
+          cp ../icones/icone-central-1024.png build/icon.png
+
+      - name: Instala dependências
+        run: cd seja-semente/mac-app && npm install --no-audit --no-fund
+
+      - name: Empacota o .dmg (Intel + Apple Silicon)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: cd seja-semente/mac-app && npm run dist
+
+      - name: Publica o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: SejaSemente-Mac-dmg
+          path: seja-semente/mac-app/dist/*.dmg
+          if-no-files-found: error
