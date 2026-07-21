@@ -9,8 +9,8 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
-import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
+import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
@@ -61,6 +61,7 @@ const DEMO = {
   pacientes: [
     { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
     { id: 'p4', nome: 'Rita Nascimento', idade: '60', telefone: '(11) 93333-8888', status: 'em atendimento', observacoes: '', triagem: { especialidade: 'Odontologia', procedimento: 'Prótese', saude: ['Diabetes'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
+    { id: 'p7', codigo: 'SS-0007', nome: 'Ana Paula', idade: '34', telefone: '(11) 94444-2222', status: 'cadastrado', observacoes: 'Chegou pela campanha do agasalho.', triagem: null },
   ],
   centralOnline: false,
 };
@@ -69,6 +70,28 @@ function proximoDia(diaSemana) {
   const d = new Date();
   d.setDate(d.getDate() + ((diaSemana - d.getDay() + 7) % 7 || 7));
   return d.toISOString().slice(0, 10);
+}
+
+// ─── Triagem: as mesmas caixinhas e regras da central (ver PONTE.md) ───
+const AREAS = [
+  { nome: 'Profilaxia', detalhe: 'limpeza', Icone: Sparkles, cor: '#29A0CE' },
+  { nome: 'Periodontia', detalhe: 'gengiva', Icone: HeartPulse, cor: '#E24B26' },
+  { nome: 'Dentística', detalhe: 'restauração', Icone: Wrench, cor: '#5FA83C' },
+  { nome: 'Endodontia', detalhe: 'canal', Icone: Syringe, cor: '#7E4A9E' },
+  { nome: 'Cirurgia', detalhe: 'extração', Icone: Scissors, cor: '#C22326' },
+  { nome: 'Prótese', detalhe: '', Icone: Crown, cor: '#F0A912' },
+  { nome: 'Raio-X', detalhe: 'radiografia', Icone: Scan, cor: '#3559B8' },
+  { nome: 'Avaliação', detalhe: 'primeira consulta', Icone: ClipboardCheck, cor: '#2F7D4E' },
+];
+const DURACAO_PADRAO = 30; // minutos
+const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
+
+// Um paciente pode precisar de vários procedimentos ao mesmo tempo
+function areasDoPaciente(p) {
+  const t = p?.triagem;
+  if (!t) return [];
+  if (Array.isArray(t.areas)) return t.areas;
+  return t.area ? [t.area] : [];
 }
 
 // ─── Utilidades ───
@@ -273,12 +296,104 @@ function Campo({ rotulo, children }) {
   return <label className="campo"><span>{rotulo}</span>{children}</label>;
 }
 
+// TRIAGEM: o formulário de diagnóstico do paciente (o mesmo da central —
+// o que o dentista salvar aqui aparece lá na hora, e vice-versa)
+function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar }) {
+  const inicial = paciente.triagem;
+  const [f, setF] = useState({
+    areas: inicial ? (Array.isArray(inicial.areas) ? inicial.areas : (inicial.area ? [inicial.area] : [])) : [],
+    saude: inicial?.saude || [],
+    outrasCondicoes: inicial?.outrasCondicoes || '',
+  });
+  const [novoTipo, setNovoTipo] = useState('');
+  const alternaArea = a => setF({ ...f, areas: f.areas.includes(a) ? f.areas.filter(x => x !== a) : [...f.areas, a] });
+  const alternaSaude = c => setF({ ...f, saude: f.saude.includes(c) ? f.saude.filter(x => x !== c) : [...f.saude, c] });
+  async function adicionarTipo() {
+    const nome = novoTipo.trim();
+    if (!nome) return;
+    await aoAdicionarTipo(nome);
+    setF(atual => ({ ...atual, areas: [...atual.areas, nome] }));
+    setNovoTipo('');
+  }
+  return (
+    <div className="folha">
+      <h2>Triagem — {paciente.nome}</h2>
+      <div className="campo"><span>Procedimentos que vai fazer (marque todos os que precisar)</span>
+        <div className="caixas">
+          {areas.map(a => (
+            <label key={a.nome} className={f.areas.includes(a.nome) ? 'caixa marcada' : 'caixa'} onClick={() => alternaArea(a.nome)}>
+              <a.Icone size={15} style={{ color: a.cor }} />{a.nome}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <input style={{ flex: 1 }} value={novoTipo} onChange={e => setNovoTipo(e.target.value)} placeholder="Outro procedimento? Digite (ex.: Pediatria)" onKeyDown={e => e.key === 'Enter' && adicionarTipo()} />
+          <button className="btn-mais" onClick={adicionarTipo} disabled={!novoTipo.trim()}>+ Add</button>
+        </div>
+      </div>
+      <div className="campo"><span>Saúde do paciente (marque o que tiver)</span>
+        <div className="caixas">
+          {CONDICOES_SAUDE.map(c => (
+            <label key={c} className={f.saude.includes(c) ? 'caixa marcada' : 'caixa'}>
+              <input type="checkbox" checked={f.saude.includes(c)} onChange={() => alternaSaude(c)} />
+              {c}
+            </label>
+          ))}
+        </div>
+      </div>
+      <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
+      <p className="dica">A triagem aparece na central Seja Semente na hora — de lá o paciente já pode ser agendado.</p>
+      <div className="linha-botoes">
+        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={f.areas.length === 0} onClick={() => aoSalvar(f)}>Concluir triagem</button>
+      </div>
+    </div>
+  );
+}
+
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [escalas, setEscalas] = useState(CONFIGURADO ? [] : lerLocal('sd-escalas', DEMO.escalas));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
-  const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
+  const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : lerLocal('sd-pacientes', DEMO.pacientes));
+
+  // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
+  const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
+  const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-pacientes', todosPacientes); }, [todosPacientes]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-config-proc', configProc); }, [configProc]);
+  useEffect(() => {
+    if (!CONFIGURADO) return;
+    const { doc, onSnapshot } = fb.fns;
+    return onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
+      if (snap.exists()) setConfigProc({ personalizados: [], duracoes: {}, ...snap.data() });
+    });
+  }, []);
+  const todasAreas = [
+    ...AREAS,
+    ...(configProc.personalizados || []).map(p => ({ nome: p.nome, detalhe: p.detalhe || '', Icone: Tag, cor: corDoNome(p.nome), personalizado: true })),
+  ];
+  const duracaoDe = nome => configProc.duracoes?.[nome] || DURACAO_PADRAO;
+  async function adicionarTipo(nome) {
+    if (todasAreas.some(a => a.nome.toLowerCase() === nome.toLowerCase())) return;
+    const nova = { ...configProc, personalizados: [...(configProc.personalizados || []), { nome, detalhe: '' }] };
+    setConfigProc(nova);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc } = fb.fns;
+    await setDoc(doc(fb.db, 'config', 'procedimentos'), nova);
+  }
+  async function salvarTriagem(paciente, triagem) {
+    if (!CONFIGURADO) {
+      setTodosPacientes(ps => ps.map(p => p.id === paciente.id ? { ...p, triagem, status: 'triado' } : p));
+      setTelaTriagem(null);
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
+    setTelaTriagem(null);
+  }
+  const semTriagem = todosPacientes.filter(p => !p.triagem);
 
   // Meus pacientes: os que a central agendou comigo (ou designou na triagem)
   const meusIds = new Set(agendamentos.map(g => g.pacienteId).filter(Boolean));
@@ -367,6 +482,56 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
 
+  if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} aoAdicionarTipo={adicionarTipo} aoCancelar={() => setTelaTriagem(null)} aoSalvar={t => salvarTriagem(telaTriagem.triagem, t)} />;
+
+  if (telaTriagem === 'entrada') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={() => setTelaTriagem(null)}><ChevronLeft size={18} /> Voltar</button>
+      <h2>Caixa de entrada</h2>
+      <p className="dica">Pacientes aguardando triagem:</p>
+      {semTriagem.length ? semTriagem.map(p => (
+        <div className="cartao" key={p.id}>
+          <div className="cartao-linha">
+            <Bolha nome={p.nome} foto={p.foto} />
+            <div>
+              <div className="cartao-topo"><strong>{p.nome}</strong><span className="chip aguardando">sem triagem</span></div>
+              <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+              <button className="btn-triagem" onClick={() => setTelaTriagem({ triagem: p })}>Fazer triagem</button>
+            </div>
+          </div>
+        </div>
+      )) : <Vazio texto="Tudo em dia — nenhuma triagem pendente 🌱" />}
+    </div>
+  );
+
+  if (telaTriagem?.area) {
+    const A = telaTriagem.area;
+    const daArea = todosPacientes.filter(p => areasDoPaciente(p).includes(A.nome));
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={() => setTelaTriagem(null)}><ChevronLeft size={18} /> Voltar</button>
+        <div className="cartao-linha" style={{ alignItems: 'center', marginBottom: 4 }}>
+          <span className="caixa-area-icone" style={{ background: A.cor + '22', color: A.cor }}><A.Icone size={26} strokeWidth={2.2} /></span>
+          <h2 style={{ margin: 0 }}>{A.nome} · {daArea.length} paciente{daArea.length === 1 ? '' : 's'}</h2>
+        </div>
+        {daArea.length ? daArea.map(p => (
+          <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
+            <div className="cartao-linha">
+              <Bolha nome={p.nome} foto={p.foto} />
+              <div>
+                <div className="cartao-topo">
+                  <strong>{p.nome}</strong>
+                  <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
+                </div>
+                <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+              </div>
+            </div>
+          </div>
+        )) : <Vazio texto={`Nenhum paciente de ${A.nome} ainda.`} />}
+      </div>
+    );
+  }
+
   return (
     <div className="tela-principal">
       <header>
@@ -386,6 +551,42 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <h2>Avisos</h2>
             {avisos.length ? avisos.map(a => <CartaoAviso key={a.id} aviso={a} />) : <Vazio texto="Nenhum aviso por enquanto." />}
+          </>
+        )}
+        {aba === 'triagem' && (
+          <>
+            <h2>Triagem</h2>
+            <button className={`caixa-entrada ${semTriagem.length ? 'pendente' : 'vazia'}`} onClick={() => setTelaTriagem('entrada')}>
+              <span className="entrada-icone"><Inbox size={23} strokeWidth={2.2} /></span>
+              <span className="entrada-texto">
+                <strong>Caixa de entrada</strong>
+                <span>{semTriagem.length
+                  ? `${semTriagem.length} pendente${semTriagem.length === 1 ? '' : 's'} de triagem`
+                  : 'Tudo em dia — nenhuma pendência'}</span>
+              </span>
+              {semTriagem.length > 0 && <span className="entrada-qtd">{semTriagem.length}</span>}
+              <ChevronRight size={20} strokeWidth={2.6} className="entrada-seta" />
+            </button>
+            <p className="dica" style={{ margin: '10px 0 8px' }}>Pacientes por procedimento (toque para ver):</p>
+            <div className="grade-areas">
+              {todasAreas.map(a => {
+                const total = todosPacientes.filter(p => areasDoPaciente(p).includes(a.nome)).length;
+                return (
+                  <button key={a.nome} className="caixa-area" onClick={() => setTelaTriagem({ area: a })}>
+                    <span className="area-topo">
+                      <span className="caixa-area-icone" style={{ background: a.cor + '1C', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
+                      <span className="area-seta" style={{ background: a.cor + '16', color: a.cor }}><ChevronRight size={18} strokeWidth={3} /></span>
+                    </span>
+                    <strong>{a.nome}</strong>
+                    <span className="caixa-area-detalhe">
+                      <span className="area-qtd" style={{ color: a.cor }}><User size={14} strokeWidth={2.6} /> {total} paciente{total === 1 ? '' : 's'}</span>
+                      <i className="area-divisor" />
+                      <span className="area-tempo"><Clock size={14} strokeWidth={2.4} /> {duracaoDe(a.nome)} min</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </>
         )}
         {aba === 'escalas' && (
@@ -459,11 +660,15 @@ function TelaPrincipal({ usuario, aoSair }) {
       </main>
 
       <nav>
-        <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}><Home size={23} /><span>Início</span></button>
-        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={23} /><span>Pacientes</span></button>
-        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={23} /><span>Agenda</span></button>
-        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}><ListChecks size={23} /><span>Escalas</span></button>
-        <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={23} /><span>Perfil</span></button>
+        <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}><Home size={22} /><span>Início</span></button>
+        <button className={aba === 'triagem' ? 'ativo' : ''} onClick={() => setAba('triagem')}>
+          <span className="icone-aba"><Stethoscope size={22} />{semTriagem.length > 0 && <i className="bolinha" />}</span>
+          <span>Triagem</span>
+        </button>
+        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={22} /><span>Pacientes</span></button>
+        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={22} /><span>Agenda</span></button>
+        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}><ListChecks size={22} /><span>Escalas</span></button>
+        <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
     </div>
   );
