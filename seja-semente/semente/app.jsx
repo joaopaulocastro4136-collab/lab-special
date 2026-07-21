@@ -30,13 +30,13 @@ let fb = null;
 
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
-  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
   const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
   fb = {
     auth: getAuth(app),
     db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp },
+    fns: { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp },
   };
 }
 
@@ -118,13 +118,18 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  const [novaConta, setNovaConta] = useState(false);
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
     try {
-      await fb.fns.signInWithEmailAndPassword(fb.auth, email.trim(), senha);
+      if (novaConta) await fb.fns.createUserWithEmailAndPassword(fb.auth, email.trim(), senha);
+      else await fb.fns.signInWithEmailAndPassword(fb.auth, email.trim(), senha);
     } catch (e) {
-      setErro('Não consegui entrar. Confira o e-mail e a senha.');
+      setErro(novaConta
+        ? 'Não consegui criar a conta — a senha precisa de 6 ou mais caracteres e o e-mail ser válido (ou já existe conta com ele).'
+        : 'Não consegui entrar. Confira o e-mail e a senha.');
     }
     setCarregando(false);
   }
@@ -143,9 +148,12 @@ function TelaLogin({ aoEntrarDemo }) {
         <>
           <div className="separador">ou com e-mail</div>
           <input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
+          <input placeholder={novaConta ? 'Crie uma senha (6+ caracteres)' : 'Senha'} type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
           <button className="btn-principal" onClick={entrarEmail} disabled={carregando}>
-            {carregando ? 'Entrando…' : 'Entrar'}
+            {carregando ? 'Um instante…' : (novaConta ? 'Criar conta' : 'Entrar')}
+          </button>
+          <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
+            {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
         </>
       )}

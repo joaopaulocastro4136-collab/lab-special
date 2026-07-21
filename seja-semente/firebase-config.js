@@ -1,20 +1,12 @@
 // ─── Configuração do Firebase do projeto SEJA SEMENTE ───
-// Este arquivo é a "chave" que liga o aplicativo Semeador à central.
-// O programa Windows (na sua máquina) deve apontar para O MESMO projeto
-// Firebase — é assim que os dois conversam.
-//
-// Enquanto os valores abaixo estiverem com "COLE_AQUI", o aplicativo roda
-// em MODO DEMONSTRAÇÃO (com dados de exemplo, sem internet).
-//
-// Para ligar de verdade:
-//   1. Crie um projeto no https://console.firebase.google.com chamado "seja-semente"
-//   2. Adicione um app Web e copie a configuração para cá
-//   3. Ative Authentication (E-mail/senha) e Firestore
+// Esta é a "chave" que liga os aplicativos à central na nuvem
+// (projeto seja-semente-app). O programa Windows deve apontar para
+// O MESMO projeto — é assim que todas as pontas conversam em tempo real.
 export const FIREBASE_CONFIG = {
-  apiKey: 'COLE_AQUI',
-  authDomain: 'COLE_AQUI.firebaseapp.com',
-  projectId: 'COLE_AQUI',
-  storageBucket: 'COLE_AQUI.firebasestorage.app',
-  messagingSenderId: 'COLE_AQUI',
-  appId: 'COLE_AQUI',
+  apiKey: 'AIzaSyDhv2XbePiH7My0glDkI0zA8MwaBYNg_ZQ',
+  authDomain: 'seja-semente-app.firebaseapp.com',
+  projectId: 'seja-semente-app',
+  storageBucket: 'seja-semente-app.firebasestorage.app',
+  messagingSenderId: '474886604901',
+  appId: '1:474886604901:web:262ded9c45e6efddfd9e8c',
 };
