@@ -58,5 +58,13 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>A câmera é usada para registrar fotos dos atendimentos na ficha do paciente.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>A galeria é usada para escolher fotos dos atendimentos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Permite salvar fotos dos atendimentos na galeria.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O microfone pode ser solicitado pela câmera do aparelho ao registrar fotos e vídeos.</string>
 </dict>
 </plist>
