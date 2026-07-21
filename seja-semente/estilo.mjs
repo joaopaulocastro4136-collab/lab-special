@@ -169,10 +169,12 @@ export const CSS = `
   .caixa-entrada.vazia .entrada-seta { color: #226343; flex: none; }
 
   /* ── Sequência de agendamentos (um por procedimento) ── */
-  .linha-sequencia { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid rgba(30,43,34,0.07); border-radius: 14px; padding: 10px 12px; margin-top: 7px; box-shadow: 0 3px 8px rgba(30,43,34,0.05); }
-  .linha-sequencia strong { flex: 1; font-size: 14.5px; }
+  .linha-sequencia { display: flex; flex-direction: column; gap: 8px; background: #fff; border: 1px solid rgba(30,43,34,0.07); border-radius: 14px; padding: 10px 12px; margin-top: 7px; box-shadow: 0 3px 8px rgba(30,43,34,0.05); }
+  .seq-topo { display: flex; align-items: center; gap: 10px; }
+  .seq-topo strong { flex: 1; font-size: 14.5px; }
   .seq-tempo { font-size: 12.5px; font-weight: 800; color: #55645A; white-space: nowrap; }
   .linha-sequencia input[type="time"] { width: 92px; padding: 8px 9px; border: 1.5px solid #DBE3D8; border-radius: 10px; font-size: 14px; background: #fff; }
+  .seq-prof { width: 100%; padding: 9px 11px; border: 1.5px solid #E4EAE0; border-radius: 10px; font-size: 13.5px; background: #FAFBF7; color: #3A4A3F; font-weight: 600; }
   .hora-fim { display: block; font-size: 11px; font-weight: 700; color: #9AA79D; }
 
   /* ── Ações da ficha, seletor e pesquisa ── */
