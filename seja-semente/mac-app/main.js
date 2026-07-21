@@ -3,7 +3,9 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 
-const URL_CENTRAL = 'https://seja-semente-app.web.app';
+// Mesmo conteúdo do web.app, mas neste domínio o login Google funciona
+// (é o endereço de retorno que o Google tem registrado)
+const URL_CENTRAL = 'https://seja-semente-app.firebaseapp.com';
 
 function criarJanela() {
   const win = new BrowserWindow({
