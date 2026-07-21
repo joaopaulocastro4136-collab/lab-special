@@ -1692,13 +1692,21 @@ export default function App() {
     persistConfig({ ajustesDia: novo });
   };
 
-  // Mover um trabalho para uma data escolhida no calendário (aba Datas)
+  // Mover um trabalho para uma data escolhida no calendário (aba Datas) — respeita
+  // EXATAMENTE a data escolhida (antes ele pulava pro próximo dia útil e "não modificava")
   const mudarPrazoParaDia = (id, data) => {
     const caso = casosVivos().find(c => c.id === id);
     if (!caso || !data) return;
-    const novoPrazo = proximoDiaUtil(data, diasTrabalho);
+    updateCaso(id, { prazo: data });
+    criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi movido para ${formatDateBR(data)}.`, id);
+  };
+  // Mover direto para HOJE ou AMANHÃ (datas exatas — sem pular de dia)
+  const moverParaDia = (id, quando) => {
+    const caso = casosVivos().find(c => c.id === id);
+    if (!caso) return;
+    const novoPrazo = quando === 'hoje' ? todayISO() : addDias(todayISO(), 1);
     updateCaso(id, { prazo: novoPrazo });
-    criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) foi movido para ${formatDateBR(novoPrazo)}.`, id);
+    criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) movido para ${quando === 'hoje' ? 'hoje' : 'amanhã'} (${formatDateBR(novoPrazo)}).`, id);
   };
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
@@ -2075,6 +2083,8 @@ export default function App() {
             tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
             ajustesDia={ajustesDia} onSetAjusteDia={setAjusteDoDia}
             onMudarPrazo={mudarPrazoParaDia}
+            onMoverDia={moverParaDia}
+            onNovo={() => setView('novo')}
             onSelect={goToDetalhe}
             onFinalizar={(id) => updateStatus(id, 'Pronto')}
             onIniciarProducao={(id) => updateStatus(id, 'Em Produção')}
@@ -2612,7 +2622,7 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onMoverDia, onNovo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
@@ -2996,6 +3006,12 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         )}
       </div>
 
+      {onNovo && (
+        <button onClick={onNovo} className="w-full mb-3 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
+          <Plus size={17} /> Adicionar trabalho {dia === 'hoje' ? 'pra hoje' : 'pra amanhã'}
+        </button>
+      )}
+
       {casos.length === 0 ? (
         <div className="text-center py-12 px-4 rounded-2xl bg-white border border-stone-200">
           <CheckCircle2 size={28} className="mx-auto mb-3" style={{ color: VERDE }} />
@@ -3062,19 +3078,31 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                     )}
                   </div>
                 )}
+                {(producao) && (
+                  <div className="flex gap-2 mt-2">
+                    {trabalhoCompleto ? (
+                      <button onClick={() => onFinalizar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
+                        <Flag size={13} /> Finalizar
+                      </button>
+                    ) : (
+                      <button onClick={() => onSelect(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+                        <ListChecks size={13} /> Etapas
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* Reagendar: pra hoje, pra amanhã ou adiar — datas exatas */}
                 <div className="flex gap-2 mt-2">
-                  {producao && trabalhoCompleto && (
-                    <button onClick={() => onFinalizar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
-                      <Flag size={13} /> Finalizar
-                    </button>
-                  )}
-                  {producao && !trabalhoCompleto && (
-                    <button onClick={() => onSelect(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-                      <ListChecks size={13} /> Etapas
-                    </button>
-                  )}
+                  <button onClick={() => onMoverDia && onMoverDia(c.id, 'hoje')} disabled={dia === 'hoje'}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'hoje' ? '#E7E5E4' : GOLD, color: dia === 'hoje' ? '#A8A29E' : '#7A6234', background: 'white' }}>
+                    Pra hoje
+                  </button>
+                  <button onClick={() => onMoverDia && onMoverDia(c.id, 'amanha')} disabled={dia === 'amanha'}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'amanha' ? '#E7E5E4' : GOLD, color: dia === 'amanha' ? '#A8A29E' : '#7A6234', background: 'white' }}>
+                    Pra amanhã
+                  </button>
                   <button onClick={() => onAdiar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
-                    <CalendarClock size={13} /> Adiar +1 dia
+                    <CalendarClock size={13} /> +1 dia
                   </button>
                 </div>
               </div>
