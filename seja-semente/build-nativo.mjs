@@ -9,8 +9,8 @@ import { CSS } from './estilo.mjs';
 const raiz = dirname(fileURLToPath(import.meta.url));
 const qual = process.argv[2];
 const APPS = {
-  semente: { entrada: 'semente/app.jsx', pasta: 'nativo-central', titulo: 'Seja Semente' },
-  semeador: { entrada: 'semeador/app.jsx', pasta: 'nativo-semeador', titulo: 'Semeador' },
+  semente: { entrada: 'semente/nativo.jsx', pasta: 'nativo-central', titulo: 'Seja Semente' },
+  semeador: { entrada: 'semeador/nativo.jsx', pasta: 'nativo-semeador', titulo: 'Semeador' },
 };
 const app = APPS[qual];
 if (!app) { console.error('Uso: node build-nativo.mjs semente|semeador'); process.exit(1); }
