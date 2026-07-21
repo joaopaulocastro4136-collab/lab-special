@@ -18,13 +18,13 @@ let fb = null; // { auth, db, fns } — só existe quando o Firebase está ligad
 
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
-  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import('firebase/auth');
-  const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
+  const { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
   fb = {
     auth: getAuth(app),
     db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, signOut, collection, doc, onSnapshot, addDoc, updateDoc, query, orderBy, serverTimestamp },
+    fns: { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, setDoc, updateDoc, query, orderBy, serverTimestamp },
   };
 }
 
@@ -73,19 +73,29 @@ function horaBonita(v) {
 //  Telas
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TelaLogin({ aoEntrar }) {
+function TelaLogin({ aoEntrarDemo }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [nome, setNome] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
-  async function entrar() {
+  async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) {
-      aoEntrar({ ...DEMO.usuario, nome: nome.trim() || DEMO.usuario.nome });
+      aoEntrarDemo({ uid: 'demo-google', nome: 'Lucas Andrade', email: 'lucas.andrade@gmail.com' });
       return;
     }
+    setCarregando(true);
+    try {
+      await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+    } catch (e) {
+      setErro('Não consegui entrar com o Google. Tente de novo.');
+    }
+    setCarregando(false);
+  }
+
+  async function entrarEmail() {
+    setErro('');
     setCarregando(true);
     try {
       await fb.fns.signInWithEmailAndPassword(fb.auth, email.trim(), senha);
@@ -100,21 +110,65 @@ function TelaLogin({ aoEntrar }) {
       <div className="login-logo">🌱</div>
       <h1>Semeador</h1>
       <p className="login-sub">Aplicativo do voluntário · Seja Semente</p>
-      {CONFIGURADO ? (
+      {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
+      <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
+        <span className="g">G</span> Entrar com Google
+      </button>
+      {CONFIGURADO && (
         <>
+          <div className="separador">ou com e-mail</div>
           <input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrar()} />
-        </>
-      ) : (
-        <>
-          <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja semeador/README.md)</div>
-          <input placeholder="Seu nome" value={nome} onChange={e => setNome(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrar()} />
+          <input placeholder="Senha" type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
+          <button className="btn-principal" onClick={entrarEmail} disabled={carregando}>
+            {carregando ? 'Entrando…' : 'Entrar'}
+          </button>
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
-      <button className="btn-principal" onClick={entrar} disabled={carregando}>
-        {carregando ? 'Entrando…' : 'Entrar'}
-      </button>
+    </div>
+  );
+}
+
+// ─── Primeira entrada: o voluntário preenche o cadastro, que vira uma
+//     solicitação para a central Seja Semente aprovar ───
+function TelaCadastro({ usuario, aoEnviar }) {
+  const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '' });
+  const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const cpfOk = f.cpf.replace(/\D/g, '').length === 11;
+  const pronto = f.nome.trim() && f.telefone.trim() && cpfOk && f.nascimento;
+  return (
+    <div className="folha">
+      <h2>Cadastro de voluntário</h2>
+      <p className="dica">Bem-vindo! Preencha seus dados — eles vão para a central Seja Semente, que aprova a sua entrada como voluntário.</p>
+      <Campo rotulo="Nome completo"><input value={f.nome} onChange={muda('nome')} /></Campo>
+      <Campo rotulo="Telefone (WhatsApp)"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" placeholder="(11) 91234-5678" /></Campo>
+      <Campo rotulo="CPF"><input value={f.cpf} onChange={muda('cpf')} inputMode="numeric" placeholder="000.000.000-00" /></Campo>
+      <Campo rotulo="Data de nascimento"><input type="date" value={f.nascimento} onChange={muda('nascimento')} /></Campo>
+      {f.cpf && !cpfOk && <div className="erro">O CPF precisa ter 11 números.</div>}
+      <button className="btn-principal" disabled={!pronto} onClick={() => aoEnviar(f)}>Enviar solicitação</button>
+    </div>
+  );
+}
+
+function TelaAguardando({ usuario, aoSair, aoSimularAprovacao }) {
+  return (
+    <div className="tela-login">
+      <div className="login-logo">🕊️</div>
+      <h1>Solicitação enviada!</h1>
+      <p className="login-sub">Seu cadastro foi enviado para a central Seja Semente.<br />Assim que a coordenação aprovar, você entra como voluntário — o aplicativo libera sozinho, na hora.</p>
+      {!CONFIGURADO && <button className="btn-principal" onClick={aoSimularAprovacao}>(demonstração) Simular aprovação da central</button>}
+      <button className="btn-sair" onClick={aoSair}>Sair</button>
+    </div>
+  );
+}
+
+function TelaRecusado({ aoSair }) {
+  return (
+    <div className="tela-login">
+      <div className="login-logo">🌱</div>
+      <h1>Cadastro não aprovado</h1>
+      <p className="login-sub">A central Seja Semente não aprovou esta solicitação.<br />Fale com a coordenação se achar que foi um engano.</p>
+      <button className="btn-sair" onClick={aoSair}>Sair</button>
     </div>
   );
 }
@@ -287,6 +341,7 @@ function TelaPrincipal({ usuario, aoSair }) {
               <p><strong>{usuario.nome}</strong></p>
               {usuario.ministerio && <p>Ministério: {usuario.ministerio}</p>}
               {usuario.email && <p>{usuario.email}</p>}
+              {usuario.telefone && <p>{usuario.telefone}</p>}
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
           </>
@@ -305,34 +360,49 @@ function TelaPrincipal({ usuario, aoSair }) {
 
 function App() {
   const [pronto, setPronto] = useState(!CONFIGURADO);
-  const [usuario, setUsuario] = useState(null);
+  const [conta, setConta] = useState(null);       // quem entrou (Google ou e-mail)
+  const [cadastro, setCadastro] = useState(null); // documento voluntarios/{uid}
 
   useEffect(() => {
     if (!CONFIGURADO) return;
-    let soltar = null;
+    let soltarAuth = null, soltarDoc = null;
     ligarFirebase().then(() => {
-      soltar = fb.fns.onAuthStateChanged(fb.auth, async u => {
-        if (!u) { setUsuario(null); setPronto(true); return; }
-        // O cadastro do voluntário (nome, ministério…) fica em voluntarios/{uid},
-        // preenchido pela central no programa Windows.
+      soltarAuth = fb.fns.onAuthStateChanged(fb.auth, u => {
+        soltarDoc?.(); soltarDoc = null;
+        if (!u) { setConta(null); setCadastro(null); setPronto(true); return; }
+        setConta({ uid: u.uid, email: u.email, nome: u.displayName || u.email, foto: u.photoURL || '' });
+        // O cadastro fica em voluntarios/{uid}: se não existe, o voluntário
+        // preenche a solicitação; quando a central aprovar (status "ativo"),
+        // o app libera sozinho — o snapshot chega em tempo real.
         const { doc, onSnapshot } = fb.fns;
-        onSnapshot(doc(fb.db, 'voluntarios', u.uid), snap => {
-          setUsuario({ uid: u.uid, email: u.email, nome: u.email, ...snap.data() });
+        soltarDoc = onSnapshot(doc(fb.db, 'voluntarios', u.uid), snap => {
+          setCadastro(snap.exists() ? snap.data() : null);
           setPronto(true);
         });
       });
     });
-    return () => soltar?.();
+    return () => { soltarDoc?.(); soltarAuth?.(); };
   }, []);
+
+  async function enviarCadastro(f) {
+    const dados = { ...f, email: conta.email || '', foto: conta.foto || '', status: 'pendente', ativo: false };
+    if (!CONFIGURADO) { setCadastro(dados); return; }
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    await setDoc(doc(fb.db, 'voluntarios', conta.uid), { ...dados, solicitadoEm: serverTimestamp() });
+  }
 
   async function sair() {
     if (CONFIGURADO) await fb.fns.signOut(fb.auth);
-    setUsuario(null);
+    setConta(null);
+    setCadastro(null);
   }
 
   if (!pronto) return <div className="carregando">🌱</div>;
-  if (!usuario) return <TelaLogin aoEntrar={setUsuario} />;
-  return <TelaPrincipal usuario={usuario} aoSair={sair} />;
+  if (!conta) return <TelaLogin aoEntrarDemo={setConta} />;
+  if (!cadastro) return <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
+  if (cadastro.status === 'pendente') return <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
+  if (cadastro.status === 'recusado') return <TelaRecusado aoSair={sair} />;
+  return <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

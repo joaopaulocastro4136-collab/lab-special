@@ -42,8 +42,9 @@ const DEMO = {
     { id: 'a1', titulo: 'Bem-vindo à central Seja Semente!', texto: 'Este é o aplicativo central: triagem, agendamentos, avisos e equipe — a mesma central do programa Windows, no celular.', autor: 'Sistema', criadoEm: new Date() },
   ],
   voluntarios: [
-    { id: 'v1', nome: 'Maria Souza', ministerio: 'Acolhimento', telefone: '(11) 91234-5678', ativo: true },
-    { id: 'v2', nome: 'Pedro Lima', ministerio: 'Distribuição', telefone: '(11) 99876-5432', ativo: true },
+    { id: 'v1', nome: 'Maria Souza', ministerio: 'Acolhimento', telefone: '(11) 91234-5678', status: 'ativo', ativo: true },
+    { id: 'v2', nome: 'Pedro Lima', ministerio: 'Distribuição', telefone: '(11) 99876-5432', status: 'ativo', ativo: true },
+    { id: 'v3', nome: 'Lucas Andrade', email: 'lucas.andrade@gmail.com', telefone: '(11) 95555-4444', cpf: '123.456.789-00', nascimento: '1995-03-14', status: 'pendente', ativo: false },
   ],
 };
 
@@ -61,6 +62,11 @@ function dataBonita(iso) {
   return `${DIAS[dt.getDay()]}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
 }
 function hojeISO() { return new Date().toISOString().slice(0, 10); }
+function dataNascimentoBonita(iso) {
+  if (!iso) return '';
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a}`;
+}
 
 const NECESSIDADES = ['Alimentação', 'Roupas', 'Documentos', 'Saúde', 'Moradia', 'Apoio / conversa', 'Outro'];
 const PROXIMO_STATUS = { 'aguardando': 'em atendimento', 'em atendimento': 'concluída', 'concluída': 'aguardando' };
@@ -219,6 +225,18 @@ function TelaPrincipal({ usuario, aoSair }) {
     setForm(null);
   }
 
+  // Aprova ou recusa a solicitação de cadastro que o voluntário enviou pelo
+  // Semeador — no celular dele, o aplicativo libera (ou avisa) na hora.
+  async function responderSolicitacao(v, aprovar) {
+    const mudanca = aprovar ? { status: 'ativo', ativo: true } : { status: 'recusado', ativo: false };
+    if (!CONFIGURADO) {
+      setVoluntarios(vs => vs.map(x => x.id === v.id ? { ...x, ...mudanca } : x));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca);
+  }
+
   async function mudarStatus(t) {
     const status = PROXIMO_STATUS[t.status] || 'aguardando';
     if (!CONFIGURADO) {
@@ -288,25 +306,52 @@ function TelaPrincipal({ usuario, aoSair }) {
             )) : <div className="vazio">Nenhum aviso publicado.</div>}
           </>
         )}
-        {aba === 'equipe' && (
-          <>
-            <h2>Equipe de voluntários</h2>
-            {voluntarios.length ? voluntarios.map(v => (
-              <div className="cartao" key={v.id}>
-                <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
-                <p>{v.ministerio}{v.telefone ? ` · ${v.telefone}` : ''}</p>
-              </div>
-            )) : <div className="vazio">Nenhum voluntário cadastrado.</div>}
-            <button className="btn-sair" onClick={aoSair}>Sair</button>
-          </>
-        )}
+        {aba === 'equipe' && (() => {
+          const pendentes = voluntarios.filter(v => v.status === 'pendente');
+          const equipe = voluntarios.filter(v => v.status !== 'pendente' && v.status !== 'recusado');
+          return (
+            <>
+              {pendentes.length > 0 && (
+                <>
+                  <h2>Solicitações de cadastro</h2>
+                  {pendentes.map(v => (
+                    <div className="cartao pendente" key={v.id}>
+                      <div className="cartao-topo"><strong>{v.nome}</strong><span className="chip aguardando">pendente</span></div>
+                      <p>
+                        {v.email && <>{v.email}<br /></>}
+                        {v.telefone && <>{v.telefone}<br /></>}
+                        {v.cpf && <>CPF: {v.cpf}<br /></>}
+                        {v.nascimento && <>Nascimento: {dataNascimentoBonita(v.nascimento)}</>}
+                      </p>
+                      <div className="linha-botoes">
+                        <button className="btn-recusar" onClick={() => responderSolicitacao(v, false)}>Recusar</button>
+                        <button className="btn-aprovar" onClick={() => responderSolicitacao(v, true)}>Aprovar voluntário</button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              <h2>Equipe de voluntários</h2>
+              {equipe.length ? equipe.map(v => (
+                <div className="cartao" key={v.id}>
+                  <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
+                  <p>{[v.ministerio, v.telefone].filter(Boolean).join(' · ')}</p>
+                </div>
+              )) : <div className="vazio">Nenhum voluntário cadastrado.</div>}
+              <button className="btn-sair" onClick={aoSair}>Sair</button>
+            </>
+          );
+        })()}
       </main>
 
       <nav>
         <button className={aba === 'triagem' ? 'ativo' : ''} onClick={() => setAba('triagem')}>📋<span>Triagem</span></button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
         <button className={aba === 'avisos' ? 'ativo' : ''} onClick={() => setAba('avisos')}>📢<span>Avisos</span></button>
-        <button className={aba === 'equipe' ? 'ativo' : ''} onClick={() => setAba('equipe')}>👥<span>Equipe</span></button>
+        <button className={aba === 'equipe' ? 'ativo' : ''} onClick={() => setAba('equipe')}>
+          <span className="icone-aba">👥{voluntarios.some(v => v.status === 'pendente') && <i className="bolinha" />}</span>
+          <span>Equipe</span>
+        </button>
       </nav>
     </div>
   );

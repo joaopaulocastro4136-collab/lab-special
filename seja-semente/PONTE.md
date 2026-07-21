@@ -39,15 +39,30 @@ todas respeitarem este contrato.
 ## Coleções do Firestore
 
 ### `voluntarios/{uid}` — cadastro dos voluntários
-Quem escreve: **Central**. Quem lê: aplicativo.
 O `{uid}` é o ID do usuário no Firebase Authentication.
 
-| Campo        | Tipo      | Exemplo                  |
-|--------------|-----------|--------------------------|
-| `nome`       | string    | `"Maria Souza"`          |
-| `telefone`   | string    | `"(11) 91234-5678"`      |
-| `ministerio` | string    | `"Acolhimento"`          |
-| `ativo`      | boolean   | `true`                   |
+**Fluxo de entrada do voluntário** (importante para o programa Windows):
+1. O voluntário entra no Semeador com a **conta Google** (ou e-mail/senha)
+2. Na primeira entrada, ele preenche o cadastro (nome, telefone, CPF,
+   data de nascimento) — o próprio Semeador cria `voluntarios/{uid}` com
+   `status: "pendente"` (é a **solicitação de cadastro**)
+3. A solicitação aparece na Central (Windows e app Seja Semente, aba
+   Equipe) com todos os dados; a coordenação **aprova** (`status: "ativo"`,
+   `ativo: true`) ou **recusa** (`status: "recusado"`, `ativo: false`)
+4. No celular do voluntário o app libera (ou avisa a recusa) na hora
+
+| Campo          | Tipo      | Quem escreve | Exemplo                       |
+|----------------|-----------|--------------|-------------------------------|
+| `nome`         | string    | voluntário   | `"Maria Souza"`               |
+| `email`        | string    | voluntário   | `"maria@gmail.com"`           |
+| `foto`         | string    | voluntário   | URL da foto da conta Google   |
+| `telefone`     | string    | voluntário   | `"(11) 91234-5678"`           |
+| `cpf`          | string    | voluntário   | `"123.456.789-00"`            |
+| `nascimento`   | string `AAAA-MM-DD` | voluntário | `"1995-03-14"`        |
+| `solicitadoEm` | timestamp | voluntário   | data/hora da solicitação      |
+| `status`       | string    | Central      | `"pendente"` → `"ativo"` ou `"recusado"` |
+| `ativo`        | boolean   | Central      | `true`                        |
+| `ministerio`   | string    | Central      | `"Acolhimento"`               |
 
 ### `avisos/{id}` — mural de avisos
 Quem escreve: **Central**. Quem lê: aplicativo (ordena por `criadoEm` decrescente).
@@ -130,7 +145,10 @@ Duas opções, da mais simples à mais robusta:
 
 ## Contas dos voluntários
 
-Os voluntários entram no aplicativo com **e-mail e senha** (Firebase
-Authentication). O fluxo combinado é: a Central cadastra o voluntário
-(cria o usuário no Authentication + o documento em `voluntarios/{uid}`)
-e informa a senha inicial ao voluntário.
+Os voluntários entram no aplicativo com a **conta Google** (ou e-mail e
+senha, como alternativa) — Firebase Authentication. Ninguém precisa criar
+conta para eles: o próprio voluntário entra, preenche o cadastro e a
+Central só aprova (fluxo descrito acima em `voluntarios/{uid}`).
+
+No console do Firebase, ative os provedores **Google** e **E-mail/senha**
+em Authentication → Sign-in method.

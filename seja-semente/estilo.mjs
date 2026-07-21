@@ -20,6 +20,10 @@ export const CSS = `
   .erro { color: #B3402A; font-size: 14px; }
   .btn-principal { width: 100%; max-width: 320px; padding: 14px; border: none; border-radius: 12px; background: #2F7D4E; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
   .btn-principal:disabled { opacity: 0.5; }
+  .btn-google { width: 100%; max-width: 320px; padding: 13px; border: 1.5px solid #D4DCD2; border-radius: 12px; background: #fff; font-size: 16px; font-weight: 700; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .btn-google .g { width: 24px; height: 24px; border-radius: 50%; background: conic-gradient(from -45deg, #EA4335 110deg, #4285F4 90deg 180deg, #34A853 180deg 270deg, #FBBC05 270deg); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .separador { max-width: 320px; width: 100%; display: flex; align-items: center; gap: 10px; color: #7B897F; font-size: 13px; }
+  .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #D4DCD2; }
 
   /* ── Estrutura principal ── */
   .tela-principal { min-height: 100vh; display: flex; flex-direction: column; }
@@ -40,6 +44,12 @@ export const CSS = `
   .autor, .obs { margin-top: 8px; font-size: 13px; color: #7B897F; }
   .autor { font-style: italic; }
   .vazio { text-align: center; color: #7B897F; padding: 40px 20px; }
+
+  .cartao.pendente { border: 1.5px solid #E8D5A4; background: #FFFDF6; }
+  .btn-aprovar { flex: 2; padding: 12px; border: none; border-radius: 10px; background: #2F7D4E; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .btn-recusar { flex: 1; padding: 12px; border: 1.5px solid #E5C9C2; border-radius: 10px; background: #fff; color: #B3402A; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .icone-aba { position: relative; }
+  .bolinha { position: absolute; top: -2px; right: -6px; width: 10px; height: 10px; border-radius: 50%; background: #E0492E; border: 2px solid #fff; }
 
   .chip { border: none; border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
   .chip.aguardando { background: #FFF1D6; color: #8A6516; }
