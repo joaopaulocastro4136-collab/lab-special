@@ -287,30 +287,61 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
   );
 }
 
-// AGENDAMENTO: paciente + procedimento + voluntário (vendo os horários dele)
+// AGENDAMENTO: paciente + voluntário. CADA procedimento marcado vira UM
+// agendamento próprio — os horários se emendam pelo tempo de cada um, e
+// cada linha pode ter a hora ajustada à mão.
 function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar }) {
   const triados = pacientes.filter(p => p.triagem);
   const primeiro = pacienteInicial || triados[0];
   const [f, setF] = useState({
     pacienteId: primeiro?.id || '',
-    areaEscolhida: areasDoPaciente(primeiro)[0] || '',
     profissionalUid: voluntarios[0]?.id || '',
-    data: dataInicial, hora: '08:00',
+    data: dataInicial, horaInicio: '08:00',
   });
+  const [marcadas, setMarcadas] = useState(areasDoPaciente(primeiro));
+  const [horasProprias, setHorasProprias] = useState({}); // procedimento → hora fixada à mão
+  const [salvando, setSalvando] = useState(false);
   const muda = k => e => setF({ ...f, [k]: e.target.value });
   const mudaPaciente = e => {
     const p = triados.find(x => x.id === e.target.value);
-    setF({ ...f, pacienteId: e.target.value, areaEscolhida: areasDoPaciente(p)[0] || '' });
+    setF({ ...f, pacienteId: e.target.value });
+    setMarcadas(areasDoPaciente(p));
+    setHorasProprias({});
   };
+  const alterna = nome => setMarcadas(m => m.includes(nome) ? m.filter(x => x !== nome) : [...m, nome]);
   const pac = triados.find(p => p.id === f.pacienteId);
   const prof = voluntarios.find(p => p.id === f.profissionalUid);
   const areasPac = areasDoPaciente(pac);
-  const area = todasAreas.find(a => a.nome === f.areaEscolhida);
-  const duracao = duracaoDe(f.areaEscolhida);
   const ocupados = agendamentos
     .filter(g => g.profissionalUid === f.profissionalUid && g.data === f.data)
     .sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
-  const choque = ocupados.find(g => conflita(f.hora, duracao, g));
+
+  // A sequência: um agendamento por procedimento, um começando no fim do outro
+  const sequencia = [];
+  let cursor = f.horaInicio;
+  for (const nome of areasPac.filter(a => marcadas.includes(a))) {
+    const hora = horasProprias[nome] || cursor;
+    const dur = duracaoDe(nome);
+    const choque = ocupados.find(g => conflita(hora, dur, g));
+    sequencia.push({ nome, hora, dur, fim: horaFim(hora, dur), choque });
+    cursor = horaFim(hora, dur);
+  }
+
+  async function agendarTodos() {
+    setSalvando(true);
+    await aoSalvar(sequencia.map(s => {
+      const area = todasAreas.find(a => a.nome === s.nome);
+      return {
+        area: s.nome,
+        titulo: s.nome + (area?.detalhe ? ` (${area.detalhe})` : ''),
+        duracaoMin: s.dur,
+        pacienteId: pac.id, pacienteNome: pac.nome,
+        profissionalUid: prof.id, profissionalNome: prof.nome,
+        data: f.data, hora: s.hora,
+      };
+    }));
+  }
+
   return (
     <div className="folha">
       <h2>Agendar paciente</h2>
@@ -320,12 +351,19 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
           {triados.map(p => <option key={p.id} value={p.id}>{p.codigo ? `${p.codigo} · ` : ''}{p.nome}</option>)}
         </select>
       </Campo>
-      {areasPac.length > 1 && (
-        <Campo rotulo="Procedimento desta consulta">
-          <select value={f.areaEscolhida} onChange={muda('areaEscolhida')}>
-            {areasPac.map(a => <option key={a}>{a}</option>)}
-          </select>
-        </Campo>
+      {areasPac.length > 0 && (
+        <div className="campo"><span>Procedimentos a agendar (cada um vira um agendamento)</span>
+          <div className="caixas">
+            {areasPac.map(nome => {
+              const a = todasAreas.find(x => x.nome === nome);
+              return (
+                <label key={nome} className={marcadas.includes(nome) ? 'caixa marcada' : 'caixa'} onClick={() => alterna(nome)}>
+                  {a?.Icone && <a.Icone size={15} style={{ color: a.cor }} />}{nome} · {duracaoDe(nome)} min
+                </label>
+              );
+            })}
+          </div>
+        </div>
       )}
       <Campo rotulo="Voluntário / dentista que vai atender">
         <select value={f.profissionalUid} onChange={muda('profissionalUid')}>
@@ -333,9 +371,18 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
         </select>
       </Campo>
       <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
-      <Campo rotulo={`Hora (${f.areaEscolhida || 'procedimento'} leva ${duracao} min → termina ${horaFim(f.hora, duracao)})`}>
-        <input type="time" value={f.hora} onChange={muda('hora')} />
-      </Campo>
+      <Campo rotulo="Hora de início"><input type="time" value={f.horaInicio} onChange={e => { setF({ ...f, horaInicio: e.target.value }); setHorasProprias({}); }} /></Campo>
+      {sequencia.length > 0 && (
+        <div className="campo"><span>Como fica ({sequencia.length} agendamento{sequencia.length === 1 ? '' : 's'})</span>
+          {sequencia.map(s => (
+            <div key={s.nome} className="linha-sequencia">
+              <strong>{s.nome}</strong>
+              <span className="seq-tempo">{s.hora}–{s.fim} · {s.dur} min</span>
+              <input type="time" value={s.hora} onChange={e => setHorasProprias(h => ({ ...h, [s.nome]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+      )}
       {prof && (
         <p className="dica">
           {ocupados.length
@@ -343,18 +390,15 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
             : `${prof.nome} está com o dia ${dataBonita(f.data)} livre.`}
         </p>
       )}
-      {choque && <p className="erro">⚠ Esse horário conflita com {choque.pacienteNome || choque.titulo} ({choque.hora}–{horaFim(choque.hora, choque.duracaoMin)}). Pode agendar mesmo assim, mas confira.</p>}
-      <p className="dica">O agendamento cai na hora na agenda do voluntário, no Semeador dele.</p>
+      {sequencia.filter(s => s.choque).map(s => (
+        <p key={s.nome} className="erro">⚠ {s.nome} ({s.hora}–{s.fim}) conflita com {s.choque.pacienteNome || s.choque.titulo} ({s.choque.hora}–{horaFim(s.choque.hora, s.choque.duracaoMin)}). Pode agendar mesmo assim, mas confira.</p>
+      ))}
+      <p className="dica">Os agendamentos caem na hora na agenda do voluntário, no Semeador dele.</p>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!pac || !prof || !f.areaEscolhida} onClick={() => aoSalvar({
-          area: f.areaEscolhida,
-          titulo: f.areaEscolhida + (area?.detalhe ? ` (${area.detalhe})` : ''),
-          duracaoMin: duracao,
-          pacienteId: pac.id, pacienteNome: pac.nome,
-          profissionalUid: prof.id, profissionalNome: prof.nome,
-          data: f.data, hora: f.hora,
-        })}>Agendar</button>
+        <button className="btn-principal" disabled={!pac || !prof || sequencia.length === 0 || salvando} onClick={agendarTodos}>
+          {salvando ? 'Agendando…' : `Agendar ${sequencia.length > 1 ? `os ${sequencia.length}` : ''}`.trim()}
+        </button>
       </div>
     </div>
   );
@@ -635,7 +679,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(null); }} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
