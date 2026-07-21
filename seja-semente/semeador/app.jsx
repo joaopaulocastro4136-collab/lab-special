@@ -44,6 +44,10 @@ const DEMO = {
     { id: 'g1', titulo: 'Entrega de cestas', data: proximoDia(6), hora: '09:00', local: 'Sede Seja Semente', responsavel: 'Coordenação', origem: 'central' },
     { id: 'g2', titulo: 'Visita à família do José', data: proximoDia(3), hora: '15:00', local: 'Praça Central', responsavel: 'Maria', origem: 'semeador' },
   ],
+  pacientes: [
+    { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
+    { id: 'p4', nome: 'Rita Nascimento', idade: '60', telefone: '(11) 93333-8888', status: 'em atendimento', observacoes: '', triagem: { especialidade: 'Odontologia', procedimento: 'Prótese', saude: ['Diabetes'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
+  ],
   centralOnline: false,
 };
 
@@ -251,6 +255,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [escalas, setEscalas] = useState(CONFIGURADO ? [] : DEMO.escalas);
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
+  const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
   const [centralOnline, setCentralOnline] = useState(DEMO.centralOnline);
 
   // Escuta o Firestore em tempo real: qualquer coisa que a central (programa
@@ -271,6 +276,12 @@ function TelaPrincipal({ usuario, aoSair }) {
       query(collection(fb.db, 'agendamentos'), orderBy('data')),
       snap => setAgendamentos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
+    // Pacientes que a triagem da central designou para ESTE voluntário
+    const paraPacientes = onSnapshot(
+      query(collection(fb.db, 'pacientes'), orderBy('criadoEm', 'desc')),
+      snap => setPacientes(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.triagem?.profissionalUid === usuario.uid))
+    );
     // Batimento da central: o programa Windows atualiza central/status a cada
     // minuto; se o último batimento tem menos de 3 minutos, ela está online.
     const paraCentral = onSnapshot(doc(fb.db, 'central', 'status'), snap => {
@@ -278,7 +289,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       const ultimo = s?.atualizadoEm?.toDate?.();
       setCentralOnline(!!ultimo && Date.now() - ultimo.getTime() < 3 * 60 * 1000);
     });
-    return () => { paraAvisos(); paraEscalas(); paraAgenda(); paraCentral(); };
+    return () => { paraAvisos(); paraEscalas(); paraAgenda(); paraPacientes(); paraCentral(); };
   }, [usuario.uid]);
 
   async function confirmar(escala) {
@@ -331,6 +342,30 @@ function TelaPrincipal({ usuario, aoSair }) {
             {escalas.length ? escalas.map(e => <CartaoEscala key={e.id} escala={e} uid={usuario.uid} aoConfirmar={confirmar} />) : <Vazio texto="Você ainda não está em nenhuma escala." />}
           </>
         )}
+        {aba === 'pacientes' && (
+          <>
+            <h2>Meus pacientes</h2>
+            {pacientes.length ? pacientes.map(p => (
+              <div className="cartao" key={p.id}>
+                <div className="cartao-linha">
+                  <Bolha nome={p.nome} />
+                  <div>
+                    <div className="cartao-topo">
+                      <strong>{p.nome}</strong>
+                      <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
+                    </div>
+                    <p>{p.triagem.especialidade} · {p.triagem.procedimento}</p>
+                    <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                    {(p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
+                      <p className="saude">⚠️ {[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                    )}
+                    {p.observacoes && <p className="obs">{p.observacoes}</p>}
+                  </div>
+                </div>
+              </div>
+            )) : <Vazio texto="Nenhum paciente designado para você ainda — quando a central fizer uma triagem no seu nome, ele aparece aqui." />}
+          </>
+        )}
         {aba === 'agenda' && (
           <>
             <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setFormAgenda(true)}>+ Agendar</button></div>
@@ -372,8 +407,9 @@ function TelaPrincipal({ usuario, aoSair }) {
 
       <nav>
         <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}>🏠<span>Início</span></button>
-        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}>🗓️<span>Escalas</span></button>
+        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}>📋<span>Pacientes</span></button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
+        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}>🗓️<span>Escalas</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}>👤<span>Perfil</span></button>
       </nav>
     </div>

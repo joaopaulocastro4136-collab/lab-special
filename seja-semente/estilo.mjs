@@ -10,39 +10,39 @@ export const CSS = `
 
   .carregando { min-height: 100vh; display: flex; align-items: center; justify-content: center; font-size: 48px; }
 
-  /* ── Login (estilo editorial: fundo dourado quente + serifa) ── */
+  /* ── Login (identidade verde + toques editoriais: serifa e cartão) ── */
   .tela-login { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; gap: 13px;
-    background: #EDBB3F; }
-  .login-cartao { background: #fff; border-radius: 28px; padding: 24px 30px 20px; box-shadow: 0 18px 44px rgba(90,64,8,0.28); margin-bottom: 4px; }
-  .tela-login h1 { margin: 4px 0 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 36px; letter-spacing: -0.5px; color: #27331F; }
-  .login-sub { margin: 0; color: #5D4A14; text-align: center; font-size: 15px; font-weight: 600; }
-  .missao { margin: 2px 0 14px; max-width: 320px; text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 20px; line-height: 1.35; color: #27331F; }
-  .missao em { color: #1E6B41; }
-  .tela-login input { width: 100%; max-width: 330px; padding: 15px 17px; border: 1.5px solid #D9AE39; border-radius: 14px; font-size: 16px; background: #fff; }
-  .faixa-demo { max-width: 330px; background: rgba(255,255,255,0.55); border: 1px solid #D9AE39; color: #5D4A14; border-radius: 14px; padding: 10px 14px; font-size: 13px; text-align: center; }
-  .erro { color: #8F2D1B; font-size: 14px; font-weight: 700; }
+    background: radial-gradient(900px 480px at 50% -120px, #D5EDDE 0%, #F2F5EF 62%); }
+  .login-cartao { background: #fff; border-radius: 28px; padding: 24px 30px 20px; box-shadow: 0 16px 40px rgba(30,43,34,0.14); margin-bottom: 4px; }
+  .tela-login h1 { margin: 4px 0 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 36px; letter-spacing: -0.5px; color: #226343; }
+  .login-sub { margin: 0; color: #5C6B60; text-align: center; font-size: 15px; font-weight: 600; }
+  .missao { margin: 2px 0 14px; max-width: 320px; text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 20px; line-height: 1.35; color: #2A3A2E; }
+  .missao em { color: #C08A2E; }
+  .tela-login input { width: 100%; max-width: 330px; padding: 15px 17px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; box-shadow: 0 2px 8px rgba(30,43,34,0.04); }
+  .faixa-demo { max-width: 330px; background: #FFF6E3; border: 1px solid #EEDCAC; color: #7A5F1E; border-radius: 14px; padding: 10px 14px; font-size: 13px; text-align: center; }
+  .erro { color: #B3402A; font-size: 14px; font-weight: 700; }
   .btn-principal { width: 100%; max-width: 330px; padding: 15px; border: none; border-radius: 14px;
-    background: #27331F; color: #FFF7E3; font-size: 16px; font-weight: 800; cursor: pointer;
-    box-shadow: 0 10px 24px rgba(39,51,31,0.30); }
+    background: linear-gradient(135deg, #37935B 0%, #226343 100%); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(47,125,78,0.32); }
   .btn-principal:disabled { opacity: 0.5; box-shadow: none; }
-  .btn-google { width: 100%; max-width: 330px; padding: 14px; border: none; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 8px 20px rgba(90,64,8,0.22); }
+  .btn-google { width: 100%; max-width: 330px; padding: 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 14px rgba(30,43,34,0.07); }
   .btn-google .g { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from -45deg, #EA4335 110deg, #4285F4 90deg 180deg, #34A853 180deg 270deg, #FBBC05 270deg); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
-  .separador { max-width: 330px; width: 100%; display: flex; align-items: center; gap: 10px; color: #5D4A14; font-size: 13px; font-weight: 700; }
-  .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #D9AE39; }
+  .separador { max-width: 330px; width: 100%; display: flex; align-items: center; gap: 10px; color: #7B897F; font-size: 13px; }
+  .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #DBE3D8; }
 
   /* ── Estrutura principal ── */
   .tela-principal { min-height: 100vh; display: flex; flex-direction: column; }
-  header { background: #EDBB3F; color: #27331F;
-    padding: calc(env(safe-area-inset-top) + 18px) 20px 22px; border-radius: 0 0 28px 28px;
-    box-shadow: 0 10px 26px rgba(90,64,8,0.22); }
+  header { background: linear-gradient(135deg, #37935B 0%, #1F5B38 100%); color: #fff;
+    padding: calc(env(safe-area-inset-top) + 18px) 20px 22px; border-radius: 0 0 26px 26px;
+    box-shadow: 0 10px 26px rgba(31,91,56,0.28); }
   .header-titulo { display: flex; align-items: center; gap: 13px; }
-  .logo-bolha { width: 48px; height: 48px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(90,64,8,0.20); }
+  .logo-bolha { width: 48px; height: 48px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.14); }
   .logo-mini { font-size: 26px; }
   header strong { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
-  .status { font-size: 12.5px; margin-top: 1px; color: #5D4A14; font-weight: 600; }
-  .status.online { color: #1E6B41; font-weight: 800; }
+  .status { font-size: 12.5px; opacity: 0.88; margin-top: 1px; }
+  .status.online { opacity: 1; color: #B9F0CD; font-weight: 700; }
   main { flex: 1; padding: 20px 16px 110px; max-width: 560px; width: 100%; margin: 0 auto; }
-  main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; margin: 8px 0 14px; letter-spacing: -0.3px; color: #27331F; }
+  main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; margin: 8px 0 14px; letter-spacing: -0.3px; color: #223528; }
   .titulo-com-botao { display: flex; justify-content: space-between; align-items: center; }
   .btn-mais { border: none; border-radius: 13px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-weight: 800; font-size: 14px; padding: 10px 17px; cursor: pointer; box-shadow: 0 6px 14px rgba(47,125,78,0.32); }
 
@@ -80,7 +80,7 @@ export const CSS = `
   /* ── Formulários (folha inteira) ── */
   .folha { min-height: 100vh; max-width: 560px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 24px) 20px 34px; display: flex; flex-direction: column; gap: 13px;
     background: radial-gradient(700px 340px at 50% -80px, #DCEFE3 0%, #F2F5EF 60%); }
-  .folha h2 { margin: 0 0 6px; color: #27331F; font-family: 'Fraunces', Georgia, serif; font-size: 26px; font-weight: 600; letter-spacing: -0.4px; }
+  .folha h2 { margin: 0 0 6px; color: #226343; font-family: 'Fraunces', Georgia, serif; font-size: 26px; font-weight: 600; letter-spacing: -0.4px; }
   .campo { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 800; color: #55645A; }
   .campo input, .campo select, .campo textarea { padding: 13px 15px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; font-weight: 400; color: #1E2B22; box-shadow: 0 2px 8px rgba(30,43,34,0.04); }
   .dica { font-size: 13px; color: #7B897F; margin: 0; }
@@ -92,6 +92,17 @@ export const CSS = `
   .linha-botoes { display: flex; gap: 10px; margin-top: 10px; }
   .linha-botoes .btn-principal { flex: 1; max-width: none; }
   .btn-secundario { flex: 1; padding: 15px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #55645A; cursor: pointer; }
+
+  /* ── Agenda por dia (estilo Google Agenda) ── */
+  .dia-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #fff; border-radius: 16px; padding: 8px 10px; margin-bottom: 14px; box-shadow: 0 5px 14px rgba(30,43,34,0.07); border: 1px solid rgba(30,43,34,0.05); }
+  .dia-nav button { border: none; background: #EAF2EC; border-radius: 12px; width: 40px; height: 40px; font-size: 18px; font-weight: 800; color: #226343; cursor: pointer; }
+  .dia-nav .dia-titulo { flex: 1; text-align: center; }
+  .dia-nav .dia-titulo strong { font-family: 'Fraunces', Georgia, serif; font-size: 17px; display: block; color: #223528; }
+  .dia-nav .dia-titulo span { font-size: 12px; color: #7B897F; font-weight: 700; }
+  .linha-agenda { display: flex; gap: 12px; align-items: flex-start; }
+  .hora-col { width: 52px; flex: none; font-weight: 800; color: #226343; font-size: 15px; padding-top: 3px; }
+  .btn-remover { border: none; background: #FBEBE7; color: #B3402A; border-radius: 10px; width: 34px; height: 34px; font-size: 15px; font-weight: 800; cursor: pointer; flex: none; }
+  .btn-triagem { margin-top: 10px; padding: 10px 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, #E8B457, #C08A2E); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 5px 12px rgba(192,138,46,0.30); }
 
   /* ── Barra de abas flutuante ── */
   nav { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 4px;

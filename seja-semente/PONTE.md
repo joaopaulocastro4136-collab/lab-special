@@ -92,35 +92,54 @@ aparece em `voluntarios`. Ao tocar em "Confirmar presença", o app grava
 `confirmados.{uid} = true` — a Central enxerga isso na hora e pode marcar
 o voluntário como confirmado na tela do Windows.
 
-### `cadastros/{id}` — cadastro dos pacientes acolhidos
-Quem escreve: **Central** (Windows ou app Seja Semente). O Semeador não usa.
+### `pacientes/{id}` — pacientes acolhidos (cadastro + triagem)
+Quem escreve: **Central** (Windows ou app Seja Semente). O Semeador lê os
+pacientes cuja triagem designou o voluntário logado.
 
-| Campo             | Tipo             | Exemplo                                        |
-|-------------------|------------------|------------------------------------------------|
-| `nome`            | string           | `"José da Silva"`                              |
-| `idade`           | string           | `"52"`                                         |
-| `telefone`        | string           | `"(11) 98888-1111"`                            |
-| `especialidade`   | string           | `"Odontologia"` (Odontologia, Médico (clínico geral), Psicologia, Nutrição, Assistência social, Outra) |
-| `procedimento`    | string           | `"Extração"` (a lista depende da especialidade — ver ESPECIALIDADES em semente/app.jsx) |
-| `saude`           | array de strings | `["Hipertensão / pressão alta", "Diabetes"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
-| `outrasCondicoes` | string           | `"Insulina 2x ao dia"`                         |
-| `observacoes`     | string           | `"Sente dor há duas semanas…"`                 |
-| `status`          | string           | `"aguardando"` → `"em atendimento"` → `"concluído"` |
-| `criadoEm`        | timestamp        | data/hora do cadastro                          |
+**Fluxo:** 1) o CADASTRO cria o paciente (`status: "cadastrado"`, `triagem:
+null`); 2) a TRIAGEM preenche o campo `triagem` (procedimento, saúde e o
+profissional que vai atender) e muda `status` para `"triado"` — a partir
+daí o paciente aparece no Semeador do profissional e pode ir para a agenda.
 
-### `agendamentos/{id}` — agenda geral do projeto
+| Campo         | Tipo      | Exemplo                                        |
+|---------------|-----------|------------------------------------------------|
+| `nome`        | string    | `"José da Silva"`                              |
+| `idade`       | string    | `"52"`                                         |
+| `telefone`    | string    | `"(11) 98888-1111"`                            |
+| `observacoes` | string    | `"Sente dor há duas semanas…"`                 |
+| `status`      | string    | `"cadastrado"` → `"triado"` → `"em atendimento"` → `"concluído"` |
+| `triagem`     | mapa ou null | ver abaixo                                  |
+| `criadoEm`    | timestamp | data/hora do cadastro                          |
+
+Campos do mapa `triagem`:
+
+| Campo               | Tipo             | Exemplo                                  |
+|---------------------|------------------|------------------------------------------|
+| `especialidade`     | string           | `"Odontologia"` (Odontologia, Médico (clínico geral), Psicologia, Nutrição, Assistência social, Outra) |
+| `procedimento`      | string           | `"Extração"` (a lista depende da especialidade — ver ESPECIALIDADES em semente/app.jsx) |
+| `saude`             | array de strings | `["Hipertensão / pressão alta"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
+| `outrasCondicoes`   | string           | `"Insulina 2x ao dia"`                   |
+| `profissionalUid`   | string           | uid do voluntário que vai atender (doc de `voluntarios`) |
+| `profissionalNome`  | string           | `"Maria Souza"`                          |
+
+### `agendamentos/{id}` — agenda por dia e horário
 Quem escreve: **Central** (Windows ou app Seja Semente) e também o
-**Semeador** (o voluntário pode agendar). Todos leem.
+**Semeador** (o voluntário pode agendar). Todos leem. A Central mostra a
+agenda por dia (estilo Google Agenda), ordenada por `hora`, e pode remover.
 
-| Campo         | Tipo      | Exemplo                                    |
-|---------------|-----------|--------------------------------------------|
-| `titulo`      | string    | `"Entrega de cestas"`                      |
-| `data`        | string `AAAA-MM-DD` | `"2026-07-25"`                   |
-| `hora`        | string `HH:MM` | `"09:00"`                             |
-| `local`       | string    | `"Sede Seja Semente"`                      |
-| `responsavel` | string    | `"Maria"`                                  |
-| `origem`      | string    | `"central"` ou `"semeador"`                |
-| `criadoEm`    | timestamp | data/hora da criação                       |
+| Campo              | Tipo      | Exemplo                                    |
+|--------------------|-----------|--------------------------------------------|
+| `pacienteId`       | string    | id do doc em `pacientes` (vazio se for evento livre) |
+| `pacienteNome`     | string    | `"José da Silva"`                          |
+| `titulo`           | string    | `"Extração · Odontologia"` (ou o nome do evento livre) |
+| `data`             | string `AAAA-MM-DD` | `"2026-07-25"`                   |
+| `hora`             | string `HH:MM` | `"14:00"`                             |
+| `local`            | string    | `"Sede Seja Semente"` (opcional)           |
+| `profissionalUid`  | string    | uid do voluntário que atende               |
+| `profissionalNome` | string    | `"Maria Souza"`                            |
+| `responsavel`      | string    | usado nos eventos livres                   |
+| `origem`           | string    | `"central"` ou `"semeador"`                |
+| `criadoEm`         | timestamp | data/hora da criação                       |
 
 ### `central/status` — batimento da Central
 Quem escreve: **Central** (o programa Windows e também o app Seja Semente),
