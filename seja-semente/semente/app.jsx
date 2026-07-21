@@ -16,6 +16,7 @@ import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
 import { ClipboardList, CalendarDays, Megaphone, Users, MapPin, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus } from 'lucide-react';
+import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -431,14 +432,41 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
 
-  // A agenda agora é só da central: o Semeador apenas mostra a agenda de
-  // cada profissional — quem marca é o Seja Semente.
+  // ─── Ficha do paciente (dados + fotos do que foi feito) ───
+  const [fichaId, setFichaId] = useState(null);
+  const [fichaPaciente, setFichaPaciente] = useState(null);
+  const [fichaArquivos, setFichaArquivos] = useState([]);
+  const [demoArquivos, setDemoArquivos] = useState({});
+
+  useEffect(() => {
+    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); return; }
+    if (!CONFIGURADO) {
+      setFichaPaciente(pacientes.find(p => p.id === fichaId) || null);
+      setFichaArquivos(demoArquivos[fichaId] || []);
+      return;
+    }
+    const { doc, onSnapshot, collection, query, orderBy } = fb.fns;
+    const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
+    const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { s1(); s2(); };
+  }, [fichaId, pacientes, demoArquivos]);
+
+  async function salvarArquivo(dataUrl, legenda) {
+    const registro = { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setDemoArquivos(a => ({ ...a, [fichaId]: [{ id: 'f' + Math.floor(Math.random() * 1e9), ...registro, criadoEm: new Date() }, ...(a[fichaId] || [])] }));
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() });
+  }
 
   if (form === 'paciente') return <FormPaciente aoCancelar={() => setForm(null)} aoSalvar={f => salvar('pacientes', f, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes)} />;
   if (form === 'escolherArea') return <EscolherArea aoCancelar={() => setForm(null)} aoEscolher={a => setForm({ marcar: a })} />;
   if (form?.marcar) return <FormMarcar area={form.marcar} pacientes={pacientes} profissionais={profissionais} dataInicial={dia} aoCancelar={() => setForm('escolherArea')} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
   if (form === 'aviso') return <FormAviso aoCancelar={() => setForm(null)} aoSalvar={f => salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos)} />;
   if (form?.triagem) return <FormTriagem paciente={form.triagem} profissionais={profissionais} aoCancelar={() => setForm(null)} aoSalvar={t => salvarTriagem(form.triagem, t)} />;
+  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
 
   const doDia = agendamentos.filter(g => g.data === dia).sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
 
@@ -459,14 +487,14 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <div className="titulo-com-botao"><h2>Pacientes</h2><button className="btn-mais" onClick={() => setForm('paciente')}>+ Cadastrar</button></div>
             {pacientes.length ? pacientes.map(p => (
-              <div className="cartao" key={p.id}>
+              <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
                 <div className="cartao-linha">
                   <Bolha nome={p.nome} />
                   <div>
                     <div className="cartao-topo">
                       <strong>{p.nome}</strong>
                       {p.triagem
-                        ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={() => mudarStatus(p)}>{p.status}</button>
+                        ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
                         : <span className="chip aguardando">sem triagem</span>}
                     </div>
                     {p.triagem && <p>{p.triagem.especialidade} · {p.triagem.procedimento} · com {p.triagem.profissionalNome}</p>}
@@ -475,7 +503,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                       <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
                     )}
                     {p.observacoes && <p className="obs">{p.observacoes}</p>}
-                    {!p.triagem && <button className="btn-triagem" onClick={() => setForm({ triagem: p })}>Fazer triagem</button>}
+                    {!p.triagem && <button className="btn-triagem" onClick={e => { e.stopPropagation(); setForm({ triagem: p }); }}>Fazer triagem</button>}
                   </div>
                 </div>
               </div>
@@ -495,15 +523,15 @@ function TelaPrincipal({ usuario, aoSair }) {
               <button onClick={() => setDia(somaDias(dia, 1))}>›</button>
             </div>
             {doDia.length ? doDia.map(g => (
-              <div className="cartao" key={g.id}>
+              <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
                 <div className="linha-agenda">
                   <div className="hora-col">{g.hora}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <strong>{g.pacienteNome || g.titulo}</strong>
                     {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo}</p>}
-                    {g.profissionalNome && <p className="obs">com {g.profissionalNome}{g.origem === 'semeador' ? ' · marcado no Semeador' : ''}</p>}
+                    {g.profissionalNome && <p className="obs">com {g.profissionalNome}</p>}
                   </div>
-                  <button className="btn-remover" onClick={() => removerAgendamento(g)} title="Remover">✕</button>
+                  <button className="btn-remover" onClick={e => { e.stopPropagation(); removerAgendamento(g); }} title="Remover">✕</button>
                 </div>
               </div>
             )) : <div className="vazio">Nada marcado em {dataBonita(dia)}.<br />Toque em "+ Marcar".</div>}

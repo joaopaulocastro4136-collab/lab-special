@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
 import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert } from 'lucide-react';
+import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -54,8 +55,8 @@ const DEMO = {
     { id: 'e2', data: proximoDia(0), hora: '17:30', ministerio: 'Distribuição', local: 'Praça Central', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: { 'demo-1': true } },
   ],
   agendamentos: [
-    { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
-    { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
   ],
   pacientes: [
     { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
@@ -265,6 +266,35 @@ function TelaPrincipal({ usuario, aoSair }) {
   // Sem Firebase, o que você faz fica salvo no aparelho
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-escalas', escalas); }, [escalas]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-agendamentos', agendamentos); }, [agendamentos]);
+
+  // ─── Ficha do paciente (dados + fotos do que foi feito) ───
+  const [fichaId, setFichaId] = useState(null);
+  const [fichaPaciente, setFichaPaciente] = useState(null);
+  const [fichaArquivos, setFichaArquivos] = useState([]);
+  const [demoArquivos, setDemoArquivos] = useState({});
+
+  useEffect(() => {
+    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); return; }
+    if (!CONFIGURADO) {
+      setFichaPaciente(pacientes.find(p => p.id === fichaId) || null);
+      setFichaArquivos(demoArquivos[fichaId] || []);
+      return;
+    }
+    const { doc, onSnapshot, collection, query, orderBy } = fb.fns;
+    const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
+    const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { s1(); s2(); };
+  }, [fichaId, pacientes, demoArquivos]);
+
+  async function salvarArquivo(dataUrl, legenda) {
+    const registro = { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setDemoArquivos(a => ({ ...a, [fichaId]: [{ id: 'f' + Math.floor(Math.random() * 1e9), ...registro, criadoEm: new Date() }, ...(a[fichaId] || [])] }));
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() });
+  }
   const [centralOnline, setCentralOnline] = useState(DEMO.centralOnline);
 
   // Escuta o Firestore em tempo real: qualquer coisa que a central (programa
@@ -313,6 +343,8 @@ function TelaPrincipal({ usuario, aoSair }) {
   }
 
 
+  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
+
   return (
     <div className="tela-principal">
       <header>
@@ -344,7 +376,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <h2>Meus pacientes</h2>
             {pacientes.length ? pacientes.map(p => (
-              <div className="cartao" key={p.id}>
+              <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
                 <div className="cartao-linha">
                   <Bolha nome={p.nome} />
                   <div>
@@ -368,7 +400,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <h2>Minha agenda</h2>
             {agendamentos.length ? agendamentos.map(g => (
-              <div className="cartao" key={g.id}>
+              <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
                 <div className="cartao-linha">
                   <Bolha nome={g.area || g.titulo} Icone={CalendarDays} />
                   <div>
