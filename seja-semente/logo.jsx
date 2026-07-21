@@ -31,32 +31,56 @@ export function Bolha({ nome, Icone, foto }) {
   return <div className="bolha" style={{ background: cor }}>{iniciais(nome)}</div>;
 }
 
-// Abertura animada: as cores da marca voam das bordas da tela, se unem no
-// centro e a plantinha "brota" desenhando-se; por fim aparece o nome do app.
+// Abertura animada — a história da diversidade: um monte de cores diferentes
+// passa pela tela, vai se reunindo no centro até FORMAR UMA SEMENTE; a
+// semente se abre e dela brota a logo. Pessoas diferentes, um projeto só.
 // Roda toda vez que o aplicativo abre do zero.
 export function Abertura({ tema = 'verde', nome = 'Seja Semente', frase = '', aoTerminar }) {
   const [saindo, setSaindo] = useState(false);
   useEffect(() => {
-    const s = setTimeout(() => setSaindo(true), 2800);
-    const t = setTimeout(() => aoTerminar?.(), 3400);
+    const s = setTimeout(() => setSaindo(true), 3800);
+    const t = setTimeout(() => aoTerminar?.(), 4400);
     return () => { clearTimeout(s); clearTimeout(t); };
   }, []);
-  const sementes = CORES_MARCA.map((cor, i) => {
-    const ang = (i / CORES_MARCA.length) * Math.PI * 2 + 0.6;
-    const dist = 46 + (i % 3) * 16;
-    return { cor, dx: Math.cos(ang) * dist, dy: Math.sin(ang) * dist, atraso: 0.1 + (i % 5) * 0.08 };
+  // 26 partículas coloridas; o ângulo áureo espalha bem sem precisar de sorteio
+  const particulas = Array.from({ length: 26 }, (_, i) => {
+    const a0 = i * 2.39996; // ~137,5°
+    const r0 = 52 + (i % 5) * 9;
+    const a1 = a0 + 1.9 + (i % 3) * 0.35; // ponto do meio: cria o redemoinho
+    const r1 = 20 + (i % 4) * 7;
+    return {
+      cor: CORES_MARCA[i % CORES_MARCA.length],
+      x0: Math.cos(a0) * r0, y0: Math.sin(a0) * r0,
+      x1: Math.cos(a1) * r1, y1: Math.sin(a1) * r1,
+      tam: 8 + (i % 4) * 3,
+      atraso: (i % 7) * 0.09,
+      redonda: i % 3 !== 0,
+    };
   });
   return (
     <div className={`abertura ${tema}${saindo ? ' saindo' : ''}`}>
       <div className="abertura-palco">
-        {sementes.map((s, i) => (
-          <span key={i} className="abertura-semente" style={{ background: s.cor, '--dx': s.dx + 'vmin', '--dy': s.dy + 'vmin', animationDelay: s.atraso + 's' }} />
+        {particulas.map((p, i) => (
+          <span key={i} className="abertura-cor" style={{
+            background: p.cor, width: p.tam, height: p.tam,
+            margin: `${-p.tam / 2}px 0 0 ${-p.tam / 2}px`,
+            borderRadius: p.redonda ? '50%' : '50% 50% 50% 10%',
+            '--x0': p.x0 + 'vmin', '--y0': p.y0 + 'vmin',
+            '--x1': p.x1 + 'vmin', '--y1': p.y1 + 'vmin',
+            animationDelay: p.atraso + 's',
+          }} />
         ))}
         <div className="abertura-luz" />
-        <svg className="abertura-broto" width="128" height="128" viewBox="0 0 100 100" fill="none" stroke="#fff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M50 92 C50 74 50 60 50 42" />
-          <path d="M50 62 C34 62 22 52 20 34 C38 36 48 46 50 62" />
-          <path d="M50 48 C50 30 62 18 80 16 C78 34 66 46 50 48" />
+        <svg className="abertura-broto" width="136" height="136" viewBox="0 0 100 112" fill="none">
+          {/* a plantinha que brota de dentro da semente */}
+          <g stroke="#fff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M50 96 C50 76 50 60 50 42" />
+            <path d="M50 62 C34 62 22 52 20 34 C38 36 48 46 50 62" />
+            <path d="M50 48 C50 30 62 18 80 16 C78 34 66 46 50 48" />
+          </g>
+          {/* a semente que as cores formam — e que se abre em duas cascas */}
+          <path className="casca esq" fill="#F6EBC9" d="M50 74 C40 74 33 82 33 92 C33 102 41 109 50 109 Z" />
+          <path className="casca dir" fill="#EFD9A0" d="M50 74 C60 74 67 82 67 92 C67 102 59 109 50 109 Z" />
         </svg>
       </div>
       <div className="abertura-nome">{nome}</div>
