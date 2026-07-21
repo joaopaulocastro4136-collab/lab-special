@@ -28,4 +28,4 @@ jobs:
       - name: Roda o diagnóstico
         env:
           CONSERTAR: ${{ github.event.inputs.consertar || 'sim' }}
-        run: node ativar-email-senha.mjs
+        run: node diagnosticar-apple.mjs
