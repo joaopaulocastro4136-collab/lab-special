@@ -21,9 +21,22 @@ export function iniciais(nome) {
   return ((partes[0]?.[0] || '') + (partes[1]?.[0] || '')).toUpperCase() || '?';
 }
 
-// Bolha colorida: com `texto` vira avatar de iniciais; com `emoji` vira ícone
-export function Bolha({ nome, emoji }) {
+// Bolha colorida: com só `nome` vira avatar de iniciais; com `Icone` (lucide)
+// vira bolha de ícone em tom suave
+export function Bolha({ nome, Icone }) {
   const cor = corDoNome(nome);
-  if (emoji) return <div className="bolha suave" style={{ background: cor + '26' }}>{emoji}</div>;
+  if (Icone) return <div className="bolha suave" style={{ background: cor + '22', color: cor }}><Icone size={22} strokeWidth={2.4} /></div>;
   return <div className="bolha" style={{ background: cor }}>{iniciais(nome)}</div>;
+}
+
+// Guarda e lê dados no aparelho (modo demonstração vira "app de verdade":
+// o que você cadastra fica salvo mesmo fechando o aplicativo)
+export function lerLocal(chave, padrao) {
+  try {
+    const v = localStorage.getItem(chave);
+    return v ? JSON.parse(v) : padrao;
+  } catch (e) { return padrao; }
+}
+export function gravarLocal(chave, valor) {
+  try { localStorage.setItem(chave, JSON.stringify(valor)); } catch (e) { /* sem espaço */ }
 }

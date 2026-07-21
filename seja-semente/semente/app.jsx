@@ -14,7 +14,15 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { ArvoreLogo, Bolha } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
+import { ClipboardList, CalendarDays, Megaphone, Users, MapPin, TriangleAlert } from 'lucide-react';
+import icone from '../icones/icone-central-1024.png';
+
+// A logo do aplicativo (a mesma do ícone), em tamanho de tela
+function LogoApp({ tamanho = 120 }) {
+  return <img src={icone} width={tamanho} height={tamanho} alt="Seja Semente"
+    style={{ display: 'block', borderRadius: tamanho * 0.24, boxShadow: tamanho >= 90 ? '0 12px 30px rgba(30,43,34,0.20)' : 'none' }} />;
+}
 
 const CONFIGURADO = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('COLE');
 
@@ -123,7 +131,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
   return (
     <div className="tela-login">
-      <div className="login-cartao"><ArvoreLogo tamanho={128} /></div>
+      <LogoApp tamanho={132} />
       <h1>Seja Semente</h1>
       <p className="login-sub">Central do projeto</p>
       <p className="missao">Um mundo onde cada semente pode <em>florescer</em>.</p>
@@ -267,10 +275,16 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('pacientes');
   const [form, setForm] = useState(null); // 'paciente' | 'aviso' | 'marcar' | {triagem: paciente}
   const [dia, setDia] = useState(hojeISO());
-  const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
-  const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
-  const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
-  const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : DEMO.voluntarios);
+  const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : lerLocal('ss-pacientes', DEMO.pacientes));
+  const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('ss-agendamentos', DEMO.agendamentos));
+  const [avisos, setAvisos] = useState(CONFIGURADO ? [] : lerLocal('ss-avisos', DEMO.avisos));
+  const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : lerLocal('ss-voluntarios', DEMO.voluntarios));
+
+  // Sem Firebase, tudo que você cadastra fica salvo no aparelho
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-pacientes', pacientes); }, [pacientes]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-agendamentos', agendamentos); }, [agendamentos]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-avisos', avisos); }, [avisos]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-voluntarios', voluntarios); }, [voluntarios]);
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -360,7 +374,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     <div className="tela-principal">
       <header>
         <div className="header-titulo">
-          <div className="logo-bolha"><ArvoreLogo tamanho={38} /></div>
+          <div className="logo-bolha"><LogoApp tamanho={40} /></div>
           <div>
             <strong>Seja Semente</strong>
             <div className="status">Central · {usuario.nome}</div>
@@ -386,7 +400,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                     {p.triagem && <p>{p.triagem.especialidade} · {p.triagem.procedimento} · com {p.triagem.profissionalNome}</p>}
                     <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
                     {p.triagem && (p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
-                      <p className="saude">⚠️ {[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                      <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
                     )}
                     {p.observacoes && <p className="obs">{p.observacoes}</p>}
                     {!p.triagem && <button className="btn-triagem" onClick={() => setForm({ triagem: p })}>Fazer triagem</button>}
@@ -429,7 +443,7 @@ function TelaPrincipal({ usuario, aoSair }) {
             {avisos.length ? avisos.map(a => (
               <div className="cartao" key={a.id}>
                 <div className="cartao-linha">
-                  <Bolha nome={a.titulo} emoji="📢" />
+                  <Bolha nome={a.titulo} Icone={Megaphone} />
                   <div>
                     <strong>{a.titulo}</strong>
                     <p>{a.texto}</p>
@@ -484,11 +498,11 @@ function TelaPrincipal({ usuario, aoSair }) {
       </main>
 
       <nav>
-        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}>📋<span>Pacientes</span></button>
-        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
-        <button className={aba === 'avisos' ? 'ativo' : ''} onClick={() => setAba('avisos')}>📢<span>Avisos</span></button>
+        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={23} /><span>Pacientes</span></button>
+        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={23} /><span>Agenda</span></button>
+        <button className={aba === 'avisos' ? 'ativo' : ''} onClick={() => setAba('avisos')}><Megaphone size={23} /><span>Avisos</span></button>
         <button className={aba === 'equipe' ? 'ativo' : ''} onClick={() => setAba('equipe')}>
-          <span className="icone-aba">👥{voluntarios.some(v => v.status === 'pendente') && <i className="bolinha" />}</span>
+          <span className="icone-aba"><Users size={23} />{voluntarios.some(v => v.status === 'pendente') && <i className="bolinha" />}</span>
           <span>Equipe</span>
         </button>
       </nav>
@@ -498,7 +512,10 @@ function TelaPrincipal({ usuario, aoSair }) {
 
 function App() {
   const [pronto, setPronto] = useState(!CONFIGURADO);
-  const [usuario, setUsuario] = useState(null);
+  const [usuario, setUsuario] = useState(CONFIGURADO ? null : lerLocal('ss-usuario', null));
+
+  // Sem Firebase, a entrada fica salva no aparelho (não pede login toda vez)
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-usuario', usuario); }, [usuario]);
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -517,7 +534,7 @@ function App() {
     setUsuario(null);
   }
 
-  if (!pronto) return <div className="carregando">🌱</div>;
+  if (!pronto) return <div className="carregando"><LogoApp tamanho={96} /></div>;
   if (!usuario) return <TelaLogin aoEntrarDemo={setUsuario} />;
   return <TelaPrincipal usuario={usuario} aoSair={sair} />;
 }
