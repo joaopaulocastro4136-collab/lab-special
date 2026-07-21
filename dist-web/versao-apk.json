@@ -1,6 +1,6 @@
 {
-  "versionCode": 28,
-  "versionName": "8.6",
+  "versionCode": 29,
+  "versionName": "8.7",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "ID do laboratorio: dentista entra no Special Clinic digitando o codigo do lab. Toque em Baixar para atualizar."
+  "novidades": "Multi-laboratorio: o dentista conecta varios labs pelo ID e troca no topo. Toque em Baixar para atualizar."
 }
