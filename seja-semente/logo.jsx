@@ -21,10 +21,11 @@ export function iniciais(nome) {
   return ((partes[0]?.[0] || '') + (partes[1]?.[0] || '')).toUpperCase() || '?';
 }
 
-// Bolha colorida: com só `nome` vira avatar de iniciais; com `Icone` (lucide)
-// vira bolha de ícone em tom suave
-export function Bolha({ nome, Icone }) {
+// Bolha colorida: com `foto` mostra o rosto; com `Icone` (lucide) vira bolha
+// de ícone em tom suave; senão, as iniciais do nome
+export function Bolha({ nome, Icone, foto }) {
   const cor = corDoNome(nome);
+  if (foto) return <div className="bolha" style={{ padding: 0, overflow: 'hidden', background: '#E7EDE7' }}><img src={foto} alt={nome} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
   if (Icone) return <div className="bolha suave" style={{ background: cor + '22', color: cor }}><Icone size={22} strokeWidth={2.4} /></div>;
   return <div className="bolha" style={{ background: cor }}>{iniciais(nome)}</div>;
 }

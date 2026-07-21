@@ -383,7 +383,7 @@ function TelaPrincipal({ usuario, aoSair }) {
             {pacientes.length ? pacientes.map(p => (
               <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
                 <div className="cartao-linha">
-                  <Bolha nome={p.nome} />
+                  <Bolha nome={p.nome} foto={p.foto} />
                   <div>
                     <div className="cartao-topo">
                       <strong>{p.nome}</strong>

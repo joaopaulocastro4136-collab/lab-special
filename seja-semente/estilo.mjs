@@ -114,6 +114,15 @@ export const CSS = `
   .caixa-area-detalhe { font-size: 12px; color: #7B897F; font-weight: 600; }
   .caixa-area-icone { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 2px; }
 
+  /* ── Ações da ficha, seletor e pesquisa ── */
+  .linha-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-acao { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border: 1.5px solid #DBE3D8; border-radius: 12px; background: #fff; color: #226343; font-weight: 800; font-size: 13.5px; cursor: pointer; box-shadow: 0 3px 8px rgba(30,43,34,0.05); }
+  .btn-acao.vermelho { color: #B3402A; border-color: #E9CFC7; }
+  .seletor { display: flex; gap: 4px; background: #E4EBE4; border-radius: 15px; padding: 4px; margin-bottom: 13px; }
+  .seletor button { flex: 1; border: none; background: none; border-radius: 12px; padding: 10px 8px; font-weight: 800; font-size: 13.5px; color: #55645A; cursor: pointer; }
+  .seletor button.ativo { background: #fff; color: #226343; box-shadow: 0 3px 8px rgba(30,43,34,0.10); }
+  .busca { width: 100%; padding: 13px 16px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 15.5px; background: #fff; margin-bottom: 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.04); }
+
   /* ── Ficha do paciente: fotos e arquivos ── */
   .btn-voltar { align-self: flex-start; display: flex; align-items: center; gap: 4px; border: none; background: none; color: #226343; font-weight: 800; font-size: 15px; cursor: pointer; padding: 2px 0; }
   .btn-foto { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; border: 1.5px dashed #2F7D4E; border-radius: 14px; background: #EAF4EE; color: #226343; font-weight: 800; font-size: 15px; cursor: pointer; }
