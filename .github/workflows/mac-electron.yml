@@ -32,9 +32,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: cd seja-semente/mac-app && npm run dist
 
-      - name: Publica o instalador
+      - name: Publica o aplicativo (.zip)
         uses: actions/upload-artifact@v4
         with:
-          name: SejaSemente-Mac-dmg
-          path: seja-semente/mac-app/dist/*.dmg
+          name: SejaSemente-Mac
+          path: seja-semente/mac-app/dist/*.zip
           if-no-files-found: error
