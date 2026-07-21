@@ -1,6 +1,6 @@
 {
-  "versionCode": 39,
-  "versionName": "9.7",
+  "versionCode": 40,
+  "versionName": "9.8",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Pular etapa não trava mais o trabalho: ele fica em produção pra você finalizar quando quiser, sem cair pra entrega sozinho. Mais a tarja vermelha de item sem valor e a ficha A4 com os itens. Toque em Baixar para atualizar."
+  "novidades": "Correção do Entrar com Google no Android. Toque em Baixar para atualizar."
 }
