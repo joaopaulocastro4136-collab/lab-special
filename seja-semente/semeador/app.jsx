@@ -137,9 +137,22 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(true);
     try {
       // No aplicativo instalado, usa a tela de contas do próprio iPhone;
-      // no navegador, a janelinha do Google
+      // no navegador, a janelinha do Google (com plano B de redirect)
       if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
-      else await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+      else {
+        const prov = new fb.fns.GoogleAuthProvider();
+        try {
+          await fb.fns.signInWithPopup(fb.auth, prov);
+        } catch (e2) {
+          const cod = String(e2?.code || '');
+          if (cod.includes('popup-blocked') || cod.includes('operation-not-supported') || cod.includes('cancelled-popup-request')) {
+            await fb.fns.signInWithRedirect(fb.auth, prov);
+            return; // a página vai navegar para o Google
+          }
+          if (cod.includes('popup-closed')) throw new Error('cancelado');
+          throw e2;
+        }
+      }
     } catch (e) {
       if (!String(e?.message || '').includes('cancelado')) {
         setErro('Não consegui entrar com o Google agora. Espere uns segundos e tente de novo — se continuar, me mande um print desta tela.');
@@ -703,6 +716,8 @@ function App() {
     window.addEventListener('error', pega);
     let soltarAuth = null, soltarDoc = null;
     ligarFirebase().then(() => {
+      // Completa o login por redirect (plano B do navegador), se houver
+      fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
       soltarAuth = fb.fns.onAuthStateChanged(fb.auth, u => {
         soltarDoc?.(); soltarDoc = null;
         if (!u) { setConta(null); setCadastro(null); setPronto(true); return; }
