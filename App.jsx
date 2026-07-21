@@ -1436,7 +1436,8 @@ export default function App() {
     if (!caso || !novosItens || novosItens.length === 0) return;
     const itensFinal = novosItens.map(i => {
       const t = tiposTrabalho.find(t => t.nome === i.nome);
-      const unit = t?.valor || 0;
+      // Respeita o valor definido no item (gestor); senão usa o valor do tipo (Ajustes)
+      const unit = (i.valor !== undefined && i.valor !== null && i.valor !== '') ? (Number(i.valor) || 0) : (t?.valor || 0);
       return { nome: i.nome, quantidade: i.quantidade || 1, valorUnit: unit, subtotal: Math.round(unit * (i.quantidade || 1) * 100) / 100 };
     });
     const umSo = itensFinal.length === 1;
@@ -3460,22 +3461,30 @@ function NovoCasoForm({ onSalvar, onCancelar, dentistas, tiposTrabalho, ehGestor
                 const t = tiposTrabalho.find(x => x.nome === it.nome);
                 const unit = valorUnitDe(it);
                 const editado = it.valor !== undefined && it.valor !== null && it.valor !== '';
+                const semValor = unit <= 0;
                 return (
-                  <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #EEECE7' } : undefined}>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                      <div className="text-xs text-stone-400">{t ? `${diasDoTipo(t)} dias` : ''}{editado ? ' • valor alterado' : (unit > 0 ? ` • ${formatReais(t?.valor || 0)} / un. (padrão)` : ' • defina o valor →')}</div>
+                  <div key={it.nome} style={idx > 0 ? { borderTop: '1px solid #EEECE7' } : undefined}>
+                    <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                        <div className="text-xs text-stone-400">{t ? `${diasDoTipo(t)} dias` : ''}{editado ? ' • valor alterado' : (unit > 0 ? ` • ${formatReais(t?.valor || 0)} / un. (padrão)` : '')}</div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0" title="Valor por unidade — altere se quiser">
+                        <span className="text-xs font-bold" style={{ color: semValor ? '#DC2626' : '#A8A29E' }}>R$</span>
+                        <input type="text" inputMode="decimal" value={editado ? it.valor : (t?.valor ? String(t.valor).replace('.', ',') : '')}
+                          onChange={e => setValorItem(it.nome, e.target.value.replace(',', '.'))}
+                          placeholder="0,00"
+                          className="px-2 py-1.5 rounded-lg border text-xs outline-none bg-white text-right"
+                          style={{ width: '62px', borderColor: semValor ? '#DC2626' : (editado ? GOLD : '#E7E5E4'), color: INK, fontWeight: 700 }} />
+                      </div>
+                      {unit > 0 && it.quantidade > 1 && <div className="text-xs font-extrabold flex-shrink-0" style={{ color: '#166B3A', width: 64, textAlign: 'right' }}>{formatReais(unit * it.quantidade)}</div>}
+                      <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg font-bold flex-shrink-0" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E' }}>×</button>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0" title="Valor por unidade — altere se quiser">
-                      <span className="text-xs font-bold" style={{ color: '#A8A29E' }}>R$</span>
-                      <input type="text" inputMode="decimal" value={editado ? it.valor : (t?.valor ? String(t.valor).replace('.', ',') : '')}
-                        onChange={e => setValorItem(it.nome, e.target.value.replace(',', '.'))}
-                        placeholder="0,00"
-                        className="px-2 py-1.5 rounded-lg border text-xs outline-none bg-white text-right"
-                        style={{ width: '62px', borderColor: editado ? GOLD : '#E7E5E4', color: INK, fontWeight: 700 }} />
-                    </div>
-                    {unit > 0 && it.quantidade > 1 && <div className="text-xs font-extrabold flex-shrink-0" style={{ color: '#166B3A', width: 64, textAlign: 'right' }}>{formatReais(unit * it.quantidade)}</div>}
-                    <button onClick={() => removerItem(it.nome)} className="w-8 h-8 rounded-lg font-bold flex-shrink-0" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#A8A29E' }}>×</button>
+                    {semValor && (
+                      <div className="flex items-center gap-1.5 mx-3 mb-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>
+                        <AlertTriangle size={13} className="flex-shrink-0" /> Sem valor definido — adicione o valor ao lado (ou deixe o gestor definir depois).
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -5375,15 +5384,21 @@ function ObservacoesEditaveis({ caso, onSalvar }) {
 }
 
 // Cartão "Itens do trabalho" no detalhe: mostra os itens e permite adicionar/remover a qualquer momento
-function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
+function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar, ehGestor }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState([]);
   const [tipoNome, setTipoNome] = useState(tiposTrabalho[0]?.nome || '');
   const [qtd, setQtd] = useState(1);
-  const itensAtuais = (caso.itens && caso.itens.length) ? caso.itens : [{ nome: caso.tipoTrabalho, quantidade: caso.quantidade || 1 }];
+  const itensAtuais = (caso.itens && caso.itens.length) ? caso.itens : [{ nome: caso.tipoTrabalho, quantidade: caso.quantidade || 1, valorUnit: caso.valor || undefined }];
+
+  // Valor por unidade: usa o que já foi definido no item (valorUnit/valor), senão o valor do tipo (Ajustes)
+  const valorUnitDe = (i) => (i.valor !== undefined && i.valor !== null && i.valor !== '') ? (Number(i.valor) || 0)
+    : (i.valorUnit !== undefined && i.valorUnit !== null && i.valorUnit !== '') ? (Number(i.valorUnit) || 0)
+    : (tiposTrabalho.find(t => t.nome === i.nome)?.valor || 0);
+  const setValorItem = (nome, v) => setRascunho(l => l.map(i => i.nome === nome ? { ...i, valor: v } : i));
 
   const iniciar = () => {
-    setRascunho(itensAtuais.map(i => ({ nome: i.nome, quantidade: i.quantidade || 1 })));
+    setRascunho(itensAtuais.map(i => ({ nome: i.nome, quantidade: i.quantidade || 1, valor: (i.valorUnit !== undefined && i.valorUnit !== null && i.valorUnit !== '') ? String(i.valorUnit) : undefined })));
     setEditando(true);
   };
   const adicionar = () => {
@@ -5397,7 +5412,7 @@ function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
   };
   const salvar = () => {
     if (rascunho.length === 0) return;
-    onSalvar(rascunho);
+    onSalvar(rascunho.map(i => ({ nome: i.nome, quantidade: i.quantidade, valor: valorUnitDe(i) })));
     setEditando(false);
   };
 
@@ -5430,20 +5445,39 @@ function ItensTrabalhoCard({ caso, tiposTrabalho, onSalvar }) {
         <div className="rounded-xl border border-stone-200 bg-white overflow-hidden">
           {rascunho.map((it, idx) => {
             const t = tiposTrabalho.find(x => x.nome === it.nome);
-            const unit = t?.valor || 0;
+            const unit = valorUnitDe(it);
+            const editado = it.valor !== undefined && it.valor !== null && it.valor !== '';
+            const semValor = unit <= 0;
             return (
-              <div key={it.nome} className="flex items-center justify-between gap-2 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #F0EFEC' } : undefined}>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
-                  {unit > 0 && <div className="text-xs text-stone-400">{formatReais(unit)} / un. • {formatReais(unit * it.quantidade)}</div>}
+              <div key={it.nome} style={idx > 0 ? { borderTop: '1px solid #F0EFEC' } : undefined}>
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate" style={{ color: INK }}>{it.nome}{it.quantidade > 1 ? ` × ${it.quantidade}` : ''}</div>
+                    {ehGestor && unit > 0 && <div className="text-xs text-stone-400">{formatReais(unit)} / un. • {formatReais(unit * it.quantidade)}</div>}
+                  </div>
+                  {ehGestor && (
+                    <div className="flex items-center gap-1 flex-shrink-0" title="Valor por unidade">
+                      <span className="text-xs font-bold" style={{ color: semValor ? '#DC2626' : '#A8A29E' }}>R$</span>
+                      <input type="text" inputMode="decimal" value={editado ? it.valor : (t?.valor ? String(t.valor).replace('.', ',') : '')}
+                        onChange={e => setValorItem(it.nome, e.target.value.replace(',', '.'))}
+                        placeholder="0,00"
+                        className="px-2 py-1.5 rounded-lg border text-xs outline-none bg-white text-right"
+                        style={{ width: '62px', borderColor: semValor ? '#DC2626' : (editado ? GOLD : '#E7E5E4'), color: INK, fontWeight: 700 }} />
+                    </div>
+                  )}
+                  <button onClick={() => setRascunho(l => l.filter(x => x.nome !== it.nome))} className="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 font-bold flex-shrink-0">×</button>
                 </div>
-                <button onClick={() => setRascunho(l => l.filter(x => x.nome !== it.nome))} className="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 font-bold flex-shrink-0">×</button>
+                {ehGestor && semValor && (
+                  <div className="flex items-center gap-1.5 mx-3 mb-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>
+                    <AlertTriangle size={13} className="flex-shrink-0" /> Sem valor definido — adicione o valor ao lado.
+                  </div>
+                )}
               </div>
             );
           })}
           {rascunho.length === 0 && <div className="px-3 py-2.5 text-xs text-red-600 font-medium">Adicione pelo menos um item.</div>}
         </div>
-        <div className="text-xs" style={{ color: '#7A6234' }}>Etapas já iniciadas ou concluídas são preservadas. O valor do serviço é recalculado pela soma dos itens.</div>
+        <div className="text-xs" style={{ color: '#7A6234' }}>Etapas já iniciadas ou concluídas são preservadas.{ehGestor ? ' O valor do serviço é recalculado pela soma dos itens.' : ''}</div>
         <div className="flex gap-2 mt-1">
           <button onClick={() => setEditando(false)} className="flex-1 py-2.5 rounded-xl font-semibold text-xs bg-white text-stone-600 border border-stone-200">Cancelar</button>
           <button onClick={salvar} disabled={rascunho.length === 0} className="flex-1 py-2.5 rounded-xl font-bold text-xs text-white" style={{ background: rascunho.length === 0 ? '#A8A29E' : VERDE }}>Salvar itens</button>
@@ -5582,7 +5616,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
         {!caso.naClinica && <BarraProgresso caso={caso} />}
 
         <div className="grid grid-cols-2 gap-4 text-sm mt-4 pt-4 border-t border-stone-100">
-          <ItensTrabalhoCard caso={caso} tiposTrabalho={tiposTrabalho || []} onSalvar={onSalvarItens} />
+          <ItensTrabalhoCard caso={caso} tiposTrabalho={tiposTrabalho || []} onSalvar={onSalvarItens} ehGestor={ehGestor} />
           <div>
             <div className="text-xs text-stone-400 mb-0.5">Etapa atual</div>
             <div className="font-medium flex items-center gap-1" style={{ color: INK }}><Hourglass size={13} style={{ color: GOLD }} /> {formatHoras(horasRestantes)}</div>
@@ -6611,10 +6645,16 @@ function desenharFicha(caso, dentistaInfo, ehGestor) {
   const obsLinhas = quebrarLinhas(ctx0, caso.observacoes || '', CW - 60);
   const hObs = obsLinhas.length ? obsLinhas.length * 34 + 40 : 0;
 
+  // Itens do trabalho — gerados AGORA a partir do caso atual (reflete o que foi adicionado/removido)
+  const itensFicha = (caso.itens && caso.itens.length)
+    ? caso.itens
+    : [{ nome: caso.tipoTrabalho, quantidade: caso.quantidade || 1, valorUnit: caso.valor || 0, subtotal: caso.valor || 0 }];
+
   // ── Alturas das seções (para dimensionar o canvas) ──
   const infoRows = 2 + (temContato ? 2 : 0);
   const hHeader = 236;
   const hInfo = 44 + infoRows * 54 + 22;
+  const hItens = 44 + 50 + itensFicha.length * 46 + 14;
   const hTimeline = 172;
   const hTempo = 172;
   const hHistTitulo = 44;
@@ -6624,7 +6664,7 @@ function desenharFicha(caso, dentistaInfo, ehGestor) {
   const hAssin = 200;
   const GAP = 34;
   let H = hHeader;
-  [hInfo, hTimeline, hTempo, hHist, hEtapas, hObsSec, hAssin].forEach(s => { if (s > 0) H += GAP + s; });
+  [hInfo, hItens, hTimeline, hTempo, hHist, hEtapas, hObsSec, hAssin].forEach(s => { if (s > 0) H += GAP + s; });
   H += 70;
 
   const cv = document.createElement('canvas');
@@ -6682,6 +6722,38 @@ function desenharFicha(caso, dentistaInfo, ehGestor) {
     par(colA, yy, CW - 60, 'Telefone', dentistaInfo?.telefone || '—'); yy += 54;
   }
   y += hInfo + GAP;
+
+  // ── Itens do trabalho (reflete o que está no caso agora) ──
+  cartao(y, hItens, '#fff');
+  secTitulo('Itens do trabalho', y + 32);
+  {
+    const mostrarValor = !!ehGestor && itensFicha.some(i => (i.valorUnit || 0) > 0);
+    const cItem = mostrarValor ? CW - 130 - 170 - 180 : CW - 130;
+    const hx = PAD + 24;
+    let cy = y + 58;
+    ctx.font = `800 18px ${F}`; ctx.fillStyle = '#A8A29E';
+    const cabec = mostrarValor ? ['Item', 'Qtd.', 'Valor un.', 'Subtotal'] : ['Item', 'Qtd.'];
+    const colsIt = mostrarValor ? [cItem, 130, 170, 180] : [cItem, 130];
+    cabec.forEach((c, i) => { const cx = hx + colsIt.slice(0, i).reduce((a, b) => a + b, 0); ctx.fillText(c.toUpperCase(), cx, cy); });
+    cy += 16; ctx.strokeStyle = LINHA; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(hx, cy); ctx.lineTo(W - PAD - 24, cy); ctx.stroke();
+    cy += 36;
+    itensFicha.forEach(it => {
+      const unit = it.valorUnit || 0;
+      const sub = it.subtotal !== undefined ? it.subtotal : unit * (it.quantidade || 1);
+      const vals = mostrarValor
+        ? [it.nome, String(it.quantidade || 1), unit > 0 ? formatReais(unit) : '—', unit > 0 ? formatReais(sub) : '—']
+        : [it.nome, String(it.quantidade || 1)];
+      vals.forEach((v, j) => {
+        const cx = hx + colsIt.slice(0, j).reduce((a, b) => a + b, 0);
+        ctx.fillStyle = j === 0 ? INKc : '#57534E';
+        ctx.font = `${j === 0 ? 700 : 500} 21px ${F}`;
+        let t = String(v); while (ctx.measureText(t).width > colsIt[j] - 14 && t.length > 3) t = t.slice(0, -2);
+        ctx.fillText(t, cx, cy);
+      });
+      cy += 46;
+    });
+  }
+  y += hItens + GAP;
 
   // ── Linha do tempo (stepper visual) ──
   cartao(y, hTimeline, '#fff');
