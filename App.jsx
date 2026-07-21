@@ -2059,6 +2059,9 @@ export default function App() {
             onSelect={goToDetalhe}
             onFinalizar={(id) => updateStatus(id, 'Pronto')}
             onIniciarProducao={(id) => updateStatus(id, 'Em Produção')}
+            onIniciarEtapaAtual={(id, item) => { const caso = casosVivos().find(c => c.id === id); if (!caso?.etapas) return; const idx = caso.etapas.findIndex(e => !e.concluida && !e.pulada && (item ? e.item === item : true)); if (idx >= 0) iniciarEtapa(id, idx); }}
+            onPararEtapaAtual={(id, item) => { const caso = casosVivos().find(c => c.id === id); if (!caso?.etapas) return; const idx = caso.etapas.findIndex(e => !e.concluida && !e.pulada && (item ? e.item === item : true)); if (idx >= 0) cancelarEtapa(id, idx); }}
+            onConcluirEtapaAtual={(id, item) => { const caso = casosVivos().find(c => c.id === id); if (!caso?.etapas) return; const idx = caso.etapas.findIndex(e => !e.concluida && !e.pulada && (item ? e.item === item : true)); if (idx >= 0) concluirEtapa(id, idx); }}
             onAdiar={adiarUmDia} />
         )}
         {view === 'entregas' && (
@@ -2579,7 +2582,7 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
@@ -2986,11 +2989,17 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                     <div className="flex-1 min-w-0">
                       <div className="font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
                       <div className="text-xs text-stone-500 truncate mt-0.5">{c.dentista} • {c.tipoTrabalho}</div>
-                      {et && <div className="text-xs truncate mt-0.5 font-semibold" style={{ color: GOLD }}>Próxima etapa: {et.nome}</div>}
+                      {et && <div className="text-xs truncate mt-0.5 font-semibold" style={{ color: GOLD }}>{et.inicioExec ? '⏱ Fazendo: ' : 'Próxima etapa: '}{et.nome}</div>}
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
-                          <Hourglass size={11} /> {formatHoras(horas)} restantes
-                        </span>
+                        {et && et.inicioExec ? (
+                          <span className="flex items-center gap-1 text-xs font-bold" style={{ color: GOLD }}>
+                            <span className="w-1.5 h-1.5 rounded-sm pulse-gold" style={{ background: GOLD }} /> <TempoDecorrido inicioExec={et.inicioExec} />{et.funcionario ? ` • ${et.funcionario}` : ''}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
+                            <Hourglass size={11} /> {formatHoras(horas)} nesta etapa
+                          </span>
+                        )}
                         {atrasado && (
                           <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FCE4E4', color: '#B42318' }}>
                             Atrasado {Math.abs(diasRestantes(c.prazo))}d
@@ -3005,7 +3014,25 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                     </div>
                   </div>
                 </button>
-                <div className="flex gap-2 mt-3">
+                {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (
+                  <div className="flex gap-2 mt-3">
+                    {et.inicioExec ? (
+                      <>
+                        <button onClick={() => onPararEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
+                          <Square size={13} /> Parar
+                        </button>
+                        <button onClick={() => onConcluirEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
+                          <Check size={13} /> Concluir etapa
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => onIniciarEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD, color: INK }}>
+                        <Play size={13} /> Iniciar etapa
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2 mt-2">
                   {producao && trabalhoCompleto && (
                     <button onClick={() => onFinalizar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
                       <Flag size={13} /> Finalizar
