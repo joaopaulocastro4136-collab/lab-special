@@ -1,6 +1,6 @@
 {
-  "versionCode": 37,
-  "versionName": "9.5",
+  "versionCode": 38,
+  "versionName": "9.6",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Trabalho com prova pendente (indo pra clinica) sai da agenda de reagendar. Toque em Baixar para atualizar."
+  "novidades": "Ao adicionar um trabalho, item sem valor mostra tarja vermelha pra você definir o valor depois; quantidade e vários itens sempre disponiveis. Ficha A4 mostra os itens do trabalho, gerada na hora. Toque em Baixar para atualizar."
 }
