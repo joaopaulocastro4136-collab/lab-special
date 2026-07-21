@@ -1,6 +1,6 @@
 {
-  "versionCode": 25,
-  "versionName": "8.3",
+  "versionCode": 26,
+  "versionName": "8.4",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Valor por item, pular etapa (recalcula prazo), ficha nova com histórico e tempo lab/clínica. Toque em Baixar para atualizar."
+  "novidades": "Agenda do dia mostra as horas só da etapa atual. Toque em Baixar para atualizar."
 }
