@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, Abertura } from '../logo.jsx';
 import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
@@ -507,7 +507,12 @@ function App() {
     setCadastro(null);
   }
 
-  if (erroInicial) return (
+  // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
+  const [abrindo, setAbrindo] = useState(true);
+  const abertura = abrindo ? <Abertura tema="dourado" nome="Semeador" frase="quem planta, colhe" aoTerminar={() => setAbrindo(false)} /> : null;
+
+  let conteudo;
+  if (erroInicial) conteudo = (
     <div className="tela-login">
       <LogoApp tamanho={110} />
       <h1>Ops, algo travou</h1>
@@ -515,12 +520,13 @@ function App() {
       <button className="btn-principal" onClick={() => window.location.reload()}>Tentar de novo</button>
     </div>
   );
-  if (!pronto) return <div className="carregando"><LogoApp tamanho={96} /></div>;
-  if (!conta) return <TelaLogin aoEntrarDemo={setConta} />;
-  if (!cadastro) return <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
-  if (cadastro.status === 'pendente') return <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
-  if (cadastro.status === 'recusado') return <TelaRecusado aoSair={sair} />;
-  return <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} />;
+  else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
+  else if (!conta) conteudo = <TelaLogin aoEntrarDemo={setConta} />;
+  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
+  else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
+  else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
+  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} />;
+  return <>{conteudo}{abertura}</>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

@@ -17,7 +17,7 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura } from '../logo.jsx';
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, Scan, Camera, Tag, Clock } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
@@ -982,7 +982,12 @@ function App() {
     setUsuario(null);
   }
 
-  if (erroInicial) return (
+  // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
+  const [abrindo, setAbrindo] = useState(true);
+  const abertura = abrindo ? <Abertura tema="verde" nome="Seja Semente" frase="semeando sorrisos" aoTerminar={() => setAbrindo(false)} /> : null;
+
+  let conteudo;
+  if (erroInicial) conteudo = (
     <div className="tela-login">
       <LogoApp tamanho={110} />
       <h1>Ops, algo travou</h1>
@@ -990,9 +995,10 @@ function App() {
       <button className="btn-principal" onClick={() => window.location.reload()}>Tentar de novo</button>
     </div>
   );
-  if (!pronto) return <div className="carregando"><LogoApp tamanho={96} /></div>;
-  if (!usuario) return <TelaLogin aoEntrarDemo={setUsuario} />;
-  return <TelaPrincipal usuario={usuario} aoSair={sair} />;
+  else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
+  else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} />;
+  return <>{conteudo}{abertura}</>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);

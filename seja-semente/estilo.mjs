@@ -146,6 +146,32 @@ export const CSS = `
   nav button span:last-child { font-size: 10.5px; font-weight: 800; }
   nav button.ativo { color: #226343; background: #E5F3EA; }
   .icone-aba svg { display: block; }
+
+  /* ── Abertura animada: as cores se unem e a plantinha brota ── */
+  .abertura { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; opacity: 1; transition: opacity 0.55s ease; }
+  .abertura.saindo { opacity: 0; pointer-events: none; }
+  .abertura.verde { background: radial-gradient(130% 130% at 50% 0%, #2F7D4E 0%, #226343 55%, #163F2B 100%); }
+  .abertura.dourado { background: radial-gradient(130% 130% at 50% 0%, #F0A912 0%, #D8920F 55%, #8A5B08 100%); }
+  .abertura-palco { position: relative; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; }
+  .abertura-semente { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50% 50% 50% 8px; opacity: 0; animation: semente-voa 1.25s cubic-bezier(0.45, 0, 0.2, 1) both; }
+  @keyframes semente-voa {
+    0% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(230deg) scale(0.6); }
+    14% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.25); }
+  }
+  .abertura-luz { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgba(255,255,255,0.9); opacity: 0; animation: luz-pulsa 0.7s ease-out 1.3s both; }
+  @keyframes luz-pulsa { 0% { opacity: 0.95; transform: scale(1); } 100% { opacity: 0; transform: scale(16); } }
+  .abertura-broto { position: relative; filter: drop-shadow(0 10px 26px rgba(0,0,0,0.28)); }
+  .abertura-broto path { stroke-dasharray: 130; stroke-dashoffset: 130; animation: broto-desenha 1s ease-out 1.35s forwards; }
+  .abertura-broto path:nth-child(2) { animation-delay: 1.55s; }
+  .abertura-broto path:nth-child(3) { animation-delay: 1.7s; }
+  @keyframes broto-desenha { to { stroke-dashoffset: 0; } }
+  .abertura-nome { margin-top: 24px; color: #fff; font-family: 'Fraunces', Georgia, serif; font-size: 31px; font-weight: 600; letter-spacing: 0.4px; opacity: 0; animation: nome-sobe 0.6s ease-out 2.1s both; }
+  .abertura-frase { margin-top: 6px; color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 700; opacity: 0; animation: nome-sobe 0.6s ease-out 2.3s both; }
+  @keyframes nome-sobe { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: translateY(0); } }
+
+  .bolha-btn { border: none; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
 `;
 
 export function paginaHTML({ titulo, descricao }) {
