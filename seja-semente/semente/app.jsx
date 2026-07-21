@@ -1,11 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  SEJA SEMENTE — aplicativo central do projeto (versão mobile)
 //
-//  É a mesma central do programa Windows, no celular: cadastro dos pacientes
-//  acolhidos (especialidade, procedimento e ficha de saúde), agendamentos,
-//  avisos e equipe de voluntários.
-//  Windows, este aplicativo e o Semeador (app do voluntário) conversam
-//  através do mesmo Firebase — o contrato de dados está em ../PONTE.md.
+//  Fluxo de atendimento:
+//    1. CADASTRO — o paciente entra no sistema (nome, contato)
+//    2. TRIAGEM — define especialidade, procedimento, ficha de saúde e o
+//       PROFISSIONAL (dentista/voluntário) que vai atender; a partir daí o
+//       paciente fica visível no Semeador do profissional escolhido
+//    3. AGENDA — marca o paciente num dia e horário (estilo Google Agenda)
+//
+//  Windows, este aplicativo e o Semeador conversam pelo mesmo Firebase —
+//  o contrato de dados está em ../PONTE.md.
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,12 +23,12 @@ let fb = null;
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
   const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } = await import('firebase/auth');
-  const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
+  const { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp } = await import('firebase/firestore');
   const app = initializeApp(FIREBASE_CONFIG);
   fb = {
     auth: getAuth(app),
     db: getFirestore(app),
-    fns: { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, query, orderBy, serverTimestamp },
+    fns: { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, collection, doc, onSnapshot, addDoc, updateDoc, setDoc, deleteDoc, query, orderBy, serverTimestamp },
   };
 }
 
@@ -38,36 +42,36 @@ const ESPECIALIDADES = {
   'Outra': ['Outro'],
 };
 const CONDICOES_SAUDE = ['Hipertensão / pressão alta', 'Diabetes', 'Problema cardíaco', 'Alergia a medicamento', 'Medicação contínua', 'Gestante'];
-const PROXIMO_STATUS = { 'aguardando': 'em atendimento', 'em atendimento': 'concluído', 'concluído': 'aguardando' };
+const PROXIMO_STATUS = { 'triado': 'em atendimento', 'em atendimento': 'concluído', 'concluído': 'triado' };
 
 // ─── Dados de exemplo do modo demonstração ───
 const DEMO = {
   usuario: { uid: 'central-demo', nome: 'Coordenação (teste)' },
-  cadastros: [
-    { id: 'c1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', observacoes: 'Sente dor no dente há duas semanas.', status: 'aguardando', criadoEm: new Date() },
-    { id: 'c2', nome: 'Ana Paula', idade: '34', telefone: '', especialidade: 'Assistência social', procedimento: 'Documentos', saude: [], outrasCondicoes: '', observacoes: 'Precisa tirar segunda via do RG.', status: 'em atendimento', criadoEm: new Date(Date.now() - 864e5) },
-    { id: 'c3', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', especialidade: 'Médico (clínico geral)', procedimento: 'Consulta', saude: ['Diabetes', 'Medicação contínua'], outrasCondicoes: 'Insulina 2x ao dia', observacoes: '', status: 'concluído', criadoEm: new Date(Date.now() - 3 * 864e5) },
+  pacientes: [
+    { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', observacoes: 'Sente dor no dente há duas semanas.', status: 'triado', criadoEm: new Date(), triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'v1', profissionalNome: 'Maria Souza' } },
+    { id: 'p2', nome: 'Ana Paula', idade: '34', telefone: '(11) 94444-2222', observacoes: 'Chegou pela campanha do agasalho.', status: 'cadastrado', criadoEm: new Date(Date.now() - 864e5), triagem: null },
+    { id: 'p3', nome: 'Carlos Mendes', idade: '41', telefone: '(11) 97777-2222', observacoes: '', status: 'concluído', criadoEm: new Date(Date.now() - 3 * 864e5), triagem: { especialidade: 'Médico (clínico geral)', procedimento: 'Consulta', saude: ['Diabetes', 'Medicação contínua'], outrasCondicoes: 'Insulina 2x ao dia', profissionalUid: 'v2', profissionalNome: 'Pedro Lima' } },
   ],
   agendamentos: [
-    { id: 'g1', titulo: 'Entrega de cestas', data: proximoDia(6), hora: '09:00', local: 'Sede Seja Semente', responsavel: 'Coordenação', origem: 'central', criadoEm: new Date() },
-    { id: 'g2', titulo: 'Atendimento José da Silva', data: proximoDia(3), hora: '14:00', local: 'Sede', responsavel: 'Maria (voluntária)', origem: 'semeador', criadoEm: new Date() },
+    { id: 'g1', pacienteId: 'p1', pacienteNome: 'José da Silva', titulo: 'Extração · Odontologia', data: hojeISO(), hora: '14:00', profissionalNome: 'Maria Souza', origem: 'central', criadoEm: new Date() },
+    { id: 'g2', pacienteId: 'p3', pacienteNome: 'Carlos Mendes', titulo: 'Consulta · Médico', data: hojeISO(), hora: '15:30', profissionalNome: 'Pedro Lima', origem: 'central', criadoEm: new Date() },
   ],
   avisos: [
-    { id: 'a1', titulo: 'Bem-vindo à central Seja Semente!', texto: 'Este é o aplicativo central: cadastros, agendamentos, avisos e equipe — a mesma central do programa Windows, no celular.', autor: 'Sistema', criadoEm: new Date() },
+    { id: 'a1', titulo: 'Bem-vindo à central Seja Semente!', texto: 'Fluxo do atendimento: cadastre o paciente, faça a triagem (escolhendo o profissional) e marque na agenda do dia.', autor: 'Sistema', criadoEm: new Date() },
   ],
   voluntarios: [
-    { id: 'v1', nome: 'Maria Souza', ministerio: 'Acolhimento', telefone: '(11) 91234-5678', status: 'ativo', ativo: true },
-    { id: 'v2', nome: 'Pedro Lima', ministerio: 'Distribuição', telefone: '(11) 99876-5432', status: 'ativo', ativo: true },
+    { id: 'v1', nome: 'Maria Souza', ministerio: 'Odontologia', telefone: '(11) 91234-5678', status: 'ativo', ativo: true },
+    { id: 'v2', nome: 'Pedro Lima', ministerio: 'Médico', telefone: '(11) 99876-5432', status: 'ativo', ativo: true },
     { id: 'v3', nome: 'Lucas Andrade', email: 'lucas.andrade@gmail.com', telefone: '(11) 95555-4444', cpf: '123.456.789-00', nascimento: '1995-03-14', status: 'pendente', ativo: false },
   ],
 };
 
-function proximoDia(diaSemana) {
-  const d = new Date();
-  d.setDate(d.getDate() + ((diaSemana - d.getDay() + 7) % 7 || 7));
-  return d.toISOString().slice(0, 10);
+function hojeISO() { return new Date().toISOString().slice(0, 10); }
+function somaDias(iso, n) {
+  const [a, m, d] = iso.split('-').map(Number);
+  const dt = new Date(a, m - 1, d + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
-
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 function dataBonita(iso) {
   if (!iso) return '';
@@ -75,7 +79,6 @@ function dataBonita(iso) {
   const dt = new Date(a, m - 1, d);
   return `${DIAS[dt.getDay()]}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
 }
-function hojeISO() { return new Date().toISOString().slice(0, 10); }
 function dataNascimentoBonita(iso) {
   if (!iso) return '';
   const [a, m, d] = iso.split('-');
@@ -147,22 +150,41 @@ function Campo({ rotulo, children }) {
   return <label className="campo"><span>{rotulo}</span>{children}</label>;
 }
 
-function FormCadastro({ aoSalvar, aoCancelar }) {
+// 1º passo: só coloca o paciente no sistema
+function FormPaciente({ aoSalvar, aoCancelar }) {
+  const [f, setF] = useState({ nome: '', idade: '', telefone: '', observacoes: '' });
+  const muda = k => e => setF({ ...f, [k]: e.target.value });
+  return (
+    <div className="folha">
+      <h2>Novo paciente</h2>
+      <p className="dica">Primeiro o cadastro. A triagem (procedimento e profissional) vem depois, no cartão do paciente.</p>
+      <Campo rotulo="Nome do paciente"><input value={f.nome} onChange={muda('nome')} /></Campo>
+      <Campo rotulo="Idade"><input value={f.idade} onChange={muda('idade')} inputMode="numeric" /></Campo>
+      <Campo rotulo="Telefone"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" /></Campo>
+      <Campo rotulo="Observações"><textarea rows={3} value={f.observacoes} onChange={muda('observacoes')} /></Campo>
+      <div className="linha-botoes">
+        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Cadastrar</button>
+      </div>
+    </div>
+  );
+}
+
+// 2º passo: a triagem — procedimento, saúde e o profissional que vai atender
+function FormTriagem({ paciente, profissionais, aoSalvar, aoCancelar }) {
   const [f, setF] = useState({
-    nome: '', idade: '', telefone: '',
     especialidade: Object.keys(ESPECIALIDADES)[0],
     procedimento: ESPECIALIDADES[Object.keys(ESPECIALIDADES)[0]][0],
-    saude: [], outrasCondicoes: '', observacoes: '',
+    saude: [], outrasCondicoes: '',
+    profissionalUid: profissionais[0]?.id || '',
   });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
   const mudaEspecialidade = e => setF({ ...f, especialidade: e.target.value, procedimento: ESPECIALIDADES[e.target.value][0] });
   const alternaSaude = c => setF({ ...f, saude: f.saude.includes(c) ? f.saude.filter(x => x !== c) : [...f.saude, c] });
+  const prof = profissionais.find(p => p.id === f.profissionalUid);
   return (
     <div className="folha">
-      <h2>Novo cadastro</h2>
-      <Campo rotulo="Nome do paciente"><input value={f.nome} onChange={muda('nome')} /></Campo>
-      <Campo rotulo="Idade"><input value={f.idade} onChange={muda('idade')} inputMode="numeric" /></Campo>
-      <Campo rotulo="Telefone"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" /></Campo>
+      <h2>Triagem — {paciente.nome}</h2>
       <Campo rotulo="Especialidade">
         <select value={f.especialidade} onChange={mudaEspecialidade}>{Object.keys(ESPECIALIDADES).map(e => <option key={e}>{e}</option>)}</select>
       </Campo>
@@ -180,29 +202,45 @@ function FormCadastro({ aoSalvar, aoCancelar }) {
         </div>
       </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={muda('outrasCondicoes')} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
-      <Campo rotulo="Observações"><textarea rows={3} value={f.observacoes} onChange={muda('observacoes')} /></Campo>
+      <Campo rotulo="Profissional que vai atender">
+        <select value={f.profissionalUid} onChange={muda('profissionalUid')}>
+          {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
+        </select>
+      </Campo>
+      <p className="dica">Depois da triagem, o paciente aparece no Semeador do profissional escolhido e já pode entrar na agenda.</p>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Salvar cadastro</button>
+        <button className="btn-principal" disabled={!f.profissionalUid} onClick={() => aoSalvar({ ...f, profissionalNome: prof?.nome || '' })}>Concluir triagem</button>
       </div>
     </div>
   );
 }
 
-function FormAgendamento({ aoSalvar, aoCancelar }) {
-  const [f, setF] = useState({ titulo: '', data: hojeISO(), hora: '09:00', local: '', responsavel: '' });
+// 3º passo: marcar o paciente num dia e horário
+function FormMarcar({ pacientes, dataInicial, aoSalvar, aoCancelar }) {
+  const triados = pacientes.filter(p => p.triagem);
+  const [f, setF] = useState({ pacienteId: triados[0]?.id || '', data: dataInicial, hora: '09:00' });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const pac = triados.find(p => p.id === f.pacienteId);
   return (
     <div className="folha">
-      <h2>Novo agendamento</h2>
-      <Campo rotulo="O quê"><input value={f.titulo} onChange={muda('titulo')} placeholder="Ex.: Entrega de cestas" /></Campo>
+      <h2>Marcar na agenda</h2>
+      {triados.length === 0 && <p className="dica">Nenhum paciente com triagem feita ainda — cadastre e faça a triagem primeiro.</p>}
+      <Campo rotulo="Paciente">
+        <select value={f.pacienteId} onChange={muda('pacienteId')}>
+          {triados.map(p => <option key={p.id} value={p.id}>{p.nome} — {p.triagem.procedimento}</option>)}
+        </select>
+      </Campo>
       <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
       <Campo rotulo="Hora"><input type="time" value={f.hora} onChange={muda('hora')} /></Campo>
-      <Campo rotulo="Local"><input value={f.local} onChange={muda('local')} /></Campo>
-      <Campo rotulo="Responsável"><input value={f.responsavel} onChange={muda('responsavel')} /></Campo>
+      {pac && <p className="dica">Profissional: {pac.triagem.profissionalNome} · {pac.triagem.especialidade}</p>}
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.titulo.trim()} onClick={() => aoSalvar(f)}>Agendar</button>
+        <button className="btn-principal" disabled={!pac} onClick={() => aoSalvar({
+          pacienteId: pac.id, pacienteNome: pac.nome,
+          titulo: `${pac.triagem.procedimento} · ${pac.triagem.especialidade}`,
+          data: f.data, hora: f.hora, profissionalNome: pac.triagem.profissionalNome, profissionalUid: pac.triagem.profissionalUid,
+        })}>Marcar</button>
       </div>
     </div>
   );
@@ -226,9 +264,10 @@ function FormAviso({ aoSalvar, aoCancelar }) {
 }
 
 function TelaPrincipal({ usuario, aoSair }) {
-  const [aba, setAba] = useState('cadastro');
-  const [form, setForm] = useState(null); // 'cadastro' | 'agendamento' | 'aviso'
-  const [cadastros, setCadastros] = useState(CONFIGURADO ? [] : DEMO.cadastros);
+  const [aba, setAba] = useState('pacientes');
+  const [form, setForm] = useState(null); // 'paciente' | 'aviso' | 'marcar' | {triagem: paciente}
+  const [dia, setDia] = useState(hojeISO());
+  const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : DEMO.pacientes);
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : DEMO.agendamentos);
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : DEMO.voluntarios);
@@ -238,16 +277,15 @@ function TelaPrincipal({ usuario, aoSair }) {
     const { collection, onSnapshot, query, orderBy } = fb.fns;
     const escuta = (col, ord, poe) => onSnapshot(query(collection(fb.db, col), orderBy(...ord)), s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const soltar = [
-      escuta('cadastros', ['criadoEm', 'desc'], setCadastros),
-      escuta('agendamentos', ['data'], setAgendamentos),
+      escuta('pacientes', ['criadoEm', 'desc'], setPacientes),
+      escuta('agendamentos', ['hora'], setAgendamentos),
       escuta('avisos', ['criadoEm', 'desc'], setAvisos),
       escuta('voluntarios', ['nome'], setVoluntarios),
     ];
     return () => soltar.forEach(s => s());
   }, []);
 
-  // Enquanto a central estiver aberta (aqui ou no Windows), o Semeador mostra
-  // "Central conectada" — batimento a cada minuto em central/status.
+  // Batimento da central: o Semeador mostra "Central conectada"
   useEffect(() => {
     if (!CONFIGURADO) return;
     const { doc, setDoc, serverTimestamp } = fb.fns;
@@ -259,7 +297,7 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   async function salvar(col, dados, local, poe) {
     if (!CONFIGURADO) {
-      poe(xs => [{ id: 'novo-' + xs.length, ...local, ...dados }, ...xs]);
+      poe(xs => [{ id: 'novo-' + Math.floor(Math.random() * 1e6), ...local, ...dados }, ...xs]);
       setForm(null);
       return;
     }
@@ -268,8 +306,26 @@ function TelaPrincipal({ usuario, aoSair }) {
     setForm(null);
   }
 
-  // Aprova ou recusa a solicitação de cadastro que o voluntário enviou pelo
-  // Semeador — no celular dele, o aplicativo libera (ou avisa) na hora.
+  async function salvarTriagem(paciente, triagem) {
+    if (!CONFIGURADO) {
+      setPacientes(ps => ps.map(p => p.id === paciente.id ? { ...p, triagem, status: 'triado' } : p));
+      setForm(null);
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
+    setForm(null);
+  }
+
+  async function removerAgendamento(g) {
+    if (!CONFIGURADO) {
+      setAgendamentos(gs => gs.filter(x => x.id !== g.id));
+      return;
+    }
+    const { doc, deleteDoc } = fb.fns;
+    await deleteDoc(doc(fb.db, 'agendamentos', g.id));
+  }
+
   async function responderSolicitacao(v, aprovar) {
     const mudanca = aprovar ? { status: 'ativo', ativo: true } : { status: 'recusado', ativo: false };
     if (!CONFIGURADO) {
@@ -280,19 +336,25 @@ function TelaPrincipal({ usuario, aoSair }) {
     await updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca);
   }
 
-  async function mudarStatus(c) {
-    const status = PROXIMO_STATUS[c.status] || 'aguardando';
+  async function mudarStatus(p) {
+    if (!p.triagem) return;
+    const status = PROXIMO_STATUS[p.status] || 'triado';
     if (!CONFIGURADO) {
-      setCadastros(cs => cs.map(x => x.id === c.id ? { ...x, status } : x));
+      setPacientes(ps => ps.map(x => x.id === p.id ? { ...x, status } : x));
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'cadastros', c.id), { status });
+    await updateDoc(doc(fb.db, 'pacientes', p.id), { status });
   }
 
-  if (form === 'cadastro') return <FormCadastro aoCancelar={() => setForm(null)} aoSalvar={f => salvar('cadastros', f, { status: 'aguardando', criadoEm: new Date() }, setCadastros)} />;
-  if (form === 'agendamento') return <FormAgendamento aoCancelar={() => setForm(null)} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
+  const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
+
+  if (form === 'paciente') return <FormPaciente aoCancelar={() => setForm(null)} aoSalvar={f => salvar('pacientes', f, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes)} />;
+  if (form === 'marcar') return <FormMarcar pacientes={pacientes} dataInicial={dia} aoCancelar={() => setForm(null)} aoSalvar={f => salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos)} />;
   if (form === 'aviso') return <FormAviso aoCancelar={() => setForm(null)} aoSalvar={f => salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos)} />;
+  if (form?.triagem) return <FormTriagem paciente={form.triagem} profissionais={profissionais} aoCancelar={() => setForm(null)} aoSalvar={t => salvarTriagem(form.triagem, t)} />;
+
+  const doDia = agendamentos.filter(g => g.data === dia).sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
 
   return (
     <div className="tela-principal">
@@ -307,48 +369,58 @@ function TelaPrincipal({ usuario, aoSair }) {
       </header>
 
       <main>
-        {aba === 'cadastro' && (
+        {aba === 'pacientes' && (
           <>
-            <div className="titulo-com-botao"><h2>Cadastros</h2><button className="btn-mais" onClick={() => setForm('cadastro')}>+ Novo</button></div>
-            {cadastros.length ? cadastros.map(c => (
-              <div className="cartao" key={c.id}>
+            <div className="titulo-com-botao"><h2>Pacientes</h2><button className="btn-mais" onClick={() => setForm('paciente')}>+ Cadastrar</button></div>
+            {pacientes.length ? pacientes.map(p => (
+              <div className="cartao" key={p.id}>
                 <div className="cartao-linha">
-                  <Bolha nome={c.nome} />
+                  <Bolha nome={p.nome} />
                   <div>
                     <div className="cartao-topo">
-                      <strong>{c.nome}</strong>
-                      <button className={'chip ' + c.status.replace(' ', '-')} onClick={() => mudarStatus(c)}>{c.status}</button>
+                      <strong>{p.nome}</strong>
+                      {p.triagem
+                        ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={() => mudarStatus(p)}>{p.status}</button>
+                        : <span className="chip aguardando">sem triagem</span>}
                     </div>
-                    <p>{[c.especialidade, c.procedimento].filter(Boolean).join(' · ')}</p>
-                    <p className="obs">{[c.idade ? `${c.idade} anos` : '', c.telefone].filter(Boolean).join(' · ')}</p>
-                    {(c.saude?.length > 0 || c.outrasCondicoes) && (
-                      <p className="saude">⚠️ {[...(c.saude || []), c.outrasCondicoes].filter(Boolean).join(', ')}</p>
+                    {p.triagem && <p>{p.triagem.especialidade} · {p.triagem.procedimento} · com {p.triagem.profissionalNome}</p>}
+                    <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                    {p.triagem && (p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
+                      <p className="saude">⚠️ {[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
                     )}
-                    {c.observacoes && <p className="obs">{c.observacoes}</p>}
+                    {p.observacoes && <p className="obs">{p.observacoes}</p>}
+                    {!p.triagem && <button className="btn-triagem" onClick={() => setForm({ triagem: p })}>Fazer triagem</button>}
                   </div>
                 </div>
               </div>
-            )) : <div className="vazio">Nenhum cadastro ainda. Toque em "+ Novo".</div>}
+            )) : <div className="vazio">Nenhum paciente ainda. Toque em "+ Cadastrar".</div>}
           </>
         )}
         {aba === 'agenda' && (
           <>
-            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setForm('agendamento')}>+ Agendar</button></div>
-            {agendamentos.length ? agendamentos.map(g => (
+            <div className="titulo-com-botao"><h2>Agenda</h2><button className="btn-mais" onClick={() => setForm('marcar')}>+ Marcar</button></div>
+            <div className="dia-nav">
+              <button onClick={() => setDia(somaDias(dia, -1))}>‹</button>
+              <div className="dia-titulo">
+                <strong>{dataBonita(dia)}</strong>
+                {dia !== hojeISO() && <span onClick={() => setDia(hojeISO())} style={{ cursor: 'pointer' }}>voltar para hoje</span>}
+                {dia === hojeISO() && <span>hoje</span>}
+              </div>
+              <button onClick={() => setDia(somaDias(dia, 1))}>›</button>
+            </div>
+            {doDia.length ? doDia.map(g => (
               <div className="cartao" key={g.id}>
-                <div className="cartao-linha">
-                  <Bolha nome={g.titulo} emoji="📅" />
-                  <div>
-                    <div className="cartao-topo">
-                      <strong>{g.titulo}</strong>
-                      <span className="quando">{dataBonita(g.data)} · {g.hora}</span>
-                    </div>
-                    {g.local && <p>📍 {g.local}</p>}
-                    <p className="obs">{g.responsavel ? `Responsável: ${g.responsavel} · ` : ''}{g.origem === 'semeador' ? 'agendado por voluntário no Semeador' : 'agendado pela central'}</p>
+                <div className="linha-agenda">
+                  <div className="hora-col">{g.hora}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{g.pacienteNome || g.titulo}</strong>
+                    {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo}</p>}
+                    {g.profissionalNome && <p className="obs">com {g.profissionalNome}{g.origem === 'semeador' ? ' · marcado no Semeador' : ''}</p>}
                   </div>
+                  <button className="btn-remover" onClick={() => removerAgendamento(g)} title="Remover">✕</button>
                 </div>
               </div>
-            )) : <div className="vazio">Nada agendado ainda.</div>}
+            )) : <div className="vazio">Nada marcado em {dataBonita(dia)}.<br />Toque em "+ Marcar".</div>}
           </>
         )}
         {aba === 'avisos' && (
@@ -412,7 +484,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       </main>
 
       <nav>
-        <button className={aba === 'cadastro' ? 'ativo' : ''} onClick={() => setAba('cadastro')}>📋<span>Cadastro</span></button>
+        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}>📋<span>Pacientes</span></button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}>📅<span>Agenda</span></button>
         <button className={aba === 'avisos' ? 'ativo' : ''} onClick={() => setAba('avisos')}>📢<span>Avisos</span></button>
         <button className={aba === 'equipe' ? 'ativo' : ''} onClick={() => setAba('equipe')}>
