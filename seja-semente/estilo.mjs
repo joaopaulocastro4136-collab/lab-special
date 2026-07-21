@@ -10,23 +10,40 @@ export const CSS = `
 
   .carregando { min-height: 100vh; display: flex; align-items: center; justify-content: center; font-size: 48px; }
 
-  /* ── Login (identidade verde + toques editoriais: serifa e cartão) ── */
+  /* ── Login (referência do João Paulo: creme, folhas suaves, serifa) ── */
   .tela-login { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; gap: 13px;
-    background: radial-gradient(900px 480px at 50% -120px, #D5EDDE 0%, #F2F5EF 62%); }
+    background-color: #F0F2E7;
+    background-image:
+      radial-gradient(760px 420px at 50% -120px, #E3EDDF 0%, rgba(240,242,231,0) 62%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%231E4D33' fill-opacity='0.055'%3E%3Cpath d='M50 62 C34 62 22 52 20 34 C38 36 50 44 50 62 Z'/%3E%3Cpath d='M50 48 C50 28 62 16 82 14 C80 34 68 48 50 48 Z'/%3E%3C/g%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%231E4D33' fill-opacity='0.05'%3E%3Cpath d='M50 62 C34 62 22 52 20 34 C38 36 50 44 50 62 Z'/%3E%3Cpath d='M50 48 C50 28 62 16 82 14 C80 34 68 48 50 48 Z'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-position: center top, left -130px top 12%, right -110px top 52%;
+    background-size: auto, 320px 320px, 350px 350px; }
   .login-cartao { background: #fff; border-radius: 28px; padding: 24px 30px 20px; box-shadow: 0 16px 40px rgba(30,43,34,0.14); margin-bottom: 4px; }
-  .tela-login h1 { margin: 4px 0 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 36px; letter-spacing: -0.5px; color: #226343; }
+  .tela-login h1 { margin: 6px 0 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 40px; letter-spacing: -0.5px; color: #1F5B38; }
   .login-sub { margin: 0; color: #5C6B60; text-align: center; font-size: 15px; font-weight: 600; }
-  .missao { margin: 2px 0 14px; max-width: 320px; text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 20px; line-height: 1.35; color: #2A3A2E; }
+  .login-etiqueta { margin: 0; color: #4E7D5B; text-align: center; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 3.5px; }
+  .divisor-broto { width: 100%; max-width: 300px; display: flex; align-items: center; gap: 12px; margin: 2px 0; }
+  .divisor-broto i { flex: 1; height: 1px; background: #D3DCCB; }
+  .missao { margin: 2px 0 12px; max-width: 320px; text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 21px; line-height: 1.35; color: #2A3A2E; }
   .missao em { color: #C08A2E; }
   .tela-login input { width: 100%; max-width: 330px; padding: 15px 17px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; box-shadow: 0 2px 8px rgba(30,43,34,0.04); }
+  .campo-login { width: 100%; max-width: 330px; display: flex; align-items: center; gap: 11px; padding: 0 17px; border: 1.5px solid #E1E7D8; border-radius: 20px; background: #FCFCF6; color: #8A968D; box-shadow: 0 3px 10px rgba(30,43,34,0.05); }
+  .campo-login:focus-within { border-color: #2F7D4E; box-shadow: 0 0 0 4px rgba(47,125,78,0.14); }
+  .campo-login input { flex: 1; min-width: 0; max-width: none; border: none !important; background: none; box-shadow: none !important; padding: 16px 0; border-radius: 0; }
+  .campo-login input:focus { border: none !important; box-shadow: none !important; }
+  .campo-login svg { flex: none; }
+  .olho { border: none; background: none; color: #8A968D; cursor: pointer; padding: 4px; display: flex; }
+  .btn-entrar { position: relative; overflow: hidden; border-radius: 20px; padding: 17px; font-size: 17px; }
+  .folha-btn { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; display: flex; }
   .faixa-demo { max-width: 330px; background: #FFF6E3; border: 1px solid #EEDCAC; color: #7A5F1E; border-radius: 14px; padding: 10px 14px; font-size: 13px; text-align: center; }
   .erro { color: #B3402A; font-size: 14px; font-weight: 700; }
   .btn-principal { width: 100%; max-width: 330px; padding: 15px; border: none; border-radius: 14px;
     background: linear-gradient(135deg, #37935B 0%, #226343 100%); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer;
     box-shadow: 0 8px 20px rgba(47,125,78,0.32); }
   .btn-principal:disabled { opacity: 0.5; box-shadow: none; }
-  .btn-google { width: 100%; max-width: 330px; padding: 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 14px rgba(30,43,34,0.07); }
-  .btn-google .g { width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from -45deg, #EA4335 110deg, #4285F4 90deg 180deg, #34A853 180deg 270deg, #FBBC05 270deg); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .btn-google { width: 100%; max-width: 330px; padding: 16px; border: none; border-radius: 22px; background: #fff; font-size: 16.5px; font-weight: 800; color: #1E2B22; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 11px; box-shadow: 0 10px 26px rgba(30,43,34,0.12); }
   .link-troca { border: none; background: none; color: #226343; font-weight: 800; font-size: 14px; cursor: pointer; text-decoration: underline; padding: 4px; }
   .separador { max-width: 330px; width: 100%; display: flex; align-items: center; gap: 10px; color: #7B897F; font-size: 13px; }
   .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #DBE3D8; }

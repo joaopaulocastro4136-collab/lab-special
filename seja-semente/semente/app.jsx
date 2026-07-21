@@ -17,8 +17,8 @@
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox } from 'lucide-react';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -169,24 +169,36 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  const [verSenha, setVerSenha] = useState(false);
+
   return (
     <div className="tela-login">
-      <LogoApp tamanho={132} />
+      <LogoApp tamanho={118} />
       <h1>Seja Semente</h1>
-      <p className="login-sub">Central do projeto</p>
+      <p className="login-etiqueta">Central do projeto</p>
+      <div className="divisor-broto"><i /><BrotoMini tamanho={19} /><i /></div>
       <p className="missao">Um mundo onde cada semente pode <em>florescer</em>.</p>
       {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
-        <span className="g">G</span> Entrar com Google
+        <GoogleG tamanho={23} /> Entrar com Google
       </button>
       {CONFIGURADO && (
         <>
           <div className="separador">ou com e-mail</div>
-          <input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <input placeholder={novaConta ? 'Crie uma senha (6+ caracteres)' : 'Senha'} type="password" value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
-          <button className="btn-principal" onClick={entrarEmail} disabled={carregando}>
+          <label className="campo-login">
+            <Mail size={19} />
+            <input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          </label>
+          <label className="campo-login">
+            <Lock size={19} />
+            <input placeholder={novaConta ? 'Crie uma senha (6+ caracteres)' : 'Senha'} type={verSenha ? 'text' : 'password'} value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && entrarEmail()} />
+            <button type="button" className="olho" onClick={() => setVerSenha(!verSenha)} aria-label="Mostrar senha">{verSenha ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+          </label>
+          <button className="btn-principal btn-entrar" onClick={entrarEmail} disabled={carregando}>
             {carregando ? 'Um instante…' : (novaConta ? 'Criar conta' : 'Entrar')}
+            <span className="folha-btn"><BrotoMini tamanho={34} cor="rgba(255,255,255,0.4)" /></span>
           </button>
+          <BrotoMini tamanho={15} cor="#BCCEC1" />
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
