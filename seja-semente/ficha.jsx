@@ -208,7 +208,13 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
       <div className="cartao">
         <div className="cartao-linha">
-          <Bolha nome={paciente.nome} foto={paciente.foto} />
+          {paciente.foto ? (
+            <button className="bolha-btn" onClick={() => setVendo({ dataUrl: paciente.foto, legenda: paciente.nome })} aria-label="Ver foto do paciente">
+              <Bolha nome={paciente.nome} foto={paciente.foto} />
+            </button>
+          ) : (
+            <Bolha nome={paciente.nome} />
+          )}
           <div>
             <div className="cartao-topo">
               <strong style={{ fontSize: 18 }}>{paciente.nome}</strong>
