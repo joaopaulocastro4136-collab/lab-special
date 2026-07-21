@@ -121,7 +121,10 @@ function TelaLogin({ aoEntrarDemo }) {
       if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
       else await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
     } catch (e) {
-      if (!String(e?.message || '').includes('cancelado')) setErro('Não consegui entrar com o Google. Tente de novo.');
+      if (!String(e?.message || '').includes('cancelado')) {
+        const caminho = window.__entrarNativoGoogle ? 'nativo' : 'navegador';
+        setErro(`Google não entrou (${caminho}): ${e?.code || ''} ${e?.message || e}`.slice(0, 220));
+      }
     }
     setCarregando(false);
   }
