@@ -1,6 +1,6 @@
 {
-  "versionCode": 42,
-  "versionName": "10.0",
+  "versionCode": 43,
+  "versionName": "10.1",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Ao trazer um trabalho pro dia, você escolhe quem faz vendo as horas de cada pessoa (hoje, amanhã e datas). Toque em Baixar para atualizar."
+  "novidades": "Corrige o 'Pra hoje' que à noite jogava o trabalho pra amanhã. Toque em Baixar para atualizar."
 }
