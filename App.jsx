@@ -2663,6 +2663,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   const [adicionandoDia, setAdicionandoDia] = useState(false);
   const [adicNaAgenda, setAdicNaAgenda] = useState(false); // seletor pra trazer um trabalho EXISTENTE pra este dia
   const [editandoCarga, setEditandoCarga] = useState(false);
+  const [escolhendoPessoa, setEscolhendoPessoa] = useState(null); // { casoId, data } — escolher quem faz ao trazer um trabalho
 
   // Horas-base (por pessoa) de um dia da semana (0=dom..6=sáb); cai na jornada padrão se não configurado
   const horasBase = (idxSemana) => {
@@ -2821,6 +2822,55 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
     );
   };
 
+  // Horas que uma pessoa já tem numa data (trabalhos com aquele prazo atribuídos a ela)
+  const cargaPessoaNaData = (funcId, dataAlvo) => {
+    const lista = expandirPorItem(casosAgenda.filter(c => c.prazo === dataAlvo && (c.responsavelId || null) === funcId && !c.naClinica && !c.provaPendente && c.status !== 'Pronto'));
+    return lista.reduce((s, c) => s + tempoRestante(c, tiposTrabalho), 0);
+  };
+
+  // Modal: ao trazer um trabalho, escolher QUEM faz — mostra as horas de cada pessoa
+  const abrirEscolhaPessoa = (casoId, data) => { if (temEquipe) { setEscolhendoPessoa({ casoId, data }); return true; } return false; };
+  const modalPessoa = escolhendoPessoa ? (() => {
+    const caso = casosAgenda.find(c => c.id === escolhendoPessoa.casoId);
+    if (!caso) return null;
+    const data = escolhendoPessoa.data;
+    const horasTrab = tempoRestante(caso, tiposTrabalho);
+    const dow = new Date(data + 'T00:00:00').getDay();
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setEscolhendoPessoa(null)}>
+        <div className="w-full sm:max-w-sm rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()} style={{ boxShadow: '0 20px 50px -18px rgba(0,0,0,0.5)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm font-extrabold" style={{ color: INK }}>Quem vai fazer?</div>
+            <button onClick={() => setEscolhendoPessoa(null)} className="p-1"><X size={16} className="text-stone-400" /></button>
+          </div>
+          <div className="text-xs text-stone-500 mb-3"><b>{caso.paciente}</b> • {caso.tipoTrabalho} — <b style={{ color: '#7A6234' }}>+{formatHoras(horasTrab)}</b> em {formatDateBR(data)}</div>
+          <div className="flex flex-col gap-1.5">
+            {equipe.map(f => {
+              const cap = horasDaPessoa(f, dow);
+              const antes = cargaPessoaNaData(f.id, data);
+              const depois = antes + horasTrab;
+              const exc = depois - cap;
+              const cor = exc > 0 ? '#DC2626' : (depois / cap >= 0.85 ? '#EA580C' : VERDE);
+              return (
+                <button key={f.id} onClick={() => { onAtribuir(caso.id, f.id, data); setEscolhendoPessoa(null); setAdicNaAgenda(false); setAdicionandoDia(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border" style={{ borderColor: '#E7E5E4', background: '#FCFBF8' }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0" style={{ background: GOLD_SOFT, color: '#7A6234' }}>{iniciaisNome(f.nome)}</div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-sm font-bold truncate" style={{ color: INK }}>{f.nome}</div>
+                    <div className="text-xs" style={{ color: cor }}>{formatHoras(antes)} → {formatHoras(depois)} de {formatHoras(cap)}{exc > 0 ? ` • ${formatHoras(exc)} acima` : ''}</div>
+                  </div>
+                  <ArrowRight size={15} style={{ color: '#A8A29E' }} className="flex-shrink-0" />
+                </button>
+              );
+            })}
+            <button onClick={() => { onAtribuir(caso.id, null, data); setEscolhendoPessoa(null); setAdicNaAgenda(false); setAdicionandoDia(false); }}
+              className="w-full text-xs font-semibold text-stone-500 py-2 mt-0.5">Só trazer pro dia, sem responsável</button>
+          </div>
+        </div>
+      </div>
+    );
+  })() : null;
+
   const gerarImagem = (titulo, dataExtenso, lista, capacidade) => {
     try {
       const cap = capacidade || capacidadeAtual;
@@ -2974,6 +3024,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
     return (
       <div>
         <OverlayImagem />
+        {modalPessoa}
         <SeletorDia dia={dia} setDia={setDia} />
         <div className="flex items-center justify-between mb-3">
           <button onClick={() => { setMesOffset(mesOffset - 1); setDataSelecionada(null); }} className="p-2 rounded-full bg-white" style={{ border: '1px solid #E8D5B0', color: '#7A6234', boxShadow: '0 6px 14px -10px rgba(122,98,52,0.5)' }}><ChevronLeft size={16} /></button>
@@ -3082,13 +3133,13 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                 </div>
                 <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
                   {casosAgenda.filter(c => c.prazo !== dataSelecionada).sort((a, b) => a.prazo.localeCompare(b.prazo)).map((c, i) => (
-                    <button key={c.id} onClick={() => { onMudarPrazo(c.id, dataSelecionada); setAdicionandoDia(false); }}
+                    <button key={c.id} onClick={() => { if (!abrirEscolhaPessoa(c.id, dataSelecionada)) { onMudarPrazo(c.id, dataSelecionada); setAdicionandoDia(false); } }}
                       className="w-full text-left flex items-center gap-2 px-3 py-2.5" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none' }}>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
                         <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
                       </div>
-                      <span className="text-xs text-stone-400 flex-shrink-0">{formatDateBR(c.prazo)} →</span>
+                      <span className="text-xs text-stone-400 flex-shrink-0">{temEquipe ? 'escolher quem →' : `${formatDateBR(c.prazo)} →`}</span>
                     </button>
                   ))}
                   {casosAgenda.filter(c => c.prazo !== dataSelecionada).length === 0 && (
@@ -3121,6 +3172,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   return (
     <div>
       <OverlayImagem />
+      {modalPessoa}
       <SeletorDia dia={dia} setDia={setDia} />
 
       <div className="text-sm text-stone-400 mb-4 capitalize">{dia === 'hoje' ? hojeExtenso() : amanhaExtenso()}</div>
@@ -3218,13 +3270,13 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               {disponiveis.length === 0 ? (
                 <div className="text-xs text-stone-400 text-center py-5">Nenhum outro trabalho em andamento pra trazer.</div>
               ) : disponiveis.map((c, i) => (
-                <button key={c.id} onClick={() => { onMoverDia(c.id, dia); setAdicNaAgenda(false); }}
+                <button key={c.id} onClick={() => { if (!abrirEscolhaPessoa(c.id, alvoISO)) { onMoverDia(c.id, dia); setAdicNaAgenda(false); } }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2.5" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none' }}>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
                     <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
                   </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: diasRestantes(c.prazo) < 0 ? '#B42318' : '#A8A29E' }}>{formatDateBR(c.prazo)} →</span>
+                  <span className="text-xs flex-shrink-0" style={{ color: diasRestantes(c.prazo) < 0 ? '#B42318' : '#A8A29E' }}>{temEquipe ? 'escolher quem →' : `${formatDateBR(c.prazo)} →`}</span>
                 </button>
               ))}
             </div>
