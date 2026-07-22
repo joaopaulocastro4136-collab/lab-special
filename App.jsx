@@ -1725,6 +1725,17 @@ export default function App() {
     updateCaso(id, { prazo: novoPrazo });
     criarNotificacao('reagendado', `${caso.paciente} (${caso.tipoTrabalho}) movido para ${quando === 'hoje' ? 'hoje' : 'amanhã'} (${formatDateBR(novoPrazo)}).`, id);
   };
+  // Atribui (ou tira) o responsável por um trabalho. Se vier uma data, também
+  // agenda o trabalho pra esse dia (montar o dia de cada pessoa = escolher pessoa + dia).
+  const atribuirResponsavel = (casoId, funcId, data) => {
+    const caso = casosVivos().find(c => c.id === casoId);
+    if (!caso) return;
+    const f = funcionarios.find(x => x.id === funcId);
+    const patch = { responsavelId: funcId || null, responsavel: f ? f.nome : null };
+    if (data && data >= todayISO()) patch.prazo = data; // nunca agenda pro passado
+    updateCaso(casoId, patch);
+  };
+  const setHorasPessoa = (id, h) => persistConfig({ funcionarios: funcionarios.map(f => f.id === id ? { ...f, horasDia: h } : f) });
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
     const caso = casosVivos().find(c => c.id === id);
@@ -2102,6 +2113,8 @@ export default function App() {
             casosHoje={trabalhoHoje} casosAmanha={trabalhoAmanha}
             casosAgenda={emAndamento}
             tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
+            funcionarios={funcionarios} ehGestor={ehGestor}
+            onAtribuir={atribuirResponsavel} onSetHorasPessoa={setHorasPessoa}
             ajustesDia={ajustesDia} onSetAjusteDia={setAjusteDoDia}
             onMudarPrazo={mudarPrazoParaDia}
             onMoverDia={moverParaDia}
@@ -2643,7 +2656,7 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onMoverDia, onNovo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, funcionarios, ehGestor, onAtribuir, onSetHorasPessoa, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onMoverDia, onNovo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
@@ -2656,19 +2669,157 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
     const v = horasPorDia?.[idxSemana];
     return (typeof v === 'number' && v > 0) ? v : horasDia;
   };
-  // Capacidade total de uma DATA: ajuste sob medida do dia (se houver) ou padrão, × pessoas
+  // Equipe que produz: cada funcionário cadastrado tem as SUAS horas por dia (padrão = jornada).
+  // Sem ninguém cadastrado, cai numa "Equipe" única com a jornada padrão (compatível com antes).
+  const equipe = (funcionarios && funcionarios.length) ? funcionarios : [{ id: '_equipe', nome: 'Equipe', _virtual: true }];
+  const horasDaPessoa = (f, dow) => (f && f.horasDia > 0) ? f.horasDia : horasBase(dow);
+  // Capacidade total de uma DATA = soma das horas de cada pessoa naquele dia.
   const capData = (dataStr) => {
-    const aj = ajustesDia?.[dataStr] || {};
     const dow = new Date(dataStr + 'T00:00:00').getDay();
-    const horas = (aj.horas > 0) ? aj.horas : horasBase(dow);
-    const pess = (aj.pessoas >= 1) ? aj.pessoas : (pessoas >= 1 ? pessoas : 1);
-    return horas * pess;
+    return equipe.reduce((s, f) => s + horasDaPessoa(f, dow), 0);
   };
   const dataAtualISO = dia === 'amanha' ? addDias(todayISO(), 1) : todayISO();
   const capacidadeAtual = capData(dataAtualISO);
-  const ajusteAtual = ajustesDia?.[dataAtualISO] || {};
-  const horasDoDia = (ajusteAtual.horas > 0) ? ajusteAtual.horas : horasBase(new Date(dataAtualISO + 'T00:00:00').getDay());
-  const pessoasDoDia = (ajusteAtual.pessoas >= 1) ? ajusteAtual.pessoas : (pessoas >= 1 ? pessoas : 1);
+  const dowAtual = new Date(dataAtualISO + 'T00:00:00').getDay();
+  // Trabalhos atribuídos a uma pessoa numa lista (bloco de item herda o responsável do caso)
+  const doResponsavel = (lista, funcId) => lista.filter(c => (c.responsavelId || null) === funcId);
+  const semResponsavel = (lista) => lista.filter(c => !c.responsavelId || !equipe.some(f => f.id === c.responsavelId));
+  const temEquipe = !equipe[0]?._virtual;
+
+  // Cartão de trabalho da agenda do dia (usado solto ou dentro do grupo de cada pessoa)
+  const CardTrabalho = (c, i) => {
+    const horas = tempoRestante(c, tiposTrabalho);
+    const atrasado = diasRestantes(c.prazo) < 0;
+    const producao = emProducao(c);
+    const et = etapaAtual(c);
+    const trabalhoCompleto = c._casoCompleto !== undefined ? c._casoCompleto : etapasCompletas(c);
+    return (
+      <div key={c.id + (c._bloco || '')} className="rounded-2xl p-4 bg-white" style={{ border: producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4' }}>
+        <button onClick={() => onSelect(c.id)} className="w-full text-left">
+          <div className="flex items-start gap-3">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
+              <div className="text-xs text-stone-500 truncate mt-0.5">{c.dentista} • {c.tipoTrabalho}</div>
+              {et && <div className="text-xs truncate mt-0.5 font-semibold" style={{ color: GOLD }}>{et.inicioExec ? '⏱ Fazendo: ' : 'Próxima etapa: '}{et.nome}</div>}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {et && et.inicioExec ? (
+                  <span className="flex items-center gap-1 text-xs font-bold" style={{ color: GOLD }}>
+                    <span className="w-1.5 h-1.5 rounded-sm pulse-gold" style={{ background: GOLD }} /> <TempoDecorrido inicioExec={et.inicioExec} />{et.funcionario ? ` • ${et.funcionario}` : ''}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
+                    <Hourglass size={11} /> {formatHoras(horas)} nesta etapa
+                  </span>
+                )}
+                {atrasado && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FCE4E4', color: '#B42318' }}>
+                    Atrasado {Math.abs(diasRestantes(c.prazo))}d
+                  </span>
+                )}
+                {producao && (
+                  <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
+                    <span className="w-1.5 h-1.5 rounded-full pulse-gold" style={{ background: GOLD }} /> em produção
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </button>
+        {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (
+          <div className="flex gap-2 mt-3">
+            {et.inicioExec ? (
+              <>
+                <button onClick={() => onPararEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
+                  <Square size={13} /> Parar
+                </button>
+                <button onClick={() => onConcluirEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
+                  <Check size={13} /> Concluir etapa
+                </button>
+              </>
+            ) : (
+              <button onClick={() => onIniciarEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD, color: INK }}>
+                <Play size={13} /> Iniciar etapa
+              </button>
+            )}
+          </div>
+        )}
+        {(producao) && (
+          <div className="flex gap-2 mt-2">
+            {trabalhoCompleto ? (
+              <button onClick={() => onFinalizar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
+                <Flag size={13} /> Finalizar
+              </button>
+            ) : (
+              <button onClick={() => onSelect(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
+                <ListChecks size={13} /> Etapas
+              </button>
+            )}
+          </div>
+        )}
+        {/* Reagendar: pra hoje, pra amanhã ou adiar — datas exatas */}
+        <div className="flex gap-2 mt-2">
+          <button onClick={() => onMoverDia && onMoverDia(c.id, 'hoje')} disabled={dia === 'hoje'}
+            className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'hoje' ? '#E7E5E4' : GOLD, color: dia === 'hoje' ? '#A8A29E' : '#7A6234', background: 'white' }}>
+            Pra hoje
+          </button>
+          <button onClick={() => onMoverDia && onMoverDia(c.id, 'amanha')} disabled={dia === 'amanha'}
+            className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'amanha' ? '#E7E5E4' : GOLD, color: dia === 'amanha' ? '#A8A29E' : '#7A6234', background: 'white' }}>
+            Pra amanhã
+          </button>
+          <button onClick={() => onAdiar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
+            <CalendarClock size={13} /> +1 dia
+          </button>
+        </div>
+        {/* Quem faz este trabalho */}
+        {temEquipe && ehGestor && (
+          <div className="mt-2 pt-2" style={{ borderTop: '1px dashed #EEECE7' }}>
+            <div className="text-[10px] font-extrabold uppercase tracking-wide mb-1.5" style={{ color: '#A8A29E' }}>Quem faz</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {equipe.map(f => {
+                const ativo = c.responsavelId === f.id;
+                return (
+                  <button key={f.id} onClick={() => onAtribuir(c.id, ativo ? null : f.id)}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold"
+                    style={ativo ? { background: INK, color: 'white' } : { background: '#F5F4F0', color: '#78716C', border: '1px solid #E7E5E4' }}>
+                    {f.nome.split(/\s+/)[0]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {temEquipe && !ehGestor && c.responsavel && (
+          <div className="text-xs text-stone-400 mt-2">Responsável: <b style={{ color: '#7A6234' }}>{c.responsavel}</b></div>
+        )}
+      </div>
+    );
+  };
+
+  // Cabeçalho de uma pessoa com a carga dela no dia
+  const iniciaisNome = (n) => (n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+  const CabecalhoPessoa = (f, lista) => {
+    const carga = lista.reduce((s, c) => s + tempoRestante(c, tiposTrabalho), 0);
+    const cap = horasDaPessoa(f, dowAtual);
+    const pct = cap > 0 ? Math.min(100, Math.round((carga / cap) * 100)) : 0;
+    const exc = carga - cap;
+    const cor = exc > 0 ? '#DC2626' : (pct >= 85 ? '#EA580C' : VERDE);
+    return (
+      <>
+        <div className="flex items-center gap-2 mb-1.5 px-1">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0" style={{ background: GOLD_SOFT, color: '#7A6234' }}>{iniciaisNome(f.nome)}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-extrabold truncate" style={{ color: INK }}>{f.nome}</div>
+            <div className="text-xs" style={{ color: cor }}>{formatHoras(carga)} de {formatHoras(cap)}{exc > 0 ? ` • ${formatHoras(exc)} acima` : ''}</div>
+          </div>
+          <span className="text-xs font-bold flex-shrink-0" style={{ color: cor }}>{lista.length} {lista.length === 1 ? 'trab.' : 'trab.'}</span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cor, transition: 'width 0.4s' }} />
+        </div>
+      </>
+    );
+  };
 
   const gerarImagem = (titulo, dataExtenso, lista, capacidade) => {
     try {
@@ -2772,11 +2923,12 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
     const listaDoDia = dataSelecionada ? (porData[dataSelecionada] || []) : [];
     const dSel = dataSelecionada ? new Date(dataSelecionada + 'T00:00:00') : null;
 
+    const passouData = dataSelecionada && dataSelecionada < hojeStr;
     const MiniCardCaso = ({ c }) => {
       const et = etapaAtual(c);
       return (
-        <div key={c.id} onClick={() => onSelect(c.id)} className="w-full text-left rounded-xl px-3 py-2.5 bg-white border border-stone-200 cursor-pointer">
-          <div className="flex items-center justify-between gap-2">
+        <div key={c.id} className="w-full text-left rounded-xl px-3 py-2.5 bg-white border border-stone-200">
+          <div className="flex items-center justify-between gap-2 cursor-pointer" onClick={() => onSelect(c.id)}>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
               <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
@@ -2787,7 +2939,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               {c.naClinica && <BadgeClinica />}
               {c.provaPendente && !c.naClinica && <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FDECD8', color: '#B54708' }}>levar</span>}
               <span className="text-xs text-stone-400">{formatHoras(tempoRestante(c, tiposTrabalho))}</span>
-              {c.status !== 'Entregue' && (
+              {c.status !== 'Entregue' && !passouData && (
                 <button onClick={(e) => { e.stopPropagation(); onAdiar(c.id); }}
                   className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#F0EFEC', color: '#78716C' }}
                   title="Tirar deste dia (vai para o próximo dia de trabalho)">
@@ -2796,6 +2948,25 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               )}
             </div>
           </div>
+          {/* Quem faz (só gestor, só datas de hoje pra frente) */}
+          {temEquipe && ehGestor && !passouData && (
+            <div className="flex gap-1.5 flex-wrap mt-2 pt-2" style={{ borderTop: '1px dashed #EEECE7' }}>
+              <span className="text-[10px] font-extrabold uppercase tracking-wide self-center mr-0.5" style={{ color: '#A8A29E' }}>Quem faz:</span>
+              {equipe.map(f => {
+                const ativo = c.responsavelId === f.id;
+                return (
+                  <button key={f.id} onClick={(e) => { e.stopPropagation(); onAtribuir(c.id, ativo ? null : f.id); }}
+                    className="px-2 py-1 rounded-lg text-xs font-bold"
+                    style={ativo ? { background: INK, color: 'white' } : { background: '#F5F4F0', color: '#78716C', border: '1px solid #E7E5E4' }}>
+                    {f.nome.split(/\s+/)[0]}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {temEquipe && c.responsavel && (!ehGestor || passouData) && (
+            <div className="text-xs text-stone-400 mt-1.5">Responsável: <b style={{ color: '#7A6234' }}>{c.responsavel}</b></div>
+          )}
         </div>
       );
     };
@@ -2893,8 +3064,12 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
               )}
             </div>
 
-            {/* Trazer um trabalho de outra data para este dia */}
-            {!adicionandoDia ? (
+            {/* Trazer um trabalho de outra data para este dia — bloqueado em datas que já passaram */}
+            {passouData ? (
+              <div className="w-full mt-2 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#A8A29E' }}>
+                <Lock size={13} /> Dia já passou — não dá pra agendar trabalho no passado.
+              </div>
+            ) : !adicionandoDia ? (
               <button onClick={() => setAdicionandoDia(true)}
                 className="w-full mt-2 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-dashed" style={{ borderColor: GOLD, color: '#7A6234', background: GOLD_SOFT }}>
                 <Plus size={14} /> Adicionar trabalho a este dia
@@ -2972,35 +3147,30 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         </div>
         <p className="text-xs text-stone-400 mt-2">As horas consideram só as etapas que ainda faltam em cada trabalho.</p>
 
-        {/* Ajuste rápido: horas e pessoas SÓ deste dia (toque no lápis) */}
+        {/* Horas de cada pessoa (toque no lápis) — a capacidade do dia é a soma das horas da equipe */}
         {editandoCarga && (
           <div className="mt-3 rounded-xl p-3" style={{ background: '#F5F4F0' }}>
-            <div className="text-xs font-bold mb-1" style={{ color: INK }}>Capacidade só {dia === 'hoje' ? 'de hoje' : 'de amanhã'} ({formatDateBR(dataAtualISO)})</div>
-            <div className="flex items-center gap-3 py-1.5">
-              <span className="text-xs font-medium flex-1" style={{ color: INK }}>Horas de trabalho (por pessoa)</span>
-              <InputNumero min={0.5} max={24}
-                className="px-2 py-1.5 rounded-lg border border-stone-200 text-sm outline-none bg-white text-center" style={{ width: '64px' }}
-                valor={horasDoDia}
-                onValor={v => onSetAjusteDia(dataAtualISO, { horas: v })} />
-              <span className="text-xs text-stone-400">horas</span>
-            </div>
-            <div className="flex items-center gap-2 py-1.5">
-              <span className="text-xs font-medium flex-1" style={{ color: INK }}>Pessoas neste dia</span>
-              <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.max(1, pessoasDoDia - 1) })} disabled={pessoasDoDia <= 1}
-                className="w-8 h-8 rounded-lg font-extrabold disabled:opacity-30" style={{ background: 'white', border: '1px solid #E7E5E4', color: INK }}>−</button>
-              <span className="text-sm font-extrabold text-center" style={{ color: INK, width: '22px' }}>{pessoasDoDia}</span>
-              <button onClick={() => onSetAjusteDia(dataAtualISO, { pessoas: Math.min(20, pessoasDoDia + 1) })}
-                className="w-8 h-8 rounded-lg font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
-            </div>
-            <div className="text-xs mt-1" style={{ color: '#7A6234' }}>
-              Capacidade {dia === 'hoje' ? 'de hoje' : 'de amanhã'}: {formatHoras(horasDoDia)} × {pessoasDoDia} {pessoasDoDia === 1 ? 'pessoa' : 'pessoas'} = <b>{formatHoras(horasDoDia * pessoasDoDia)}</b>
-            </div>
-            {ajustesDia?.[dataAtualISO] && (
-              <button onClick={() => onSetAjusteDia(dataAtualISO, null)} className="text-xs font-bold mt-2" style={{ color: '#B42318' }}>
-                Voltar ao padrão dos Ajustes
-              </button>
+            <div className="text-xs font-bold mb-1.5" style={{ color: INK }}>Horas de cada pessoa por dia</div>
+            {equipe[0]?._virtual ? (
+              <div className="text-xs text-stone-500">Cadastre a equipe em <b>Ajustes → Equipe</b> pra definir as horas de cada pessoa. Por enquanto a capacidade usa a jornada padrão ({formatHoras(horasBase(dowAtual))}).</div>
+            ) : (
+              <>
+                {equipe.map(f => (
+                  <div key={f.id} className="flex items-center gap-3 py-1.5">
+                    <span className="text-xs font-medium flex-1 truncate" style={{ color: INK }}>{f.nome}</span>
+                    <InputNumero min={0} max={24}
+                      className="px-2 py-1.5 rounded-lg border border-stone-200 text-sm outline-none bg-white text-center" style={{ width: '64px' }}
+                      valor={f.horasDia > 0 ? f.horasDia : horasBase(dowAtual)}
+                      onValor={v => onSetHorasPessoa(f.id, v)} />
+                    <span className="text-xs text-stone-400">horas</span>
+                  </div>
+                ))}
+                <div className="text-xs mt-1" style={{ color: '#7A6234' }}>
+                  Capacidade do dia = soma da equipe = <b>{formatHoras(capacidadeAtual)}</b>
+                </div>
+              </>
             )}
-            <div className="text-xs text-stone-400 mt-1.5">Vale só para este dia — o padrão de todos os dias fica em Ajustes → Dias e horários.</div>
+            <div className="text-xs text-stone-400 mt-1.5">Vale pro padrão de todo dia. Trabalhos são distribuídos por pessoa abaixo.</div>
           </div>
         )}
         {excedente > 0 && (
@@ -3068,96 +3238,43 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
           <div className="text-stone-500 text-sm font-medium">{dia === 'hoje' ? 'Nenhum trabalho pendente para hoje!' : 'Nada previsto para amanhã ainda.'}</div>
           <div className="text-stone-400 text-xs mt-1">{dia === 'hoje' ? 'Trabalhos com prazo até hoje aparecem nesta lista (os que estão na clínica não contam).' : 'Trabalhos com prazo para amanhã aparecem aqui.'}</div>
         </div>
-      ) : (
+      ) : !temEquipe ? (
+        // Sem equipe cadastrada: lista simples (comportamento antigo)
         <div className="flex flex-col gap-2">
-          {casos.map((c, i) => {
-            const horas = tempoRestante(c, tiposTrabalho);
-            const atrasado = diasRestantes(c.prazo) < 0;
-            const producao = emProducao(c);
-            const et = etapaAtual(c);
-            // Bloco de item: "Finalizar" só quando o trabalho INTEIRO estiver completo
-            const trabalhoCompleto = c._casoCompleto !== undefined ? c._casoCompleto : etapasCompletas(c);
+          {casos.map((c, i) => CardTrabalho(c, i))}
+        </div>
+      ) : (
+        // Com equipe: agrupa por pessoa (cada uma com suas horas e seus trabalhos)
+        <div className="flex flex-col gap-5">
+          {equipe.map(f => {
+            const meus = doResponsavel(casos, f.id);
             return (
-              <div key={c.id + (c._bloco || '')} className="rounded-2xl p-4 bg-white" style={{ border: producao ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4' }}>
-                <button onClick={() => onSelect(c.id)} className="w-full text-left">
-                  <div className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
-                      <div className="text-xs text-stone-500 truncate mt-0.5">{c.dentista} • {c.tipoTrabalho}</div>
-                      {et && <div className="text-xs truncate mt-0.5 font-semibold" style={{ color: GOLD }}>{et.inicioExec ? '⏱ Fazendo: ' : 'Próxima etapa: '}{et.nome}</div>}
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        {et && et.inicioExec ? (
-                          <span className="flex items-center gap-1 text-xs font-bold" style={{ color: GOLD }}>
-                            <span className="w-1.5 h-1.5 rounded-sm pulse-gold" style={{ background: GOLD }} /> <TempoDecorrido inicioExec={et.inicioExec} />{et.funcionario ? ` • ${et.funcionario}` : ''}
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
-                            <Hourglass size={11} /> {formatHoras(horas)} nesta etapa
-                          </span>
-                        )}
-                        {atrasado && (
-                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#FCE4E4', color: '#B42318' }}>
-                            Atrasado {Math.abs(diasRestantes(c.prazo))}d
-                          </span>
-                        )}
-                        {producao && (
-                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: GOLD }}>
-                            <span className="w-1.5 h-1.5 rounded-full pulse-gold" style={{ background: GOLD }} /> em produção
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-                {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (
-                  <div className="flex gap-2 mt-3">
-                    {et.inicioExec ? (
-                      <>
-                        <button onClick={() => onPararEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
-                          <Square size={13} /> Parar
-                        </button>
-                        <button onClick={() => onConcluirEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
-                          <Check size={13} /> Concluir etapa
-                        </button>
-                      </>
-                    ) : (
-                      <button onClick={() => onIniciarEtapaAtual(c.id, et.item)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD, color: INK }}>
-                        <Play size={13} /> Iniciar etapa
-                      </button>
-                    )}
-                  </div>
+              <div key={f.id}>
+                {CabecalhoPessoa(f, meus)}
+                {meus.length === 0 ? (
+                  <div className="text-xs text-stone-400 px-1 pb-1">Sem trabalho pra {f.nome.split(/\s+/)[0]} {dia === 'hoje' ? 'hoje' : 'amanhã'}.{ehGestor ? ' Use "Quem faz" nos cartões abaixo pra atribuir.' : ''}</div>
+                ) : (
+                  <div className="flex flex-col gap-2">{meus.map((c, i) => CardTrabalho(c, i))}</div>
                 )}
-                {(producao) && (
-                  <div className="flex gap-2 mt-2">
-                    {trabalhoCompleto ? (
-                      <button onClick={() => onFinalizar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5" style={{ background: VERDE }}>
-                        <Flag size={13} /> Finalizar
-                      </button>
-                    ) : (
-                      <button onClick={() => onSelect(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
-                        <ListChecks size={13} /> Etapas
-                      </button>
-                    )}
-                  </div>
-                )}
-                {/* Reagendar: pra hoje, pra amanhã ou adiar — datas exatas */}
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => onMoverDia && onMoverDia(c.id, 'hoje')} disabled={dia === 'hoje'}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'hoje' ? '#E7E5E4' : GOLD, color: dia === 'hoje' ? '#A8A29E' : '#7A6234', background: 'white' }}>
-                    Pra hoje
-                  </button>
-                  <button onClick={() => onMoverDia && onMoverDia(c.id, 'amanha')} disabled={dia === 'amanha'}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border disabled:opacity-40" style={{ borderColor: dia === 'amanha' ? '#E7E5E4' : GOLD, color: dia === 'amanha' ? '#A8A29E' : '#7A6234', background: 'white' }}>
-                    Pra amanhã
-                  </button>
-                  <button onClick={() => onAdiar(c.id)} className="flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-stone-200 text-stone-600">
-                    <CalendarClock size={13} /> +1 dia
-                  </button>
-                </div>
               </div>
             );
           })}
+          {(() => {
+            const livres = semResponsavel(casos);
+            if (livres.length === 0) return null;
+            return (
+              <div>
+                <div className="flex items-center gap-2 mb-1.5 px-1">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FDECD8', color: '#B54708' }}><UserPlus size={16} /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-extrabold" style={{ color: INK }}>Sem responsável</div>
+                    <div className="text-xs" style={{ color: '#B54708' }}>{livres.length} {livres.length === 1 ? 'trabalho' : 'trabalhos'}{ehGestor ? ' — escolha quem faz' : ''}</div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">{livres.map((c, i) => CardTrabalho(c, i))}</div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -4229,22 +4346,37 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           ))}
         </div>
 
-        {/* Quantas pessoas produzem ao mesmo tempo — multiplica a capacidade do dia */}
+        {/* Horas de cada pessoa por dia — a capacidade do dia é a soma da equipe */}
         <div className="mt-3 pt-3 border-t border-stone-100">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 mb-1">
             <Users size={16} color={GOLD} className="flex-shrink-0" />
-            <div className="flex-1">
-              <div className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Pessoas na produção</div>
-              <div className="text-xs text-stone-400">Multiplica as horas de cada dia (ex.: 8h × {pessoas >= 1 ? pessoas : 1} {pessoas === 1 ? 'pessoa' : 'pessoas'} = {(pessoas >= 1 ? pessoas : 1) * 8}h disponíveis)</div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => onSetPessoas(Math.max(1, (pessoas || 1) - 1))} disabled={(pessoas || 1) <= 1}
-                className="w-9 h-9 rounded-xl font-extrabold text-lg disabled:opacity-30" style={{ background: '#F0EFEC', color: INK }}>−</button>
-              <span className="text-lg font-extrabold text-center" style={{ color: INK, width: '28px' }}>{pessoas >= 1 ? pessoas : 1}</span>
-              <button onClick={() => onSetPessoas(Math.min(20, (pessoas || 1) + 1))}
-                className="w-9 h-9 rounded-xl font-extrabold text-lg" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 8px 18px -8px rgba(184,147,90,0.7)' }}>+</button>
-            </div>
+            <div className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Horas de cada pessoa</div>
           </div>
+          {(!funcionarios || funcionarios.length === 0) ? (
+            <div className="text-xs text-stone-400 mt-1">
+              Cadastre a equipe em <b>Ajustes → Equipe</b>. Aí cada pessoa aparece aqui com as horas dela, e a capacidade do dia vira a soma da equipe.
+              <button onClick={onAbrirEquipe} className="block mt-2 px-3 py-2 rounded-lg text-xs font-bold text-white" style={{ background: INK }}>Abrir Equipe →</button>
+            </div>
+          ) : (
+            <>
+              <div className="text-xs text-stone-400 mb-2">Capacidade do dia = soma das horas da equipe. Padrão de cada um: {formatHoras(horasDia)}.</div>
+              <div className="rounded-xl border border-stone-100 overflow-hidden">
+                {funcionarios.map((f, idx) => (
+                  <div key={f.id} className="flex items-center gap-3 px-3 py-2.5" style={idx > 0 ? { borderTop: '1px solid #F5F4F0' } : undefined}>
+                    <span className="text-sm font-semibold flex-1 truncate" style={{ color: INK }}>{f.nome}{f.gestor ? ' 👑' : ''}</span>
+                    <InputNumero min={0} max={24}
+                      className="px-2 py-1.5 rounded-lg border border-stone-200 text-sm outline-none bg-white text-center" style={{ width: '64px' }}
+                      valor={f.horasDia > 0 ? f.horasDia : horasDia}
+                      onValor={v => onUpdateFuncionario(f.id, { horasDia: v })} />
+                    <span className="text-xs text-stone-400">h/dia</span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs font-bold mt-2" style={{ color: '#7A6234' }}>
+                Capacidade total do dia: {formatHoras(funcionarios.reduce((s, f) => s + (f.horasDia > 0 ? f.horasDia : horasDia), 0))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
