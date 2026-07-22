@@ -81,7 +81,16 @@ const TIPOS_PADRAO = [
   },
 ];
 
-function todayISO() { return new Date().toISOString().split('T')[0]; }
+// Data no formato AAAA-MM-DD usando o fuso LOCAL do aparelho (não UTC).
+// Sem isso, à noite no Brasil (UTC-3) o "hoje" virava o dia seguinte e o
+// "Pra hoje" jogava o trabalho pra amanhã — diasRestantes usa data local.
+function isoLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+function todayISO() { return isoLocal(new Date()); }
 function agoraISO() { return new Date().toISOString(); }
 // Linha do tempo de LOCAL do trabalho (laboratório × clínica). Cada mudança
 // carimba a data/hora; assim a ficha mostra quanto tempo ficou em cada lugar.
@@ -127,7 +136,7 @@ function addDias(iso, dias) {
   const d = new Date(iso + 'T00:00:00');
   if (isNaN(d.getTime())) return '';
   d.setDate(d.getDate() + dias);
-  return d.toISOString().split('T')[0];
+  return isoLocal(d);
 }
 // Dias de trabalho padrão: segunda a sábado (0=dom ... 6=sáb)
 const DIAS_TRABALHO_PADRAO = [1, 2, 3, 4, 5, 6];
@@ -142,7 +151,7 @@ function proximoDiaUtil(iso, diasTrabalho) {
     d.setDate(d.getDate() + 1);
     tentativas++;
   }
-  return d.toISOString().split('T')[0];
+  return isoLocal(d);
 }
 // ── Etiqueta térmica do trabalho (NIIMBOT B1, rótulo 50×30 mm) ──
 // Gera a imagem no formato do rótulo; o QR guarda "LS-<id do caso>" e é lido

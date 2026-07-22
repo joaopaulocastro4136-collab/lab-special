@@ -47,20 +47,27 @@ const funcoes = getFunctions(fbApp, 'southamerica-east1');
 
 const docKV = (k) => doc(db, 'labs', LAB, 'kv', k);
 
-function todayISO() { return new Date().toISOString().split('T')[0]; }
+// Data AAAA-MM-DD no fuso LOCAL (não UTC) — senão à noite no Brasil o "hoje" pula um dia
+function isoLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+function todayISO() { return isoLocal(new Date()); }
 function formatDateBR(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
 function novoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function addDias(iso, dias) {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() + dias);
-  return d.toISOString().split('T')[0];
+  return isoLocal(d);
 }
 function proximoDiaUtil(iso, diasTrabalho) {
   const dias = (diasTrabalho && diasTrabalho.length > 0) ? diasTrabalho : [1, 2, 3, 4, 5, 6];
   const d = new Date(iso + 'T00:00:00');
   let tentativas = 0;
   while (!dias.includes(d.getDay()) && tentativas < 7) { d.setDate(d.getDate() + 1); tentativas++; }
-  return d.toISOString().split('T')[0];
+  return isoLocal(d);
 }
 
 // Previsão de entrega de cada etapa: soma os "dias" das etapas a partir do início da produção.
