@@ -1,6 +1,6 @@
 {
-  "versionCode": 41,
-  "versionName": "9.9",
+  "versionCode": 42,
+  "versionName": "10.0",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Agenda por pessoa: cada funcionário com as horas dele e você atribui os trabalhos por pessoa (hoje, amanhã e nas datas). Toque em Baixar para atualizar."
+  "novidades": "Ao trazer um trabalho pro dia, você escolhe quem faz vendo as horas de cada pessoa (hoje, amanhã e datas). Toque em Baixar para atualizar."
 }
