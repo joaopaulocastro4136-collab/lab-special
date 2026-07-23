@@ -302,10 +302,27 @@ function diasRestantes(prazo) {
   hoje.setHours(0, 0, 0, 0);
   return Math.round((new Date(prazo + 'T00:00:00') - hoje) / 86400000);
 }
+// "Atrasado" = o LABORATÓRIO está devendo produção. Um trabalho que já saiu das mãos
+// do lab — na clínica pra prova, na fila de entrega, já finalizado (Pronto) ou entregue —
+// NÃO é atraso do laboratório: a bola está com a clínica/entrega. Sem isso, um trabalho
+// entregue à clínica aguardando retorno aparecia como "Atrasado" indevidamente.
+function foraDasMaosDoLab(caso) {
+  if (caso.status === 'Pronto' || caso.status === 'Entregue') return true; // produção terminada
+  // Na clínica PRA PROVA (aguardando retorno do dentista) = fora das mãos do lab.
+  // Mas se o dentista JÁ DEVOLVEU (retornoSolicitado), a bola voltou pro lab: continua contando atraso.
+  if (caso.naClinica) return !caso.retornoSolicitado;
+  if (caso.provaPendente) return true; // na fila de entrega — o lab já fez a etapa
+  return false;
+}
+function estaAtrasado(caso) {
+  if (foraDasMaosDoLab(caso)) return false;
+  return diasRestantes(caso.prazo) < 0;
+}
 function getUrgencia(caso) {
   if (caso.status === 'Entregue') return 'entregue';
+  if (estaAtrasado(caso)) return 'atrasado';
   const dias = diasRestantes(caso.prazo);
-  if (dias < 0) return 'atrasado';
+  if (dias < 0) return 'aguardando'; // vencido, mas fora das mãos do lab — não alarma atraso
   if (dias === 0) return 'hoje';
   if (dias <= 2) return 'proximo';
   return 'normal';
@@ -476,6 +493,7 @@ const URGENCIA_STYLES = {
   proximo: { bg: '#FEF3C7', text: '#92620A', label: (d) => `Faltam ${d}d` },
   normal: { bg: '#F0EFEC', text: '#57534E', label: (d) => `Faltam ${d}d` },
   entregue: { bg: '#DCF3E4', text: '#166B3A', label: () => 'Entregue' },
+  aguardando: { bg: '#F0EFEC', text: '#57534E', label: () => 'Aguardando' }, // fora das mãos do lab (clínica/entrega/pronto)
 };
 
 const FILTROS_RAPIDOS = {
@@ -600,7 +618,7 @@ function desenharImagemDia({ titulo, dataExtenso, casos, tiposTrabalho, horasDia
     ctx.fillStyle = 'white';
     roundRect(ctx, x, y, w, h, 22 * esc);
     ctx.fill();
-    const atrasado = diasRestantes(c.prazo) < 0;
+    const atrasado = estaAtrasado(c);
     ctx.strokeStyle = atrasado ? '#DC2626' : (emProducao(c) ? GOLD : '#E7E5E4');
     ctx.lineWidth = 3;
     roundRect(ctx, x, y, w, h, 22 * esc);
@@ -1508,7 +1526,13 @@ export default function App() {
     const ids = Object.keys(participantes);
     let partes = [];
     if (ids.length === 0) {
-      if (usuarioAtivo) partes = [{ funcionarioId: usuarioAtivo.id, funcionario: usuarioAtivo.nome, valor: valorComissao, pct: 100 }];
+      // Nenhuma etapa tem executor gravado: crédito vai pro RESPONSÁVEL do trabalho
+      // ("quem faz") se houver; só então cai pra quem está ativo/finalizou.
+      const respValido = caso.responsavelId && funcionarios.some(f => f.id === caso.responsavelId);
+      if (respValido) {
+        const nomeResp = caso.responsavel || funcionarios.find(f => f.id === caso.responsavelId)?.nome;
+        partes = [{ funcionarioId: caso.responsavelId, funcionario: nomeResp, valor: valorComissao, pct: 100 }];
+      } else if (usuarioAtivo) partes = [{ funcionarioId: usuarioAtivo.id, funcionario: usuarioAtivo.nome, valor: valorComissao, pct: 100 }];
     } else {
       let acumulado = 0;
       partes = ids.map((fid, idx) => {
@@ -1616,8 +1640,14 @@ export default function App() {
         }
       }
     }
-    const executor = etapa.funcionario || usuarioAtivo?.nome || null;
-    const executorId = etapa.funcionarioId || usuarioAtivo?.id || null;
+    // Quem leva o crédito da etapa (base da comissão), nesta ordem:
+    // 1) quem CRONOMETROU a etapa (apertou Iniciar logado como si mesmo);
+    // 2) o RESPONSÁVEL do trabalho ("quem faz") — assim, num celular compartilhado,
+    //    a etapa vai pra pessoa a quem o trabalho foi atribuído, e não pra quem finalizou;
+    // 3) por último, quem está ativo agora.
+    const respValido = caso.responsavelId && funcionarios.some(f => f.id === caso.responsavelId);
+    const executor = etapa.funcionario || (respValido ? (caso.responsavel || funcionarios.find(f => f.id === caso.responsavelId)?.nome) : null) || usuarioAtivo?.nome || null;
+    const executorId = etapa.funcionarioId || (respValido ? caso.responsavelId : null) || usuarioAtivo?.id || null;
     const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, concluida: true, dataConclusao: todayISO(), inicioExec: null, duracaoMin, funcionario: executor, funcionarioId: executorId } : e);
     const todasConcluidas = novasEtapas.every(e => e.concluida || e.pulada);
 
@@ -1745,6 +1775,13 @@ export default function App() {
     updateCaso(casoId, patch);
   };
   const setHorasPessoa = (id, h) => persistConfig({ funcionarios: funcionarios.map(f => f.id === id ? { ...f, horasDia: h } : f) });
+  // Corrige uma comissão já registrada que foi pro nome errado (ex.: foi pra quem finalizou
+  // em vez de quem fez). Move o registro pra pessoa certa — sem duplicar nada.
+  const reatribuirComissao = (registroId, novoFuncId) => {
+    const f = funcionarios.find(x => x.id === novoFuncId);
+    if (!f) return;
+    persistComissoes(comissoes.map(c => c.id === registroId ? { ...c, funcionarioId: f.id, funcionario: f.nome } : c));
+  };
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
     const caso = casosVivos().find(c => c.id === id);
@@ -2238,6 +2275,7 @@ export default function App() {
             tiposTrabalho={tiposTrabalho} ehGestor={ehGestor}
             medias={calcularMedias(historicoTempos)}
             onUpdateTipo={(nome, patch) => persistConfig({ tiposTrabalho: tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t) })}
+            onReatribuirComissao={reatribuirComissao}
             onVoltar={() => setView('dashboard')}
             onAbrirMeu={usuarioAtivo ? () => setView('meu') : null} />
         )}
@@ -2412,7 +2450,7 @@ function StatCard({ label, value, color, icon: Icon, onClick, sub, destaque }) {
 function BarraProgresso({ caso, compacta }) {
   if (!emProducao(caso)) return null;
   const pct = progressoPrazo(caso);
-  const atrasado = diasRestantes(caso.prazo) < 0;
+  const atrasado = estaAtrasado(caso);
   const cor = atrasado ? '#DC2626' : (pct >= 80 ? '#EA580C' : GOLD);
   const et = etapaAtual(caso);
   return (
@@ -2699,7 +2737,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
   // Cartão de trabalho da agenda do dia (usado solto ou dentro do grupo de cada pessoa)
   const CardTrabalho = (c, i) => {
     const horas = tempoRestante(c, tiposTrabalho);
-    const atrasado = diasRestantes(c.prazo) < 0;
+    const atrasado = estaAtrasado(c);
     const producao = emProducao(c);
     const et = etapaAtual(c);
     const trabalhoCompleto = c._casoCompleto !== undefined ? c._casoCompleto : etapasCompletas(c);
@@ -3285,7 +3323,7 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
                     <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</div>
                     <div className="text-xs text-stone-400 truncate">{c.dentista} • {c.tipoTrabalho}</div>
                   </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: diasRestantes(c.prazo) < 0 ? '#B42318' : '#A8A29E' }}>{temEquipe ? 'escolher quem →' : `${formatDateBR(c.prazo)} →`}</span>
+                  <span className="text-xs flex-shrink-0" style={{ color: estaAtrasado(c) ? '#B42318' : '#A8A29E' }}>{temEquipe ? 'escolher quem →' : `${formatDateBR(c.prazo)} →`}</span>
                 </button>
               ))}
             </div>
@@ -4612,8 +4650,9 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
 }
 
 // ─── Relatório da equipe (só gestor) ───
-function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onVoltar, onAbrirMeu }) {
+function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onVoltar, onAbrirMeu }) {
   const [funcionarioSel, setFuncionarioSel] = useState(null);
+  const [corrigindo, setCorrigindo] = useState(null); // id do registro de comissão sendo reatribuído
   if (!ehGestor) {
     return (
       <div className="text-center py-14 px-4 rounded-2xl bg-white border border-stone-200">
@@ -4708,13 +4747,31 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         ) : (
           <div className="flex flex-col gap-2">
             {minhasComissoes.slice(0, 20).map(c => (
-              <div key={c.id} className="rounded-2xl px-4 py-3 bg-white border border-stone-200 flex items-center gap-3">
-                <DollarSign size={16} style={{ color: VERDE }} className="flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
-                  <div className="text-xs text-stone-400">{formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo'}</div>
+              <div key={c.id} className="rounded-2xl px-4 py-3 bg-white border border-stone-200">
+                <div className="flex items-center gap-3">
+                  <DollarSign size={16} style={{ color: VERDE }} className="flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
+                    <div className="text-xs text-stone-400">{formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo'}</div>
+                  </div>
+                  <span className="text-sm font-extrabold flex-shrink-0" style={{ color: VERDE }}>{formatReais(c.valor)}</span>
+                  {onReatribuirComissao && funcionarios.length > 1 && (
+                    <button onClick={() => setCorrigindo(corrigindo === c.id ? null : c.id)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: corrigindo === c.id ? GOLD_SOFT : '#F0EFEC' }} title="Foi pro nome errado? Reatribuir esta comissão">
+                      <RotateCw size={13} style={{ color: corrigindo === c.id ? '#7A6234' : '#78716C' }} />
+                    </button>
+                  )}
                 </div>
-                <span className="text-sm font-extrabold flex-shrink-0" style={{ color: VERDE }}>{formatReais(c.valor)}</span>
+                {corrigindo === c.id && (
+                  <div className="mt-2.5 pt-2.5 border-t border-stone-100">
+                    <div className="text-xs text-stone-400 mb-1.5">Quem fez este trabalho? A comissão vai pra:</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {funcionarios.filter(p => p.id !== c.funcionarioId).map(p => (
+                        <button key={p.id} onClick={() => { onReatribuirComissao(c.id, p.id); setCorrigindo(null); }}
+                          className="px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: GOLD_SOFT, color: '#7A6234' }}>{p.nome}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
