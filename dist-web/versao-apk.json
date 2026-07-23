@@ -1,6 +1,6 @@
 {
-  "versionCode": 43,
-  "versionName": "10.1",
+  "versionCode": 44,
+  "versionName": "10.2",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Corrige o 'Pra hoje' que à noite jogava o trabalho pra amanhã. Toque em Baixar para atualizar."
+  "novidades": "Conserta o 'atrasado' errado em trabalho que está na clínica/entrega, e a comissão que ia pra quem finalizava em vez de quem fez. Toque em Baixar para atualizar."
 }
