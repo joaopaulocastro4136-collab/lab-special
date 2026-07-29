@@ -844,6 +844,65 @@ function jpegParaPDF(dataURL) {
   return new Blob([out], { type: 'application/pdf' });
 }
 
+// Várias imagens JPEG → um PDF de VÁRIAS páginas (uma imagem por página).
+// Usado no relatório do cliente, que pode passar de uma folha A4.
+function jpegsParaPDF(dataURLs) {
+  const enc = (s) => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 0xFF; return u; };
+  const imgs = dataURLs.map(durl => {
+    const bin = atob(durl.split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    let w = 1240, h = 1754;
+    for (let i = 2; i < bytes.length - 9; i++) {
+      if (bytes[i] === 0xFF && bytes[i + 1] >= 0xC0 && bytes[i + 1] <= 0xC3) {
+        h = (bytes[i + 5] << 8) | bytes[i + 6];
+        w = (bytes[i + 7] << 8) | bytes[i + 8];
+        break;
+      }
+    }
+    return { bytes, w, h };
+  });
+  const PW = 595, PH = 842; // A4 em pontos
+  const n = imgs.length;
+  // Objetos: 1=Catalog, 2=Pages, depois por página: Page, Image, Contents
+  const partes = [];
+  const offsets = [];
+  let pos = 0;
+  const push = (d) => { const u = typeof d === 'string' ? enc(d) : d; partes.push(u); pos += u.length; };
+  const idPage = (i) => 3 + i * 3, idImg = (i) => 4 + i * 3, idCont = (i) => 5 + i * 3;
+
+  push('%PDF-1.4\n');
+  offsets[1] = pos; push('1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n');
+  offsets[2] = pos; push(`2 0 obj << /Type /Pages /Kids [${imgs.map((_, i) => `${idPage(i)} 0 R`).join(' ')}] /Count ${n} >> endobj\n`);
+  imgs.forEach((im, i) => {
+    // Encaixa a imagem na folha A4 mantendo a proporção (centralizada)
+    const esc = Math.min(PW / im.w, PH / im.h);
+    const dw = im.w * esc, dh = im.h * esc;
+    const dx = (PW - dw) / 2, dy = (PH - dh) / 2;
+    const cont = `q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /Im0 Do Q`;
+    offsets[idPage(i)] = pos;
+    push(`${idPage(i)} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im0 ${idImg(i)} 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ${idCont(i)} 0 R >> endobj\n`);
+    offsets[idImg(i)] = pos;
+    push(`${idImg(i)} 0 obj << /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >> stream\n`);
+    push(im.bytes);
+    push('\nendstream endobj\n');
+    offsets[idCont(i)] = pos;
+    push(`${idCont(i)} 0 obj << /Length ${cont.length} >> stream\n${cont}\nendstream endobj\n`);
+  });
+  const totalObj = 2 + n * 3;
+  const xrefPos = pos;
+  let xref = `xref\n0 ${totalObj + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= totalObj; i++) xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  push(xref);
+  push(`trailer << /Size ${totalObj + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`);
+
+  const tam = partes.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(tam);
+  let o = 0;
+  for (const p of partes) { out.set(p, o); o += p.length; }
+  return new Blob([out], { type: 'application/pdf' });
+}
+
 // ─── Lista dos trabalhos adicionados hoje (imagem → PDF para WhatsApp) ───
 function desenharTrabalhosDeHoje({ casos }) {
   const W = 1080, PAD = 56, LINHA = 132;
@@ -2294,7 +2353,15 @@ export default function App() {
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(nome) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== nome) })}
             onVerCaso={goToDetalhe}
-            onImprimirRelatorio={(dent, lista, modo) => { imprimirRelatorioDentista(dent, lista, modo, nomeLab); mostrarAviso('Relatório gerado — abra o arquivo pra imprimir ✓'); }}
+            onImprimirRelatorio={async (dent, lista, modo, baixarDireto) => {
+              try {
+                const r = await compartilharRelatorioDentista(dent, lista, modo, nomeLab, baixarDireto);
+                if (r === 'baixado') mostrarAviso('Relatório em PDF baixado ✓');
+                else if (r === 'compartilhado') mostrarAviso('Relatório enviado ✓');
+              } catch (e) {
+                mostrarAviso('Não consegui gerar o relatório: ' + ((e && e.message) || e));
+              }
+            }}
             tituloVoltar={voltarDentistas === 'dashboard' ? 'Início' : 'Ajustes'}
             onVoltar={() => setView(voltarDentistas === 'dashboard' ? 'dashboard' : 'ajustes')} />
         )}
@@ -4135,15 +4202,25 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
                   <FileText size={15} color={GOLD} />
                   <span className="text-xs font-bold" style={{ color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Imprimir relatório (A4)</span>
                 </div>
-                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'todos')}
+                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'todos', false)}
                   className="w-full mb-2 py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2" style={{ background: INK, color: '#fff' }}>
                   <ClipboardList size={15} /> Todos os trabalhos ({trabalhosDoDentista.length})
                 </button>
-                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'finalizados')}
+                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'finalizados', false)}
                   className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 border" style={{ borderColor: VERDE, color: VERDE, background: '#fff' }}>
                   <CheckCircle2 size={15} /> Só os finalizados ({finalizados.length})
                 </button>
-                <div className="text-xs text-stone-400 mt-2 leading-relaxed">Sai com paciente, trabalho, datas, situação e <b>valores somados</b>. O arquivo baixa e já abre a impressão — dá pra salvar como PDF.</div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'todos', true)}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                    <Download size={12} /> Baixar todos
+                  </button>
+                  <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'finalizados', true)}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                    <Download size={12} /> Baixar finalizados
+                  </button>
+                </div>
+                <div className="text-xs text-stone-400 mt-2 leading-relaxed">Sai em <b>PDF folha A4</b>, com paciente, trabalho, datas, situação e <b>valores somados</b>. Abre o compartilhamento do celular: dá pra <b>imprimir</b>, mandar no WhatsApp ou salvar.</div>
               </div>
             </>
           );
@@ -6932,17 +7009,19 @@ function gerarFichaHTML(caso, dentistaInfo, ehGestor) {
 </html>`;
 }
 
-// ─── Relatório A4 dos trabalhos de um dentista (imprime/vira PDF) ───
-// modo 'todos'      = todos os trabalhos do dentista, com valores e situação
-// modo 'finalizados'= só os que já foram finalizados/entregues (fechamento p/ cobrança)
-function gerarRelatorioDentistaHTML(dentista, casos, modo, nomeLab) {
-  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Desenha o relatório em folhas A4 (uma imagem por folha) — vira PDF de verdade,
+// que o celular consegue abrir, compartilhar e imprimir.
+function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
+  const F = "'Manrope', -apple-system, sans-serif";
+  const W = 1240, H = 1754; // A4 a ~150dpi
+  const PAD = 70;
+  const CW = W - PAD * 2;
   const finalizado = (c) => c.status === 'Pronto' || c.status === 'Entregue';
   const lista = (modo === 'finalizados' ? casos.filter(finalizado) : casos)
-    .slice()
-    .sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
+    .slice().sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
   const total = lista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
   const semValor = lista.filter(c => !(Number(c.valor) > 0)).length;
+  const titulo = modo === 'finalizados' ? 'Relatório de Trabalhos Finalizados' : 'Relatório de Trabalhos';
   const situacao = (c) => {
     if (c.status === 'Entregue') return 'Entregue';
     if (c.status === 'Pronto') return 'Finalizado';
@@ -6950,105 +7029,173 @@ function gerarRelatorioDentistaHTML(dentista, casos, modo, nomeLab) {
     if (c.provaPendente) return 'Para entrega';
     return c.status || 'Em produção';
   };
-  const linhas = lista.map((c, i) => `
-    <tr>
-      <td class="c">${i + 1}</td>
-      <td>${esc(c.paciente)}</td>
-      <td>${esc((c.itens && c.itens.length) ? c.itens.map(it => `${it.quantidade > 1 ? it.quantidade + '× ' : ''}${it.nome}`).join(', ') : c.tipoTrabalho)}</td>
-      <td class="c">${c.dataEntrada ? formatDateBR(c.dataEntrada) : '—'}</td>
-      <td class="c">${modo === 'finalizados' ? (c.dataSaida ? formatDateBR(c.dataSaida) : (c.dataFinalizado ? formatDateBR(c.dataFinalizado) : '—')) : (c.prazo ? formatDateBR(c.prazo) : '—')}</td>
-      <td class="c">${esc(situacao(c))}</td>
-      <td class="v">${Number(c.valor) > 0 ? formatReais(c.valor) : '—'}</td>
-    </tr>`).join('');
+  const nomeTrab = (c) => (c.itens && c.itens.length)
+    ? c.itens.map(it => `${it.quantidade > 1 ? it.quantidade + '× ' : ''}${it.nome}`).join(', ')
+    : c.tipoTrabalho;
 
-  const titulo = modo === 'finalizados' ? 'Relatório de Trabalhos Finalizados' : 'Relatório de Trabalhos';
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(titulo)} — ${esc(dentista.nome)}</title>
-<style>
-  @page { size: A4; margin: 12mm; }
-  body { font-family: 'Manrope', -apple-system, system-ui, sans-serif; color: #1C1B19; margin: 0; padding: 20px; }
-  .marca { font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #B8935A; }
-  .nome { font-size: 24px; font-weight: 800; letter-spacing: 1px; }
-  .sub { font-size: 12px; color: #78716C; margin-top: 2px; }
-  .cab { border-bottom: 3px solid #1C1B19; padding-bottom: 10px; margin-bottom: 14px; }
-  .dest { background: #F8F6F1; border: 1px solid #E7E5E4; border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
-  .dest b { font-size: 15px; }
-  table { width: 100%; font-size: 12px; border-collapse: collapse; }
-  td, th { padding: 6px 7px; border: 1px solid #E7E5E4; text-align: left; }
-  th { background: #F3EBDA; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
-  .c { text-align: center; }
-  .v { text-align: right; white-space: nowrap; }
-  tbody tr:nth-child(even) { background: #FCFBF8; }
-  .tot { margin-top: 12px; border-top: 2px solid #1C1B19; padding-top: 10px; display: flex; justify-content: space-between; align-items: baseline; }
-  .tot .lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #78716C; font-weight: 700; }
-  .tot .val { font-size: 22px; font-weight: 800; }
-  .nota { font-size: 10px; color: #A8A29E; margin-top: 6px; }
-  .ass { width: 100%; margin-top: 40px; font-size: 12px; }
-  .ass td { border: none; text-align: center; }
-  .linha { border-top: 1px solid #1C1B19; padding-top: 6px; }
-  .rodape { font-size: 10px; color: #A8A29E; text-align: center; margin-top: 20px; }
-  .aviso { background: #F3EBDA; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
-  .vazio { text-align: center; color: #A8A29E; padding: 28px; font-size: 13px; border: 1px dashed #E7E5E4; border-radius: 6px; }
-  @media print { .aviso { display: none; } body { padding: 0; } }
-</style>
-</head>
-<body onload="setTimeout(function(){ window.print(); }, 400)">
-  <div class="aviso">🖨️ A impressão deve abrir automaticamente. Se não abrir, use <b>Ctrl+P</b> (computador) ou <b>Compartilhar → Imprimir</b> (celular).</div>
-  <div class="cab">
-    <div class="marca">${esc(nomeLab || 'Laboratório')}</div>
-    <div class="nome">SPECIAL</div>
-    <div class="sub">${esc(titulo)}</div>
-  </div>
+  // Colunas: #, Paciente, Trabalho, Entrada, Prazo/Entrega, Situação, Valor
+  const COLS = [
+    { x: 0, w: 44, tit: '#', al: 'center' },
+    { x: 44, w: 250, tit: 'Paciente', al: 'left' },
+    { x: 294, w: 268, tit: 'Trabalho', al: 'left' },
+    { x: 562, w: 120, tit: 'Entrada', al: 'center' },
+    { x: 682, w: 120, tit: modo === 'finalizados' ? 'Entrega' : 'Prazo', al: 'center' },
+    { x: 802, w: 145, tit: 'Situação', al: 'center' },
+    { x: 947, w: CW - 947, tit: 'Valor', al: 'right' },
+  ];
+  const ROW = 46;
+  const TOPO_1 = 470;  // onde a tabela começa na 1ª folha (depois do cabeçalho)
+  const TOPO_N = 150;  // nas folhas seguintes
+  const RODAPE = 210;  // espaço reservado no fim da última folha (total + assinaturas)
 
-  <div class="dest">
-    <b>${esc(dentista.nome)}</b>${dentista.endereco ? `<br>${esc(dentista.endereco)}` : ''}${dentista.telefone ? ` • ${esc(dentista.telefone)}` : ''}
-    <br><span style="color:#78716C">${lista.length} ${lista.length === 1 ? 'trabalho' : 'trabalhos'}${modo === 'finalizados' ? ' finalizados' : ''} • emitido em ${formatDateBR(todayISO())}</span>
-  </div>
+  const cabe1 = Math.max(1, Math.floor((H - TOPO_1 - 120) / ROW));
+  const cabeN = Math.max(1, Math.floor((H - TOPO_N - 120) / ROW));
+  // Distribui as linhas entre as folhas
+  const paginas = [];
+  let resto = lista.slice();
+  paginas.push(resto.splice(0, cabe1));
+  while (resto.length) paginas.push(resto.splice(0, cabeN));
+  // Se o rodapé (total/assinatura) não couber na última, abre mais uma folha
+  const ultTopo = paginas.length === 1 ? TOPO_1 : TOPO_N;
+  if (paginas[paginas.length - 1].length * ROW + ultTopo + RODAPE > H) paginas.push([]);
 
-  ${lista.length === 0 ? `<div class="vazio">Nenhum trabalho ${modo === 'finalizados' ? 'finalizado ' : ''}para este dentista.</div>` : `
-  <table>
-    <thead>
-      <tr>
-        <th class="c" style="width:26px">#</th>
-        <th>Paciente</th>
-        <th>Trabalho</th>
-        <th class="c" style="width:66px">Entrada</th>
-        <th class="c" style="width:66px">${modo === 'finalizados' ? 'Entrega' : 'Prazo'}</th>
-        <th class="c" style="width:76px">Situação</th>
-        <th class="v" style="width:82px">Valor</th>
-      </tr>
-    </thead>
-    <tbody>${linhas}</tbody>
-  </table>
+  const urls = [];
+  paginas.forEach((linhas, pg) => {
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+    const caber = (t, max) => { let s = String(t ?? ''); if (ctx.measureText(s).width <= max) return s; while (s.length > 1 && ctx.measureText(s + '…').width > max) s = s.slice(0, -1); return s + '…'; };
+    const escrever = (txt, col, y, cor, peso, tam) => {
+      ctx.fillStyle = cor; ctx.font = `${peso} ${tam}px ${F}`;
+      const t = caber(txt, col.w - 16);
+      const x = PAD + col.x;
+      if (col.al === 'center') { ctx.textAlign = 'center'; ctx.fillText(t, x + col.w / 2, y); }
+      else if (col.al === 'right') { ctx.textAlign = 'right'; ctx.fillText(t, x + col.w - 8, y); }
+      else { ctx.textAlign = 'left'; ctx.fillText(t, x + 8, y); }
+      ctx.textAlign = 'left';
+    };
 
-  <div class="tot">
-    <span class="lab">Total${modo === 'finalizados' ? ' finalizado' : ''}</span>
-    <span class="val">${formatReais(total)}</span>
-  </div>
-  ${semValor > 0 ? `<div class="nota">* ${semValor} ${semValor === 1 ? 'trabalho está' : 'trabalhos estão'} sem valor lançado e não ${semValor === 1 ? 'entra' : 'entram'} no total.</div>` : ''}
+    let y;
+    if (pg === 0) {
+      // Cabeçalho da marca
+      ctx.fillStyle = GOLD; ctx.font = `700 20px ${F}`; ctx.letterSpacing = '6px';
+      ctx.fillText(String(nomeLab || 'Laboratório').toUpperCase(), PAD, 64);
+      ctx.letterSpacing = '0px';
+      ctx.fillStyle = INK; ctx.font = `800 54px ${F}`;
+      ctx.fillText('SPECIAL', PAD, 96);
+      ctx.fillStyle = '#78716C'; ctx.font = `600 26px ${F}`;
+      ctx.fillText(titulo, PAD, 162);
+      ctx.fillStyle = INK; ctx.fillRect(PAD, 208, CW, 5);
 
-  <table class="ass">
-    <tr>
-      <td style="width:45%"><div class="linha">${esc(nomeLab || 'Laboratório Special')}</div></td>
-      <td style="width:10%"></td>
-      <td style="width:45%"><div class="linha">Recebido por (clínica)</div></td>
-    </tr>
-  </table>`}
+      // Dados do dentista
+      ctx.fillStyle = '#F8F6F1'; ctx.fillRect(PAD, 240, CW, 176);
+      ctx.strokeStyle = '#E7E5E4'; ctx.lineWidth = 2; ctx.strokeRect(PAD, 240, CW, 176);
+      ctx.fillStyle = INK; ctx.font = `800 34px ${F}`;
+      ctx.fillText(caber(dentista.nome, CW - 48), PAD + 24, 268);
+      ctx.fillStyle = '#57534E'; ctx.font = `500 24px ${F}`;
+      const contato = [dentista.endereco, dentista.telefone].filter(Boolean).join(' • ');
+      if (contato) ctx.fillText(caber(contato, CW - 48), PAD + 24, 314);
+      ctx.fillStyle = '#A8A29E'; ctx.font = `500 22px ${F}`;
+      ctx.fillText(`${lista.length} ${lista.length === 1 ? 'trabalho' : 'trabalhos'}${modo === 'finalizados' ? ' finalizados' : ''} • emitido em ${formatDateBR(todayISO())}`, PAD + 24, 356);
+      y = TOPO_1;
+    } else {
+      ctx.fillStyle = '#A8A29E'; ctx.font = `600 22px ${F}`;
+      ctx.fillText(`${titulo} — ${dentista.nome}`, PAD, 60);
+      y = TOPO_N;
+    }
 
-  <div class="rodape">Emitido em ${formatDateBR(todayISO())} • Special — gestão de casos</div>
-</body>
-</html>`;
+    // Cabeçalho da tabela
+    if (linhas.length > 0) {
+      ctx.fillStyle = '#F3EBDA'; ctx.fillRect(PAD, y, CW, 42);
+      COLS.forEach(col => escrever(col.tit.toUpperCase(), col, y + 11, '#7A6234', 800, 19));
+      y += 42;
+      linhas.forEach((c, i) => {
+        if (i % 2 === 1) { ctx.fillStyle = '#FCFBF8'; ctx.fillRect(PAD, y, CW, ROW); }
+        ctx.strokeStyle = '#EEECE7'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(PAD, y + ROW); ctx.lineTo(PAD + CW, y + ROW); ctx.stroke();
+        const num = lista.indexOf(c) + 1;
+        const dataFim = modo === 'finalizados'
+          ? (c.dataSaida ? formatDateBR(c.dataSaida) : (c.dataFinalizado ? formatDateBR(c.dataFinalizado) : '—'))
+          : (c.prazo ? formatDateBR(c.prazo) : '—');
+        escrever(String(num), COLS[0], y + 13, '#A8A29E', 600, 20);
+        escrever(c.paciente, COLS[1], y + 12, INK, 700, 22);
+        escrever(nomeTrab(c), COLS[2], y + 12, '#57534E', 500, 21);
+        escrever(c.dataEntrada ? formatDateBR(c.dataEntrada) : '—', COLS[3], y + 14, '#57534E', 500, 19);
+        escrever(dataFim, COLS[4], y + 14, '#57534E', 500, 19);
+        escrever(situacao(c), COLS[5], y + 14, c.status === 'Entregue' ? '#166B3A' : '#78716C', 600, 18);
+        escrever(Number(c.valor) > 0 ? formatReais(c.valor) : '—', COLS[6], y + 13, Number(c.valor) > 0 ? INK : '#A8A29E', 700, 20);
+        y += ROW;
+      });
+    } else if (pg === 0) {
+      ctx.fillStyle = '#A8A29E'; ctx.font = `500 26px ${F}`; ctx.textAlign = 'center';
+      ctx.fillText(`Nenhum trabalho ${modo === 'finalizados' ? 'finalizado ' : ''}para este dentista.`, W / 2, y + 40);
+      ctx.textAlign = 'left';
+      y += 120;
+    }
+
+    // Total + assinaturas só na última folha
+    if (pg === paginas.length - 1) {
+      y += 24;
+      ctx.fillStyle = INK; ctx.fillRect(PAD, y, CW, 4);
+      y += 24;
+      ctx.fillStyle = '#78716C'; ctx.font = `700 22px ${F}`; ctx.letterSpacing = '2px';
+      ctx.fillText(`TOTAL${modo === 'finalizados' ? ' FINALIZADO' : ''}`, PAD, y + 12);
+      ctx.letterSpacing = '0px';
+      ctx.fillStyle = INK; ctx.font = `800 44px ${F}`; ctx.textAlign = 'right';
+      ctx.fillText(formatReais(total), PAD + CW, y);
+      ctx.textAlign = 'left';
+      y += 60;
+      if (semValor > 0) {
+        ctx.fillStyle = '#A8A29E'; ctx.font = `500 19px ${F}`;
+        ctx.fillText(`* ${semValor} ${semValor === 1 ? 'trabalho está' : 'trabalhos estão'} sem valor lançado e não ${semValor === 1 ? 'entra' : 'entram'} no total.`, PAD, y);
+        y += 30;
+      }
+      // Assinaturas
+      const yAss = Math.min(H - 150, y + 70);
+      const larg = (CW - 90) / 2;
+      [[PAD, nomeLab || 'Laboratório Special'], [PAD + larg + 90, 'Recebido por (clínica)']].forEach(([x, rot]) => {
+        ctx.strokeStyle = INK; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, yAss); ctx.lineTo(x + larg, yAss); ctx.stroke();
+        ctx.fillStyle = '#57534E'; ctx.font = `500 21px ${F}`; ctx.textAlign = 'center';
+        ctx.fillText(caber(rot, larg), x + larg / 2, yAss + 12);
+        ctx.textAlign = 'left';
+      });
+    }
+
+    // Rodapé com numeração
+    ctx.fillStyle = '#C4BFB6'; ctx.font = `500 18px ${F}`; ctx.textAlign = 'center';
+    ctx.fillText(`Emitido em ${formatDateBR(todayISO())} • Special — gestão de casos${paginas.length > 1 ? `  •  folha ${pg + 1} de ${paginas.length}` : ''}`, W / 2, H - 60);
+    ctx.textAlign = 'left';
+
+    urls.push(cv.toDataURL('image/jpeg', 0.92));
+  });
+  return urls;
 }
 
-// Abre/baixa o relatório pronto pra imprimir (mesmo caminho da ficha: funciona no celular)
-function imprimirRelatorioDentista(dentista, casos, modo, nomeLab) {
-  const html = gerarRelatorioDentistaHTML(dentista, casos, modo, nomeLab);
+// Gera o relatório em PDF e abre o compartilhamento do celular (imprimir, WhatsApp, salvar).
+// No computador, baixa o PDF. É o mesmo caminho da ficha do trabalho, que funciona no app.
+async function compartilharRelatorioDentista(dentista, casos, modo, nomeLab, baixarDireto) {
+  const urls = desenharRelatorioDentista(dentista, casos, modo, nomeLab);
+  const pdf = jpegsParaPDF(urls);
   const base = String(dentista.nome || 'dentista').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  baixarDataURL('data:text/html;charset=utf-8,' + encodeURIComponent(html), `relatorio-${base}${modo === 'finalizados' ? '-finalizados' : ''}.html`);
+  const nomeArq = `relatorio-${base}${modo === 'finalizados' ? '-finalizados' : ''}.pdf`;
+  const file = new File([pdf], nomeArq, { type: 'application/pdf' });
+  if (!baixarDireto && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: `Relatório — ${dentista.nome}` });
+      return 'compartilhado';
+    } catch (e) {
+      if (String(e).toLowerCase().includes('abort')) return 'cancelado'; // usuário fechou o menu
+    }
+  }
+  const url = URL.createObjectURL(pdf);
+  const a = document.createElement('a');
+  a.href = url; a.download = nomeArq;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return 'baixado';
 }
 
 // ─── Ficha de trabalho desenhada como imagem (cabe no celular e vira PDF) ───
