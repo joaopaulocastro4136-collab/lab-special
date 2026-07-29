@@ -1,6 +1,6 @@
 {
-  "versionCode": 45,
-  "versionName": "10.3",
+  "versionCode": 46,
+  "versionName": "10.4",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Novo botão Clientes no Início: vê os trabalhos de cada dentista e imprime relatório em folha A4 com os valores (todos ou só os finalizados). Toque em Baixar para atualizar."
+  "novidades": "O relatório do cliente agora sai em PDF e abre o compartilhamento do celular: dá pra imprimir, mandar no WhatsApp ou salvar. Toque em Baixar para atualizar."
 }
