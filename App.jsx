@@ -286,7 +286,11 @@ function formatMinutos(min) {
   return formatHoras(Math.round((min / 60) * 100) / 100);
 }
 function formatReais(v) {
-  return 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
+  // Separador de milhar no padrão brasileiro: R$ 12.450,00 (sem isso virava "R$ 12450,00",
+  // difícil de ler nos totais dos relatórios impressos)
+  const [inteiro, centavos] = Math.abs(Number(v) || 0).toFixed(2).split('.');
+  const comPontos = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${(Number(v) || 0) < 0 ? '-' : ''}R$ ${comPontos},${centavos}`;
 }
 function hojeExtenso() {
   const d = new Date();
@@ -1126,6 +1130,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
+  const [voltarDentistas, setVoltarDentistas] = useState('ajustes'); // de onde a tela Clientes foi aberta
   const [lendoEtiqueta, setLendoEtiqueta] = useState(false);
   const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
   const [perguntasAbertas, setPerguntasAbertas] = useState(false); // chat de perguntas à IA
@@ -2140,6 +2145,7 @@ export default function App() {
             onAbrirEquipe={() => setView('equipe')}
             onAbrirMeu={() => setView('meu')}
             onAbrirFinancas={() => setView('financas')}
+            onAbrirDentistas={() => { setVoltarDentistas('dashboard'); setView('dentistas'); }}
           />
           </>
         )}
@@ -2241,7 +2247,7 @@ export default function App() {
             onUpdateFuncionario={(id, patch) => persistConfig({ funcionarios: funcionarios.map(f => f.id === id ? { ...f, ...patch } : f) })}
             onRemoveFuncionario={(id) => { persistConfig({ funcionarios: funcionarios.filter(f => f.id !== id) }); if (usuarioAtivoId === id) trocarUsuario(null); }}
             onAbrirEquipe={() => setView('equipe')}
-            onAbrirDentistas={() => setView('dentistas')}
+            onAbrirDentistas={() => { setVoltarDentistas('ajustes'); setView('dentistas'); }}
             autoAjuste={autoAjuste}
             onSetAutoAjuste={(v) => persistConfig({ autoAjuste: v })}
             pessoas={pessoas}
@@ -2288,7 +2294,9 @@ export default function App() {
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(nome) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== nome) })}
             onVerCaso={goToDetalhe}
-            onVoltar={() => setView('ajustes')} />
+            onImprimirRelatorio={(dent, lista, modo) => { imprimirRelatorioDentista(dent, lista, modo, nomeLab); mostrarAviso('Relatório gerado — abra o arquivo pra imprimir ✓'); }}
+            tituloVoltar={voltarDentistas === 'dashboard' ? 'Início' : 'Ajustes'}
+            onVoltar={() => setView(voltarDentistas === 'dashboard' ? 'dashboard' : 'ajustes')} />
         )}
       </div>
 
@@ -2477,7 +2485,7 @@ function BadgeClinica() {
   );
 }
 
-function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
+function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, onAbrirDentistas, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   return (
@@ -2556,6 +2564,20 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
           <div className="flex-1">
             <div className="text-sm font-bold text-white">Relatório da equipe</div>
             <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Produção, comissões e tempos médios</div>
+          </div>
+          <ArrowRight size={16} color={GOLD} />
+        </button>
+      )}
+      {onAbrirDentistas && (
+        <button onClick={onAbrirDentistas} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E8D5B0', boxShadow: '0 14px 30px -22px rgba(122,98,52,0.5)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.06, pointerEvents: 'none' }}><EstrelaLogo size={44} color={INK} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: '#E8F0FE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Users size={18} color={'#1A73E8'} />
+          </span>
+          <div className="flex-1">
+            <div className="text-sm font-bold" style={{ color: INK }}>Clientes</div>
+            <div className="text-xs text-stone-400">Trabalhos por dentista e relatórios pra imprimir</div>
           </div>
           <ArrowRight size={16} color={GOLD} />
         </button>
@@ -4030,7 +4052,7 @@ function ChavePixCard({ chavePix, onSalvar }) {
 
 // Página dedicada de dentistas: lista → toca num dentista → ficha completa dele
 // (e-mail, telefone, endereço, combinado de pagamento) + os trabalhos só dele.
-function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onVoltar }) {
+function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onImprimirRelatorio, onVoltar, tituloVoltar }) {
   const [sel, setSel] = useState(null); // dentista aberto (nome)
   const [verTrabalhos, setVerTrabalhos] = useState(false);
   const [combinadoAberto, setCombinadoAberto] = useState(false);
@@ -4082,6 +4104,50 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
             </div>
           </div>
         </div>
+
+        {/* Resumo: quantos trabalhos e quanto vale */}
+        {(() => {
+          const finalizados = trabalhosDoDentista.filter(c => c.status === 'Pronto' || c.status === 'Entregue');
+          const emAberto = trabalhosDoDentista.filter(c => c.status !== 'Pronto' && c.status !== 'Entregue');
+          const totalGeral = trabalhosDoDentista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+          const totalFinalizado = finalizados.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+          return (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[['Trabalhos', trabalhosDoDentista.length, INK], ['Em aberto', emAberto.length, '#B54708'], ['Finalizados', finalizados.length, VERDE]].map(([rot, val, cor]) => (
+                  <div key={rot} className="rounded-2xl bg-white border border-stone-200 px-2 py-2.5 text-center">
+                    <div className="text-lg font-extrabold" style={{ color: cor }}>{val}</div>
+                    <div className="text-xs text-stone-400">{rot}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-2xl bg-white border border-stone-200 px-4 py-3 mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-stone-400">Total dos trabalhos</div>
+                  <div className="text-xs text-stone-400 mt-0.5">Finalizados: <b style={{ color: VERDE }}>{formatReais(totalFinalizado)}</b></div>
+                </div>
+                <div className="text-xl font-extrabold" style={{ color: INK }}>{formatReais(totalGeral)}</div>
+              </div>
+
+              {/* Relatórios em folha A4 */}
+              <div className="rounded-2xl bg-white border border-stone-200 p-4 mb-4">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <FileText size={15} color={GOLD} />
+                  <span className="text-xs font-bold" style={{ color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Imprimir relatório (A4)</span>
+                </div>
+                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'todos')}
+                  className="w-full mb-2 py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2" style={{ background: INK, color: '#fff' }}>
+                  <ClipboardList size={15} /> Todos os trabalhos ({trabalhosDoDentista.length})
+                </button>
+                <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'finalizados')}
+                  className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 border" style={{ borderColor: VERDE, color: VERDE, background: '#fff' }}>
+                  <CheckCircle2 size={15} /> Só os finalizados ({finalizados.length})
+                </button>
+                <div className="text-xs text-stone-400 mt-2 leading-relaxed">Sai com paciente, trabalho, datas, situação e <b>valores somados</b>. O arquivo baixa e já abre a impressão — dá pra salvar como PDF.</div>
+              </div>
+            </>
+          );
+        })()}
 
         <button onClick={() => setVerTrabalhos(v => !v)} className="w-full mb-4 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
           <ClipboardList size={16} /> {verTrabalhos ? 'Ocultar trabalhos' : `Ver trabalhos de ${dentista.nome.split(/\s+/)[0]}`} ({trabalhosDoDentista.length})
@@ -4147,10 +4213,10 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
   return (
     <div>
       <button onClick={onVoltar} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
-        <ChevronLeft size={18} /> Ajustes
+        <ChevronLeft size={18} /> {tituloVoltar || 'Ajustes'}
       </button>
       <div className="flex items-center justify-between mb-3">
-        <h1 className="font-extrabold text-xl" style={{ color: INK }}>Dentistas / Clínicas</h1>
+        <h1 className="font-extrabold text-xl" style={{ color: INK }}>Clientes (dentistas)</h1>
         <span className="text-sm font-bold" style={{ color: '#A8A29E' }}>{dentistas.length}</span>
       </div>
 
@@ -6864,6 +6930,125 @@ function gerarFichaHTML(caso, dentistaInfo, ehGestor) {
   <div class="rodape">Emitido em ${formatDateBR(todayISO())} • Laboratório Special — gestão de casos</div>
 </body>
 </html>`;
+}
+
+// ─── Relatório A4 dos trabalhos de um dentista (imprime/vira PDF) ───
+// modo 'todos'      = todos os trabalhos do dentista, com valores e situação
+// modo 'finalizados'= só os que já foram finalizados/entregues (fechamento p/ cobrança)
+function gerarRelatorioDentistaHTML(dentista, casos, modo, nomeLab) {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const finalizado = (c) => c.status === 'Pronto' || c.status === 'Entregue';
+  const lista = (modo === 'finalizados' ? casos.filter(finalizado) : casos)
+    .slice()
+    .sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
+  const total = lista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const semValor = lista.filter(c => !(Number(c.valor) > 0)).length;
+  const situacao = (c) => {
+    if (c.status === 'Entregue') return 'Entregue';
+    if (c.status === 'Pronto') return 'Finalizado';
+    if (c.naClinica) return 'Na clínica';
+    if (c.provaPendente) return 'Para entrega';
+    return c.status || 'Em produção';
+  };
+  const linhas = lista.map((c, i) => `
+    <tr>
+      <td class="c">${i + 1}</td>
+      <td>${esc(c.paciente)}</td>
+      <td>${esc((c.itens && c.itens.length) ? c.itens.map(it => `${it.quantidade > 1 ? it.quantidade + '× ' : ''}${it.nome}`).join(', ') : c.tipoTrabalho)}</td>
+      <td class="c">${c.dataEntrada ? formatDateBR(c.dataEntrada) : '—'}</td>
+      <td class="c">${modo === 'finalizados' ? (c.dataSaida ? formatDateBR(c.dataSaida) : (c.dataFinalizado ? formatDateBR(c.dataFinalizado) : '—')) : (c.prazo ? formatDateBR(c.prazo) : '—')}</td>
+      <td class="c">${esc(situacao(c))}</td>
+      <td class="v">${Number(c.valor) > 0 ? formatReais(c.valor) : '—'}</td>
+    </tr>`).join('');
+
+  const titulo = modo === 'finalizados' ? 'Relatório de Trabalhos Finalizados' : 'Relatório de Trabalhos';
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titulo)} — ${esc(dentista.nome)}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  body { font-family: 'Manrope', -apple-system, system-ui, sans-serif; color: #1C1B19; margin: 0; padding: 20px; }
+  .marca { font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #B8935A; }
+  .nome { font-size: 24px; font-weight: 800; letter-spacing: 1px; }
+  .sub { font-size: 12px; color: #78716C; margin-top: 2px; }
+  .cab { border-bottom: 3px solid #1C1B19; padding-bottom: 10px; margin-bottom: 14px; }
+  .dest { background: #F8F6F1; border: 1px solid #E7E5E4; border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
+  .dest b { font-size: 15px; }
+  table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  td, th { padding: 6px 7px; border: 1px solid #E7E5E4; text-align: left; }
+  th { background: #F3EBDA; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .c { text-align: center; }
+  .v { text-align: right; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #FCFBF8; }
+  .tot { margin-top: 12px; border-top: 2px solid #1C1B19; padding-top: 10px; display: flex; justify-content: space-between; align-items: baseline; }
+  .tot .lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #78716C; font-weight: 700; }
+  .tot .val { font-size: 22px; font-weight: 800; }
+  .nota { font-size: 10px; color: #A8A29E; margin-top: 6px; }
+  .ass { width: 100%; margin-top: 40px; font-size: 12px; }
+  .ass td { border: none; text-align: center; }
+  .linha { border-top: 1px solid #1C1B19; padding-top: 6px; }
+  .rodape { font-size: 10px; color: #A8A29E; text-align: center; margin-top: 20px; }
+  .aviso { background: #F3EBDA; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+  .vazio { text-align: center; color: #A8A29E; padding: 28px; font-size: 13px; border: 1px dashed #E7E5E4; border-radius: 6px; }
+  @media print { .aviso { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body onload="setTimeout(function(){ window.print(); }, 400)">
+  <div class="aviso">🖨️ A impressão deve abrir automaticamente. Se não abrir, use <b>Ctrl+P</b> (computador) ou <b>Compartilhar → Imprimir</b> (celular).</div>
+  <div class="cab">
+    <div class="marca">${esc(nomeLab || 'Laboratório')}</div>
+    <div class="nome">SPECIAL</div>
+    <div class="sub">${esc(titulo)}</div>
+  </div>
+
+  <div class="dest">
+    <b>${esc(dentista.nome)}</b>${dentista.endereco ? `<br>${esc(dentista.endereco)}` : ''}${dentista.telefone ? ` • ${esc(dentista.telefone)}` : ''}
+    <br><span style="color:#78716C">${lista.length} ${lista.length === 1 ? 'trabalho' : 'trabalhos'}${modo === 'finalizados' ? ' finalizados' : ''} • emitido em ${formatDateBR(todayISO())}</span>
+  </div>
+
+  ${lista.length === 0 ? `<div class="vazio">Nenhum trabalho ${modo === 'finalizados' ? 'finalizado ' : ''}para este dentista.</div>` : `
+  <table>
+    <thead>
+      <tr>
+        <th class="c" style="width:26px">#</th>
+        <th>Paciente</th>
+        <th>Trabalho</th>
+        <th class="c" style="width:66px">Entrada</th>
+        <th class="c" style="width:66px">${modo === 'finalizados' ? 'Entrega' : 'Prazo'}</th>
+        <th class="c" style="width:76px">Situação</th>
+        <th class="v" style="width:82px">Valor</th>
+      </tr>
+    </thead>
+    <tbody>${linhas}</tbody>
+  </table>
+
+  <div class="tot">
+    <span class="lab">Total${modo === 'finalizados' ? ' finalizado' : ''}</span>
+    <span class="val">${formatReais(total)}</span>
+  </div>
+  ${semValor > 0 ? `<div class="nota">* ${semValor} ${semValor === 1 ? 'trabalho está' : 'trabalhos estão'} sem valor lançado e não ${semValor === 1 ? 'entra' : 'entram'} no total.</div>` : ''}
+
+  <table class="ass">
+    <tr>
+      <td style="width:45%"><div class="linha">${esc(nomeLab || 'Laboratório Special')}</div></td>
+      <td style="width:10%"></td>
+      <td style="width:45%"><div class="linha">Recebido por (clínica)</div></td>
+    </tr>
+  </table>`}
+
+  <div class="rodape">Emitido em ${formatDateBR(todayISO())} • Special — gestão de casos</div>
+</body>
+</html>`;
+}
+
+// Abre/baixa o relatório pronto pra imprimir (mesmo caminho da ficha: funciona no celular)
+function imprimirRelatorioDentista(dentista, casos, modo, nomeLab) {
+  const html = gerarRelatorioDentistaHTML(dentista, casos, modo, nomeLab);
+  const base = String(dentista.nome || 'dentista').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  baixarDataURL('data:text/html;charset=utf-8,' + encodeURIComponent(html), `relatorio-${base}${modo === 'finalizados' ? '-finalizados' : ''}.html`);
 }
 
 // ─── Ficha de trabalho desenhada como imagem (cabe no celular e vira PDF) ───
