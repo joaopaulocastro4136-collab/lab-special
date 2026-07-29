@@ -1,6 +1,6 @@
 {
-  "versionCode": 44,
-  "versionName": "10.2",
+  "versionCode": 45,
+  "versionName": "10.3",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Conserta o 'atrasado' errado em trabalho que está na clínica/entrega, e a comissão que ia pra quem finalizava em vez de quem fez. Toque em Baixar para atualizar."
+  "novidades": "Novo botão Clientes no Início: vê os trabalhos de cada dentista e imprime relatório em folha A4 com os valores (todos ou só os finalizados). Toque em Baixar para atualizar."
 }
