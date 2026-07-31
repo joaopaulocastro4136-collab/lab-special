@@ -430,6 +430,13 @@ function etapasCompletas(caso) {
   // Sem isso, pular etapas travava o trabalho: não dava pra finalizar e ficava num limbo.
   return caso.etapas.every(e => e.concluida || e.pulada);
 }
+// Finalizado DE VERDADE: status de finalizado E 100% das etapas resolvidas.
+// Um "Pronto" com etapa pendente é estado quebrado (etapa desfeita sem o status
+// voltar junto) e NÃO pode contar como finalizado em relatório nem no fechamento.
+function finalizadoCompleto(caso) {
+  if (caso.status === 'Entregue') return true;
+  return caso.status === 'Pronto' && etapasCompletas(caso);
+}
 function enderecoDe(dentistas, nome) {
   const d = dentistas.find(d => d.nome === nome);
   return d?.endereco || '';
@@ -1264,11 +1271,19 @@ export default function App() {
               c = { ...c, dataFinalizado: null, dataSaida: null };
             }
             if (c.status === 'Pronto' && c.dataSaida) c = { ...c, dataSaida: null }; // pronto não é entregue
+            // Conserto: "Pronto" com etapa ainda por fazer (etapa desfeita sem o status
+            // voltar junto) volta pra produção — finalizado de verdade é 100% das etapas.
+            if (c.status === 'Pronto' && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
+              c = { ...c, status: 'Em Produção', dataFinalizado: null, dataSaida: null };
+            }
             // Prazo em dia de folga → próximo dia de trabalho configurado
             if (c.status !== 'Entregue' && c.prazo && proximoDiaUtil(c.prazo, diasTrabalhoCarregados) !== c.prazo) c = { ...c, prazo: proximoDiaUtil(c.prazo, diasTrabalhoCarregados) };
             const tipo = tiposCarregados.find(t => t.nome === c.tipoTrabalho);
             if (!c.etapas?.length) {
-              const etapas = etapasDoTipo(tipo).map(e => ({ ...e, concluida: false, dataConclusao: null }));
+              // Trabalho já finalizado/entregue ganha as etapas como CONCLUÍDAS — senão um
+              // Pronto antigo viraria "Pronto com etapa por fazer" (estado quebrado de mentira)
+              const jaFinalizado = c.status === 'Pronto' || c.status === 'Entregue';
+              const etapas = etapasDoTipo(tipo).map(e => ({ ...e, concluida: jaFinalizado, dataConclusao: jaFinalizado ? (c.dataFinalizado || c.dataSaida || null) : null }));
               return { ...c, etapas, naClinica: c.naClinica || false, provaPendente: c.provaPendente || false };
             }
             // Trabalho com vários itens criado antes das etapas por item (ou enviado por app antigo da clínica):
@@ -1316,7 +1331,19 @@ export default function App() {
       } catch (e) { /* sem histórico */ }
       try {
         const cm = await window.storage.get('comissoes-registro');
-        if (cm && cm.value) setComissoes(JSON.parse(cm.value));
+        if (cm && cm.value) {
+          let regs = JSON.parse(cm.value);
+          // Conserto: comissão presa de finalização desfeita. Se o trabalho ainda existe
+          // e NÃO está finalizado de verdade, o lançamento é resto de um "finalizei sem
+          // querer e voltei" — sai daqui e volta quando o trabalho for finalizado mesmo.
+          const vivos = window.__casosVivos || [];
+          const limpos = regs.filter(r => { const caso = vivos.find(c => c.id === r.casoId); return !caso || finalizadoCompleto(caso); });
+          if (limpos.length !== regs.length) {
+            regs = limpos;
+            try { await window.storage.set('comissoes-registro', JSON.stringify(regs)); } catch (e2) { /* salva na próxima ação */ }
+          }
+          setComissoes(regs);
+        }
       } catch (e) { /* sem comissões */ }
       try {
         const pg = await window.storage.get('pagamentos-registro');
@@ -1774,7 +1801,27 @@ export default function App() {
   const desfazerEtapa = (casoId, indice) => {
     const caso = casosVivos().find(c => c.id === casoId);
     if (!caso?.etapas) return;
-    updateCaso(casoId, { etapas: caso.etapas.map((e, i) => i === indice ? { ...e, concluida: false, dataConclusao: null, duracaoMin: null } : e) });
+    const novasEtapas = caso.etapas.map((e, i) => i === indice ? { ...e, concluida: false, dataConclusao: null, duracaoMin: null } : e);
+    const patch = { etapas: novasEtapas };
+    // Desfazer uma etapa REABRE o trabalho. Antes só a etapa era desmarcada e o
+    // status ficava preso em "Pronto" (com data de finalização e comissão lançadas) —
+    // o trabalho seguia contando como finalizado nos relatórios e no fechamento do mês.
+    const temEtapaAtiva = novasEtapas.some(e => !e.concluida && !e.pulada);
+    if (temEtapaAtiva && (caso.status === 'Pronto' || caso.status === 'Entregue')) {
+      patch.status = 'Em Produção';
+      patch.dataFinalizado = null;
+      patch.dataSaida = null;
+      let msgDesfeita = '';
+      if (comissoes.some(c => c.casoId === caso.id)) {
+        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
+        msgDesfeita = ' A comissão foi desfeita — volta quando finalizar de novo.';
+      }
+      mostrarAviso(`${caso.paciente} voltou para "Em Produção".${msgDesfeita}`);
+    }
+    // Etapa reaberta = trabalho na bancada: sai da fila de entrega (tinha entrado
+    // nela quando a etapa foi concluída)
+    if (caso.provaPendente && !caso.naClinica) patch.provaPendente = false;
+    updateCaso(casoId, patch);
   };
   // Pular etapa: marca a etapa como "pulada" (não vai ser feita) e recalcula o prazo,
   // já que uma etapa a menos encurta o trabalho. O dentista vê a previsão mudar na Special Clinic.
@@ -4203,8 +4250,8 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
 
         {/* Resumo: quantos trabalhos e quanto vale */}
         {(() => {
-          const finalizados = trabalhosDoDentista.filter(c => c.status === 'Pronto' || c.status === 'Entregue');
-          const emAberto = trabalhosDoDentista.filter(c => c.status !== 'Pronto' && c.status !== 'Entregue');
+          const finalizados = trabalhosDoDentista.filter(finalizadoCompleto);
+          const emAberto = trabalhosDoDentista.filter(c => !finalizadoCompleto(c));
           const totalGeral = trabalhosDoDentista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
           const totalFinalizado = finalizados.reduce((s, c) => s + (Number(c.valor) || 0), 0);
           return (
@@ -6539,8 +6586,8 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
 
   const entraram = casos.filter(c => c.dataEntrada?.startsWith(mes));
   // Conta pelo estado ATUAL do trabalho, não só pela data: se a finalização foi
-  // desfeita (marquei errado e voltei), ele sai da conta na hora.
-  const finalizados = casos.filter(c => c.dataFinalizado?.startsWith(mes) && (c.status === 'Pronto' || c.status === 'Entregue'));
+  // desfeita (marquei errado e voltei, ou desfiz a etapa), ele sai da conta na hora.
+  const finalizados = casos.filter(c => c.dataFinalizado?.startsWith(mes) && finalizadoCompleto(c));
   const entregues = casos.filter(c => c.dataSaida?.startsWith(mes) && c.status === 'Entregue');
   const comissoesMes = comissoes.filter(c => c.data.startsWith(mes));
 
@@ -7047,8 +7094,7 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
   const W = 1240, H = 1754; // A4 a ~150dpi
   const PAD = 70;
   const CW = W - PAD * 2;
-  const finalizado = (c) => c.status === 'Pronto' || c.status === 'Entregue';
-  const lista = (modo === 'finalizados' ? casos.filter(finalizado) : casos)
+  const lista = (modo === 'finalizados' ? casos.filter(finalizadoCompleto) : casos)
     .slice().sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
   const total = lista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
   const semValor = lista.filter(c => !(Number(c.valor) > 0)).length;
