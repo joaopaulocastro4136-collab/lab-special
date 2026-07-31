@@ -431,11 +431,12 @@ function etapasCompletas(caso) {
   return caso.etapas.every(e => e.concluida || e.pulada);
 }
 // Finalizado DE VERDADE: status de finalizado E 100% das etapas resolvidas.
-// Um "Pronto" com etapa pendente é estado quebrado (etapa desfeita sem o status
-// voltar junto) e NÃO pode contar como finalizado em relatório nem no fechamento.
+// Um "Pronto" (ou até "Entregue") com etapa pendente é estado quebrado — etapa
+// desfeita/restaurada sem o status voltar junto — e NÃO pode contar como
+// finalizado em relatório nem no fechamento. A migração da carga conserta os
+// dados; este helper garante que, mesmo antes dela, nenhuma tela conte errado.
 function finalizadoCompleto(caso) {
-  if (caso.status === 'Entregue') return true;
-  return caso.status === 'Pronto' && etapasCompletas(caso);
+  return (caso.status === 'Pronto' || caso.status === 'Entregue') && etapasCompletas(caso);
 }
 function enderecoDe(dentistas, nome) {
   const d = dentistas.find(d => d.nome === nome);
@@ -1276,6 +1277,14 @@ export default function App() {
             if (c.status === 'Pronto' && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
               c = { ...c, status: 'Em Produção', dataFinalizado: null, dataSaida: null };
             }
+            // "Entregue" com etapa em aberto: o trabalho JÁ saiu do laboratório (a entrega
+            // aconteceu de fato), então as etapas soltas são resto de versão antiga — ficam
+            // seladas como concluídas na data da entrega. Não volta pra produção sozinho:
+            // quem quiser reabrir usa o Desfazer/Restaurar, que agora reabrem direito.
+            if (c.status === 'Entregue' && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
+              const quando = c.dataSaida || c.dataFinalizado || null;
+              c = { ...c, etapas: c.etapas.map(e => (!e.concluida && !e.pulada) ? { ...e, concluida: true, dataConclusao: e.dataConclusao || quando } : e) };
+            }
             // Prazo em dia de folga → próximo dia de trabalho configurado
             if (c.status !== 'Entregue' && c.prazo && proximoDiaUtil(c.prazo, diasTrabalhoCarregados) !== c.prazo) c = { ...c, prazo: proximoDiaUtil(c.prazo, diasTrabalhoCarregados) };
             const tipo = tiposCarregados.find(t => t.nome === c.tipoTrabalho);
@@ -1587,14 +1596,32 @@ export default function App() {
       .map(p => (p.cfg && !p.e.concluida && !p.e.inicioExec) ? { ...p.e, horas: p.cfg.horas, prova: p.cfg.prova } : p.e);
     const novas = alvosLivres
       .map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
-    updateCaso(id, {
+    const etapasFinais = [...mantidas, ...novas];
+    const patch = {
       itens: itensFinal,
       tipoTrabalho: umSo ? itensFinal[0].nome : rotuloItens(itensFinal),
       quantidade: umSo ? itensFinal[0].quantidade : 1,
       valor: Math.round(itensFinal.reduce((s, i) => s + i.subtotal, 0) * 100) / 100,
-      etapas: [...mantidas, ...novas],
-    });
-    mostrarAviso('Itens do trabalho atualizados.');
+      etapas: etapasFinais,
+    };
+    // Item novo em trabalho já finalizado/entregue = tem produção de novo → REABRE
+    // de verdade (status, datas e comissão), senão ficava "Pronto/Entregue" com etapa
+    // por fazer, contando como finalizado nos relatórios com a comissão desatualizada.
+    const temEtapaAtiva = etapasFinais.some(e => !e.concluida && !e.pulada);
+    let aviso = 'Itens do trabalho atualizados.';
+    if (temEtapaAtiva && (caso.status === 'Pronto' || caso.status === 'Entregue')) {
+      patch.status = 'Em Produção';
+      patch.dataFinalizado = null;
+      patch.dataSaida = null;
+      if (comissoes.some(c => c.casoId === caso.id)) {
+        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
+        aviso = 'Itens atualizados — o trabalho voltou pra produção e a comissão foi desfeita (volta quando finalizar de novo).';
+      } else {
+        aviso = 'Itens atualizados — o trabalho voltou pra produção (tem etapa nova por fazer).';
+      }
+    }
+    updateCaso(id, patch);
+    mostrarAviso(aviso);
   };
   const mostrarAviso = (texto) => {
     setToast({ icone: 'etapa', texto });
@@ -1780,6 +1807,7 @@ export default function App() {
       // Última etapa concluída → finaliza AUTOMATICAMENTE e vai para a ENTREGA FINAL
       patch.status = 'Pronto';
       patch.dataFinalizado = todayISO();
+      patch.dataSaida = null; // "Pronto" nunca tem data de entrega (caso reaberto após entrega)
       patch.naClinica = false;
       patch.provaPendente = false;
       // Telemetria: registra a virada para Pronto ANTES de gravar (diagnóstico de longe)
@@ -1844,8 +1872,20 @@ export default function App() {
       // Fica pronto pra VOCÊ finalizar quando quiser — não some pra entrega sozinho.
       patch.provaPendente = false;
     }
-    // Se estava marcado como Pronto e o "des-pular" trouxe uma etapa de volta, destrava.
-    if (temEtapaAtiva && caso.status === 'Pronto') { patch.status = 'Em Produção'; patch.dataFinalizado = null; }
+    // Se o "des-pular" (Restaurar) trouxe uma etapa de volta num trabalho já finalizado
+    // ou entregue, REABRE de verdade — igual ao desfazer etapa: status, datas e comissão
+    // voltam juntos (antes só o "Pronto" destravava, e a comissão ficava lançada).
+    if (temEtapaAtiva && (caso.status === 'Pronto' || caso.status === 'Entregue')) {
+      patch.status = 'Em Produção';
+      patch.dataFinalizado = null;
+      patch.dataSaida = null;
+      let msgDesfeita = '';
+      if (comissoes.some(c => c.casoId === caso.id)) {
+        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
+        msgDesfeita = ' A comissão foi desfeita — volta quando finalizar de novo.';
+      }
+      mostrarAviso(`${caso.paciente} voltou para "Em Produção".${msgDesfeita}`);
+    }
     updateCaso(casoId, patch);
   };
 
