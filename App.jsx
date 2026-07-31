@@ -1272,18 +1272,12 @@ export default function App() {
               c = { ...c, dataFinalizado: null, dataSaida: null };
             }
             if (c.status === 'Pronto' && c.dataSaida) c = { ...c, dataSaida: null }; // pronto não é entregue
-            // Conserto: "Pronto" com etapa ainda por fazer (etapa desfeita sem o status
-            // voltar junto) volta pra produção — finalizado de verdade é 100% das etapas.
-            if (c.status === 'Pronto' && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
+            // Conserto: trabalho com etapa ainda POR FAZER não pode estar "Pronto" nem
+            // "Entregue" — é o rastro de um "finalizei/entreguei sem querer e voltei"
+            // (caso real: Eduardo/Rosa de Sarón). Volta pra produção com as datas limpas.
+            // Etapa por fazer = a produção NÃO terminou; a palavra final é das etapas.
+            if ((c.status === 'Pronto' || c.status === 'Entregue') && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
               c = { ...c, status: 'Em Produção', dataFinalizado: null, dataSaida: null };
-            }
-            // "Entregue" com etapa em aberto: o trabalho JÁ saiu do laboratório (a entrega
-            // aconteceu de fato), então as etapas soltas são resto de versão antiga — ficam
-            // seladas como concluídas na data da entrega. Não volta pra produção sozinho:
-            // quem quiser reabrir usa o Desfazer/Restaurar, que agora reabrem direito.
-            if (c.status === 'Entregue' && (c.etapas || []).some(e => !e.concluida && !e.pulada)) {
-              const quando = c.dataSaida || c.dataFinalizado || null;
-              c = { ...c, etapas: c.etapas.map(e => (!e.concluida && !e.pulada) ? { ...e, concluida: true, dataConclusao: e.dataConclusao || quando } : e) };
             }
             // Prazo em dia de folga → próximo dia de trabalho configurado
             if (c.status !== 'Entregue' && c.prazo && proximoDiaUtil(c.prazo, diasTrabalhoCarregados) !== c.prazo) c = { ...c, prazo: proximoDiaUtil(c.prazo, diasTrabalhoCarregados) };
@@ -6628,7 +6622,9 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
   // Conta pelo estado ATUAL do trabalho, não só pela data: se a finalização foi
   // desfeita (marquei errado e voltei, ou desfiz a etapa), ele sai da conta na hora.
   const finalizados = casos.filter(c => c.dataFinalizado?.startsWith(mes) && finalizadoCompleto(c));
-  const entregues = casos.filter(c => c.dataSaida?.startsWith(mes) && c.status === 'Entregue');
+  // Extrato/entregas: além do status, exige as etapas 100% — um "Entregue" com etapa
+  // por fazer é engano (marcou sem querer) e não pode entrar no extrato do dentista
+  const entregues = casos.filter(c => c.dataSaida?.startsWith(mes) && c.status === 'Entregue' && etapasCompletas(c));
   const comissoesMes = comissoes.filter(c => c.data.startsWith(mes));
 
   const valorEntrou = entraram.reduce((s, c) => s + (c.valor || 0), 0);
@@ -6672,7 +6668,7 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
 
   // ── Contas a receber (acumulado geral): entregues − pagamentos ──
   const receber = {};
-  casos.filter(c => c.status === 'Entregue').forEach(c => {
+  casos.filter(c => c.status === 'Entregue' && etapasCompletas(c)).forEach(c => {
     if (!receber[c.dentista]) receber[c.dentista] = { entregue: 0, pago: 0, trabalhos: [] };
     receber[c.dentista].entregue += (c.valor || 0);
     receber[c.dentista].trabalhos.push(c);
