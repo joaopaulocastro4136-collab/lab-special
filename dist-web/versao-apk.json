@@ -1,6 +1,6 @@
 {
-  "versionCode": 49,
-  "versionName": "10.7",
+  "versionCode": 50,
+  "versionName": "10.8",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Fecha de vez o bug do trabalho preso como finalizado: agora Restaurar etapa e Editar itens também reabrem o trabalho direitinho, e o relatório só aceita trabalho 100% concluído. Toque em Baixar para atualizar."
+  "novidades": "Trabalho entregue por engano com etapa por fazer volta pra produção sozinho e some dos finalizados e do extrato. A etapa pendente é preservada. Toque em Baixar para atualizar."
 }
