@@ -71,7 +71,10 @@ async function verificarAtualizacao() {
 }
 
 function mostrarAvisoAtualizacao(remoto) {
+  // Não empilha avisos quando a checagem roda de novo (volta do segundo plano)
+  if (document.getElementById('aviso-atualizacao-apk')) return;
   const barra = document.createElement('div');
+  barra.id = 'aviso-atualizacao-apk';
   barra.style.cssText = 'position:fixed;bottom:84px;left:12px;right:12px;z-index:9998;background:#1C1B19;color:#fff;border-radius:16px;padding:14px;font-family:Manrope,-apple-system,sans-serif;box-shadow:0 14px 34px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px';
   const texto = document.createElement('div');
   texto.style.cssText = 'flex:1;min-width:0';
@@ -92,6 +95,15 @@ function mostrarAvisoAtualizacao(remoto) {
 }
 
 setTimeout(verificarAtualizacao, 4000);
+// O app fica dias aberto na memória do celular — sem isto, a checagem da abertura
+// nunca roda de novo e a atualização "não aparece". Rechecar ao voltar do 2º plano.
+(async () => {
+  try {
+    if (Capacitor.getPlatform() !== 'android') return;
+    const { App: CapApp } = await import('@capacitor/app');
+    CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive) verificarAtualizacao(); });
+  } catch (e) { /* plugin indisponível — segue só com a checagem da abertura */ }
+})();
 
 // Login Google NATIVO (a tela de contas do próprio aparelho) + repasse ao Firebase web
 async function entrarNativo(auth) {
