@@ -1257,6 +1257,13 @@ export default function App() {
             let c = c0;
             // Migração: status "Recebido" deixou de existir — todo caso no laboratório já está em produção
             if (c.status === 'Recebido') c = { ...c, status: 'Em Produção', dataProducao: c.dataProducao || c.dataEntrada || todayISO() };
+            // Conserto: trabalho que foi finalizado/entregue por engano e voltou pra produção
+            // ficava com a data de finalização (e às vezes de entrega) presa, e seguia contando
+            // como finalizado no fechamento do mês. Limpa quem não está mais finalizado.
+            if (c.status !== 'Pronto' && c.status !== 'Entregue' && (c.dataFinalizado || c.dataSaida)) {
+              c = { ...c, dataFinalizado: null, dataSaida: null };
+            }
+            if (c.status === 'Pronto' && c.dataSaida) c = { ...c, dataSaida: null }; // pronto não é entregue
             // Prazo em dia de folga → próximo dia de trabalho configurado
             if (c.status !== 'Entregue' && c.prazo && proximoDiaUtil(c.prazo, diasTrabalhoCarregados) !== c.prazo) c = { ...c, prazo: proximoDiaUtil(c.prazo, diasTrabalhoCarregados) };
             const tipo = tiposCarregados.find(t => t.nome === c.tipoTrabalho);
@@ -1640,7 +1647,29 @@ export default function App() {
       patch.provaPendente = false;
     }
     patch.dataSaida = novoStatus === 'Entregue' ? todayISO() : null;
+
+    // VOLTAR o status (marquei errado, desfiz) tem que desfazer TUDO daquele estágio.
+    // Antes só a data de entrega era limpa e a dataFinalizado ficava presa pra sempre —
+    // o trabalho continuava contando como finalizado no fechamento do mês mesmo depois
+    // de voltar pra produção.
+    const voltou = STATUS_LIST.indexOf(novoStatus) < STATUS_LIST.indexOf(caso.status);
+    const deixouDeSerFinalizado = voltou && STATUS_LIST.indexOf(novoStatus) < STATUS_LIST.indexOf('Pronto');
+    if (deixouDeSerFinalizado) patch.dataFinalizado = null;
     updateCaso(id, patch);
+
+    // Desfez a finalização → a comissão daquele trabalho também volta atrás.
+    // Sem isso, uma finalização por engano deixava a comissão lançada pra sempre
+    // (e a trava anti-duplicação impedia o lançamento certo depois).
+    let msgDesfeita = '';
+    if (deixouDeSerFinalizado && comissoes.some(c => c.casoId === caso.id)) {
+      persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
+      msgDesfeita = ' A comissão lançada foi desfeita — ela é registrada de novo quando o trabalho for finalizado.';
+    }
+    if (voltou) {
+      mostrarAviso(`${caso.paciente} voltou para "${novoStatus}".${msgDesfeita}`);
+      criarNotificacao('producao', `${caso.paciente} (${caso.tipoTrabalho}) voltou para "${novoStatus}".${msgDesfeita}`, id);
+      return; // não dispara os avisos de finalizado/entregue ao voltar
+    }
 
     const nome = `${caso.paciente} (${caso.tipoTrabalho})`;
     if (novoStatus === 'Em Produção') {
@@ -6509,8 +6538,10 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
   const mesNome = MESES[base.getMonth()];
 
   const entraram = casos.filter(c => c.dataEntrada?.startsWith(mes));
-  const finalizados = casos.filter(c => c.dataFinalizado?.startsWith(mes));
-  const entregues = casos.filter(c => c.dataSaida?.startsWith(mes));
+  // Conta pelo estado ATUAL do trabalho, não só pela data: se a finalização foi
+  // desfeita (marquei errado e voltei), ele sai da conta na hora.
+  const finalizados = casos.filter(c => c.dataFinalizado?.startsWith(mes) && (c.status === 'Pronto' || c.status === 'Entregue'));
+  const entregues = casos.filter(c => c.dataSaida?.startsWith(mes) && c.status === 'Entregue');
   const comissoesMes = comissoes.filter(c => c.data.startsWith(mes));
 
   const valorEntrou = entraram.reduce((s, c) => s + (c.valor || 0), 0);
