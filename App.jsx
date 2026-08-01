@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { imprimirDireto } from './impressora-niimbot.mjs';
 import VisorSTL from './visor-stl.jsx';
-import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut } from 'lucide-react';
+import { Home, ClipboardList, Plus, Search, Clock, CheckCircle2, AlertTriangle, ChevronLeft, ChevronDown, Trash2, Package, Settings, UserPlus, Timer, Paperclip, Camera, FileText, Box, Download, X, Pencil, Check, Bell, Hammer, Flag, CalendarClock, ArrowRight, Hourglass, Inbox, ThumbsUp, Send, Undo2, Stethoscope, ListChecks, Play, Square, User, Users, DollarSign, TrendingUp, BarChart3, Lock, MapPin, Share2, RotateCw, ZoomIn, ZoomOut, Sparkles, MessageCircle, LogOut, BookOpen, Cpu, Lightbulb } from 'lucide-react';
 import { IASpecialLab, PerguntasIALab } from './ia-special-lab.jsx';
 
 const INK = '#1C1B19';
@@ -1198,6 +1198,9 @@ export default function App() {
   const [seletorUsuarioAberto, setSeletorUsuarioAberto] = useState(false);
   const [imprimindoCasoId, setImprimindoCasoId] = useState(null);
   const [voltarDentistas, setVoltarDentistas] = useState('ajustes'); // de onde a tela Clientes foi aberta
+  // Áreas do gestor: Logos (estudo de cerâmica feldspática) e Fluxo IA (desenvolvimento da IA própria)
+  const [logosRegistros, setLogosRegistros] = useState([]);
+  const [fluxoIa, setFluxoIa] = useState({ dataset: [], notas: [], roteiro: {} });
   const [lendoEtiqueta, setLendoEtiqueta] = useState(false);
   const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
   const [perguntasAbertas, setPerguntasAbertas] = useState(false); // chat de perguntas à IA
@@ -1353,6 +1356,14 @@ export default function App() {
         if (pg && pg.value) setPagamentos(JSON.parse(pg.value));
       } catch (e) { /* sem pagamentos */ }
       try {
+        const lg = await window.storage.get('logos-registros');
+        if (lg && lg.value) setLogosRegistros(JSON.parse(lg.value));
+      } catch (e) { /* sem registros de estudo */ }
+      try {
+        const fx = await window.storage.get('fluxoia-dados');
+        if (fx && fx.value) setFluxoIa({ dataset: [], notas: [], roteiro: {}, ...JSON.parse(fx.value) });
+      } catch (e) { /* sem dados do fluxo IA */ }
+      try {
         const ua = await window.storage.get('usuario-ativo');
         if (ua && ua.value) setUsuarioAtivoId(JSON.parse(ua.value));
       } catch (e) { /* sem usuário ativo */ }
@@ -1445,6 +1456,14 @@ export default function App() {
   const persistComissoes = (novas) => {
     setComissoes(novas);
     flashSave(() => window.storage.set('comissoes-registro', JSON.stringify(novas)));
+  };
+  const persistLogos = (novos) => {
+    setLogosRegistros(novos);
+    flashSave(() => window.storage.set('logos-registros', JSON.stringify(novos)));
+  };
+  const persistFluxoIa = (novo) => {
+    setFluxoIa(novo);
+    flashSave(() => window.storage.set('fluxoia-dados', JSON.stringify(novo)));
   };
   const persistPagamentos = (novos) => {
     setPagamentos(novos);
@@ -2315,6 +2334,8 @@ export default function App() {
             onAbrirMeu={() => setView('meu')}
             onAbrirFinancas={() => setView('financas')}
             onAbrirDentistas={() => { setVoltarDentistas('dashboard'); setView('dentistas'); }}
+            onAbrirLogos={() => setView('logos')}
+            onAbrirFluxoIa={() => setView('fluxoia')}
           />
           </>
         )}
@@ -2474,6 +2495,12 @@ export default function App() {
             }}
             tituloVoltar={voltarDentistas === 'dashboard' ? 'Início' : 'Ajustes'}
             onVoltar={() => setView(voltarDentistas === 'dashboard' ? 'dashboard' : 'ajustes')} />
+        )}
+        {view === 'logos' && ehGestor && (
+          <LogosView registros={logosRegistros} onPersistir={persistLogos} onVoltar={() => setView('dashboard')} />
+        )}
+        {view === 'fluxoia' && ehGestor && (
+          <FluxoIAView dados={fluxoIa} onPersistir={persistFluxoIa} onVoltar={() => setView('dashboard')} />
         )}
       </div>
 
@@ -2662,7 +2689,7 @@ function BadgeClinica() {
   );
 }
 
-function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, onAbrirDentistas, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
+function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasados, paraHoje, horasHoje, paraRetirada, dentistasRetirada, proximosPrazos, onSelect, onNovo, onFiltro, ehGestor, temFuncionarios, usuarioAtivo, onAbrirEquipe, onAbrirMeu, onAbrirFinancas, onAbrirDentistas, onAbrirLogos, onAbrirFluxoIa, adicionadosHoje, onCompartilharHoje, onAbrirIA, onAbrirPerguntas }) {
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   return (
@@ -2771,6 +2798,41 @@ function DashboardView({ producaoAtiva, prontos, naClinica, provasLevar, atrasad
             <div className="text-xs text-stone-400">Entradas, valores dos serviços e comissões</div>
           </div>
           <ArrowRight size={16} color={GOLD} />
+        </button>
+      )}
+      {/* Áreas pessoais do gestor: estudo e desenvolvimento — não aparecem pros funcionários */}
+      {ehGestor && onAbrirLogos && (
+        <button onClick={onAbrirLogos} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #2B2620, #1C1B19)', border: '1px solid rgba(184,147,90,0.45)', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.1, pointerEvents: 'none' }}><EstrelaLogo size={44} color={GOLD} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <BookOpen size={18} color={GOLD} />
+          </span>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">Logos</span>
+              <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(184,147,90,0.2)', color: GOLD, fontSize: 9 }}>SÓ GESTOR</span>
+            </div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Ambiente de estudo — cerâmica feldspática</div>
+          </div>
+          <ArrowRight size={16} color={GOLD} />
+        </button>
+      )}
+      {ehGestor && onAbrirFluxoIa && (
+        <button onClick={onAbrirFluxoIa} className="w-full mb-3 p-4 rounded-2xl flex items-center gap-3 text-left"
+          style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #221E2B, #191722)', border: '1px solid rgba(124,58,237,0.45)', boxShadow: '0 14px 30px -18px rgba(28,27,25,0.7)' }}>
+          <span style={{ position: 'absolute', right: -10, top: -12, opacity: 0.12, pointerEvents: 'none' }}><Cpu size={44} color={ROXO} /></span>
+          <span style={{ width: 38, height: 38, borderRadius: 19, background: 'rgba(124,58,237,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Cpu size={18} color="#A78BFA" />
+          </span>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">Fluxo IA</span>
+              <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(124,58,237,0.25)', color: '#A78BFA', fontSize: 9 }}>SÓ GESTOR</span>
+            </div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Sua IA de modelagem 3D de dentes — em construção</div>
+          </div>
+          <ArrowRight size={16} color="#A78BFA" />
         </button>
       )}
       {usuarioAtivo && (
@@ -4441,6 +4503,437 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
               </button>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Logos: ambiente de estudo do gestor (cerâmica feldspática) ───
+const LOGOS_ETAPAS = [
+  { chave: 'quero', rotulo: 'Quero aprender', cor: '#B54708', fundo: '#FDECD8' },
+  { chave: 'aprendendo', rotulo: 'Estudando', cor: '#7A6234', fundo: '#F3EBDA' },
+  { chave: 'dominei', rotulo: 'Dominei', cor: '#166B3A', fundo: '#DCF3E4' },
+];
+
+function LogosView({ registros, onPersistir, onVoltar }) {
+  const [addAberto, setAddAberto] = useState(false);
+  const [titulo, setTitulo] = useState('');
+  const [notas, setNotas] = useState('');
+  const [etapaNova, setEtapaNova] = useState('quero');
+  const [fotosNovas, setFotosNovas] = useState([]);
+  const [expandido, setExpandido] = useState(null);
+  const [confRemover, setConfRemover] = useState(null);
+  const [fotoAberta, setFotoAberta] = useState(null);
+  const [chatAberto, setChatAberto] = useState(false);
+  const inputFotoRef = useRef(null);
+  const inputFotoRegRef = useRef(null);
+  const novoIdLocal = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  const anexar = async (e, aoPronto) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    for (const f of files.slice(0, 6)) {
+      try { aoPronto(await compressImage(f)); } catch (err) { /* foto inválida — pula */ }
+    }
+  };
+
+  const salvarNovo = () => {
+    const t = titulo.trim();
+    if (!t) return;
+    const novo = { id: novoIdLocal(), titulo: t, notas: notas.trim(), etapa: etapaNova, fotos: fotosNovas, data: todayISO(), atualizadoEm: todayISO() };
+    onPersistir([novo, ...registros]);
+    setTitulo(''); setNotas(''); setEtapaNova('quero'); setFotosNovas([]); setAddAberto(false);
+  };
+  const mudar = (id, patch) => onPersistir(registros.map(r => r.id === id ? { ...r, ...patch, atualizadoEm: todayISO() } : r));
+
+  const porEtapa = (chave) => registros.filter(r => (r.etapa || 'quero') === chave);
+  const inputClass = 'w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white';
+
+  return (
+    <div>
+      <button onClick={onVoltar} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
+        <ChevronLeft size={18} /> Início
+      </button>
+      <div className="rounded-2xl p-5 mb-4" style={{ background: 'linear-gradient(150deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)' }}>
+        <div className="flex items-center gap-3">
+          <span style={{ width: 46, height: 46, borderRadius: 23, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <BookOpen size={21} color={GOLD} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-white font-extrabold text-lg">Logos</div>
+            <div className="text-xs" style={{ color: GOLD }}>Ambiente de estudo — cerâmica feldspática</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          {LOGOS_ETAPAS.map(et => (
+            <div key={et.chave} className="rounded-xl px-2 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div className="text-lg font-extrabold text-white">{porEtapa(et.chave).length}</div>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>{et.rotulo}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Professor IA */}
+      <button onClick={() => setChatAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
+        <Sparkles size={15} /> {chatAberto ? 'Fechar o professor IA' : 'Estudar com o professor IA'}
+      </button>
+      {chatAberto && <LogosChatIA registros={registros} />}
+
+      <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold text-white" style={{ background: INK }}>
+        <Plus size={16} /> {addAberto ? 'Fechar' : 'Novo tópico de estudo'}
+      </button>
+      {addAberto && (
+        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+          <input className={inputClass} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que você quer aprender? (ex.: estratificação de incisal) *" />
+          <textarea className={inputClass} rows={3} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Anotações: onde está, o que já sabe, dúvidas…" />
+          <div className="flex gap-1.5">
+            {LOGOS_ETAPAS.map(et => (
+              <button key={et.chave} onClick={() => setEtapaNova(et.chave)} className="flex-1 py-2 rounded-lg text-xs font-bold"
+                style={etapaNova === et.chave ? { background: et.fundo, color: et.cor, border: `1.5px solid ${et.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                {et.rotulo}
+              </button>
+            ))}
+          </div>
+          {fotosNovas.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {fotosNovas.map((f, i) => (
+                <div key={i} className="relative">
+                  <img src={f} alt="" className="w-14 h-14 object-cover rounded-lg" />
+                  <button onClick={() => setFotosNovas(fotosNovas.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => inputFotoRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+              <Camera size={13} /> Foto
+            </button>
+            <button onClick={salvarNovo} disabled={!titulo.trim()} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold text-white" style={{ background: titulo.trim() ? VERDE : '#D6D3D1' }}>Salvar</button>
+          </div>
+          <input ref={inputFotoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => anexar(e, (d) => setFotosNovas(p => [...p, d]))} />
+        </div>
+      )}
+
+      {registros.length === 0 && !addAberto && (
+        <div className="text-center py-10 rounded-2xl bg-white border border-stone-200 mb-3">
+          <Lightbulb size={26} className="text-stone-300 mx-auto mb-2" />
+          <div className="text-sm font-bold" style={{ color: INK }}>Seu caderno de cerâmica começa aqui</div>
+          <div className="text-xs text-stone-400 mt-1 px-8 leading-relaxed">Registre cada técnica que quer dominar — estratificação, queima, caracterização — com fotos do seu progresso. E use o professor IA pra tirar dúvidas.</div>
+        </div>
+      )}
+
+      {LOGOS_ETAPAS.map(et => porEtapa(et.chave).length > 0 && (
+        <div key={et.chave} className="mb-4">
+          <div className="text-xs font-bold mb-2" style={{ color: et.cor, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{et.rotulo} ({porEtapa(et.chave).length})</div>
+          <div className="flex flex-col gap-2">
+            {porEtapa(et.chave).map(r => (
+              <div key={r.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
+                <button onClick={() => setExpandido(expandido === r.id ? null : r.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate" style={{ color: INK }}>{r.titulo}</div>
+                    <div className="text-xs text-stone-400">{formatDateBR(r.data)}{(r.fotos || []).length > 0 ? ` • ${r.fotos.length} ${r.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}</div>
+                  </div>
+                  <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === r.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+                </button>
+                {expandido === r.id && (
+                  <div className="px-3.5 pb-3.5">
+                    <textarea className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-stone-50" rows={3}
+                      defaultValue={r.notas || ''} placeholder="Anotações do estudo…" onBlur={e => { if (e.target.value !== (r.notas || '')) mudar(r.id, { notas: e.target.value }); }} />
+                    {(r.fotos || []).length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap mt-2">
+                        {r.fotos.map((f, i) => (
+                          <div key={i} className="relative">
+                            <img src={f} alt="" className="w-16 h-16 object-cover rounded-lg cursor-pointer" onClick={() => setFotoAberta(f)} />
+                            <button onClick={() => mudar(r.id, { fotos: r.fotos.filter((_, j) => j !== i) })} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-1.5 mt-2.5">
+                      {LOGOS_ETAPAS.map(e2 => (
+                        <button key={e2.chave} onClick={() => mudar(r.id, { etapa: e2.chave })} className="flex-1 py-2 rounded-lg text-xs font-bold"
+                          style={(r.etapa || 'quero') === e2.chave ? { background: e2.fundo, color: e2.cor, border: `1.5px solid ${e2.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                          {e2.rotulo}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => { setExpandido(r.id); inputFotoRegRef.current && (inputFotoRegRef.current.dataset.alvo = r.id, inputFotoRegRef.current.click()); }} className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                        <Camera size={12} /> Adicionar foto
+                      </button>
+                      {confRemover === r.id ? (
+                        <button onClick={() => { onPersistir(registros.filter(x => x.id !== r.id)); setConfRemover(null); }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Confirmar exclusão</button>
+                      ) : (
+                        <button onClick={() => setConfRemover(r.id)} className="py-2 px-3 rounded-lg" style={{ background: '#FBEBEA' }}><Trash2 size={13} style={{ color: '#B42318' }} /></button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <input ref={inputFotoRegRef} type="file" accept="image/*" multiple className="hidden"
+        onChange={async e => {
+          const alvo = e.target.dataset.alvo;
+          const files = Array.from(e.target.files || []).slice(0, 6);
+          e.target.value = '';
+          const novas = [];
+          for (const f of files) { try { novas.push(await compressImage(f)); } catch (err) { /* foto inválida — pula */ } }
+          const reg = registros.find(x => x.id === alvo);
+          if (reg && novas.length) mudar(alvo, { fotos: [...(reg.fotos || []), ...novas] });
+        }} />
+
+      {fotoAberta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setFotoAberta(null)}>
+          <img src={fotoAberta} alt="" className="max-w-full max-h-full rounded-xl" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Chat com a IA no contexto do estudo de cerâmica — professor particular do Logos
+function LogosChatIA({ registros }) {
+  const chaveLS = 'logos-chat-ia';
+  const [mensagens, setMensagens] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveLS) || '[]'); } catch (e) { return []; } });
+  const [texto, setTexto] = useState('');
+  const [fotoPend, setFotoPend] = useState(null);
+  const [pensando, setPensando] = useState(false);
+  const [erro, setErro] = useState('');
+  const fimRef = useRef(null);
+  const inputFotoRef = useRef(null);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensagens.length, pensando]);
+  const persistir = (lista) => {
+    setMensagens(lista);
+    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-24).map(m => ({ ...m, foto: null })))); } catch (e) { /* sem espaço */ }
+  };
+  const estudando = registros.filter(r => r.etapa !== 'dominei').map(r => r.titulo).slice(0, 6);
+  const enviar = async () => {
+    const t = texto.trim();
+    if ((!t && !fotoPend) || pensando) return;
+    if (!window.iaNuvem?.perguntar) { setErro('A IA precisa de internet — tente de novo em instantes.'); return; }
+    const minha = { de: 'eu', texto: t, foto: fotoPend };
+    const historico = mensagens.slice(-6).filter(m => m.texto).map(m => ({ de: m.de, texto: m.texto }));
+    const base = [...mensagens, minha];
+    persistir(base); setTexto(''); setFotoPend(null); setPensando(true); setErro('');
+    try {
+      const contexto = `Aja como um professor prático de CERÂMICA FELDSPÁTICA para um protético em aprendizado (estratificação, opalescência, queima, caracterização, acabamento).${estudando.length ? ` Tópicos que ele está estudando agora: ${estudando.join('; ')}.` : ''} Responda em português, direto e didático, com passos práticos. Pergunta do aluno: ${t}`;
+      const r = await window.iaNuvem.perguntar({ pergunta: contexto, foto: minha.foto ? minha.foto.split(',')[1] : '', historico });
+      persistir([...base, { de: 'ia', texto: r.resposta }]);
+    } catch (e) {
+      setErro('Não consegui falar com a IA agora — confira a internet e tente de novo.');
+    }
+    setPensando(false);
+  };
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-white mb-3 overflow-hidden">
+      <div className="px-3.5 py-2.5 flex items-center gap-2" style={{ background: '#F5F4F0' }}>
+        <Sparkles size={13} color={GOLD} />
+        <span className="text-xs font-bold flex-1" style={{ color: '#7A6234' }}>Professor IA — cerâmica feldspática</span>
+        {mensagens.length > 0 && <button onClick={() => persistir([])} className="text-xs text-stone-400 font-semibold">limpar</button>}
+      </div>
+      <div style={{ maxHeight: 320, overflowY: 'auto' }} className="px-3 py-3">
+        {mensagens.length === 0 && (
+          <div className="text-xs text-stone-400 leading-relaxed px-1">Pergunte qualquer coisa sobre cerâmica feldspática — técnica de estratificação, temperatura de queima, efeitos de incisal… Pode <b>mandar foto</b> do seu trabalho pra IA avaliar.</div>
+        )}
+        {mensagens.map((m, i) => (
+          <div key={i} className={`mb-2 flex ${m.de === 'eu' ? 'justify-end' : 'justify-start'}`}>
+            <div className="rounded-xl px-3 py-2 text-sm" style={{ maxWidth: '85%', background: m.de === 'eu' ? INK : '#F5F4F0', color: m.de === 'eu' ? '#fff' : INK, whiteSpace: 'pre-wrap' }}>
+              {m.foto && <img src={m.foto} alt="" className="rounded-lg mb-1.5 max-w-full" style={{ maxHeight: 140 }} />}
+              {m.texto}
+            </div>
+          </div>
+        ))}
+        {pensando && <div className="text-xs text-stone-400 px-1">pensando…</div>}
+        {erro && <div className="text-xs px-1" style={{ color: '#B42318' }}>{erro}</div>}
+        <div ref={fimRef} />
+      </div>
+      <div className="p-2.5 border-t border-stone-100">
+        {fotoPend && (
+          <div className="relative inline-block mb-1.5">
+            <img src={fotoPend} alt="" className="w-12 h-12 object-cover rounded-lg" />
+            <button onClick={() => setFotoPend(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+          </div>
+        )}
+        <div className="flex gap-1.5">
+          <button onClick={() => inputFotoRef.current?.click()} className="p-2.5 rounded-xl" style={{ background: '#F0EFEC' }}><Camera size={15} className="text-stone-500" /></button>
+          <input className="flex-1 px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none" value={texto} onChange={e => setTexto(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') enviar(); }} placeholder="Sua dúvida de cerâmica…" />
+          <button onClick={enviar} disabled={pensando} className="p-2.5 rounded-xl text-white" style={{ background: pensando ? '#D6D3D1' : GOLD }}><Send size={15} /></button>
+        </div>
+        <input ref={inputFotoRef} type="file" accept="image/*" className="hidden"
+          onChange={async e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { try { setFotoPend(await compressImage(f)); } catch (err) { /* inválida */ } } }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Fluxo IA: o laboratório de desenvolvimento da IA própria do gestor ───
+const FLUXOIA_ROTEIRO = [
+  { chave: 'dataset', titulo: '1. Coletar exemplos', detalhe: 'Juntar fotos e escaneamentos de dentes/trabalhos — a matéria-prima do treino. Meta inicial: 100+ exemplos rotulados.' },
+  { chave: 'rotular', titulo: '2. Organizar e rotular', detalhe: 'Cada exemplo com o dente, o tipo de trabalho e o que importa nele. Dado bem rotulado vale ouro.' },
+  { chave: 'nuvem', titulo: '3. Preparar o Google Cloud', detalhe: 'Criar o projeto no Google Cloud (Vertex AI), ativar o faturamento e subir o dataset.' },
+  { chave: 'treinar', titulo: '4. Treinar o primeiro modelo', detalhe: 'Começar com um modelo que aprende as formas dos dentes a partir dos seus exemplos.' },
+  { chave: 'testar', titulo: '5. Testar a geração 3D', detalhe: 'Gerar as primeiras modelagens 3D e comparar com o trabalho real feito à mão.' },
+];
+
+function FluxoIAView({ dados, onPersistir, onVoltar }) {
+  const [aba, setAba] = useState('roteiro'); // roteiro | dataset | notas
+  const [rotulo, setRotulo] = useState('');
+  const [obs, setObs] = useState('');
+  const [fotoNova, setFotoNova] = useState(null);
+  const [notaNova, setNotaNova] = useState('');
+  const [confRemover, setConfRemover] = useState(null);
+  const [fotoAberta, setFotoAberta] = useState(null);
+  const inputFotoRef = useRef(null);
+  const novoIdLocal = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const dataset = dados.dataset || [];
+  const notas = dados.notas || [];
+  const roteiro = dados.roteiro || {};
+  const feitos = FLUXOIA_ROTEIRO.filter(p => roteiro[p.chave]).length;
+  const inputClass = 'w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white';
+
+  const addExemplo = () => {
+    if (!fotoNova || !rotulo.trim()) return;
+    onPersistir({ ...dados, dataset: [{ id: novoIdLocal(), foto: fotoNova, rotulo: rotulo.trim(), obs: obs.trim(), data: todayISO() }, ...dataset] });
+    setFotoNova(null); setRotulo(''); setObs('');
+  };
+  const addNota = () => {
+    if (!notaNova.trim()) return;
+    onPersistir({ ...dados, notas: [{ id: novoIdLocal(), texto: notaNova.trim(), data: todayISO() }, ...notas] });
+    setNotaNova('');
+  };
+
+  return (
+    <div>
+      <button onClick={onVoltar} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
+        <ChevronLeft size={18} /> Início
+      </button>
+      <div className="rounded-2xl p-5 mb-4" style={{ background: 'linear-gradient(150deg, #221E2B, #191722)', border: '1px solid rgba(124,58,237,0.4)' }}>
+        <div className="flex items-center gap-3">
+          <span style={{ width: 46, height: 46, borderRadius: 23, background: 'rgba(124,58,237,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Cpu size={21} color="#A78BFA" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-white font-extrabold text-lg">Fluxo IA</div>
+            <div className="text-xs" style={{ color: '#A78BFA' }}>Sua IA de modelagem 3D de dentes</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          {[['Exemplos', dataset.length], ['Passos feitos', `${feitos}/${FLUXOIA_ROTEIRO.length}`], ['Anotações', notas.length]].map(([rot, val]) => (
+            <div key={rot} className="rounded-xl px-2 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div className="text-lg font-extrabold text-white">{val}</div>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>{rot}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-1.5 mb-3">
+        {[['roteiro', 'Roteiro'], ['dataset', `Dataset (${dataset.length})`], ['notas', `Notas (${notas.length})`]].map(([ch, rot]) => (
+          <button key={ch} onClick={() => setAba(ch)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold"
+            style={aba === ch ? { background: INK, color: '#fff' } : { background: '#F0EFEC', color: '#78716C' }}>{rot}</button>
+        ))}
+      </div>
+
+      {aba === 'roteiro' && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs text-stone-400 leading-relaxed px-1 mb-1">O caminho até a sua IA gerar modelagens 3D de dentes. Toque num passo pra marcar como feito — a gente avança junto, passo a passo.</div>
+          {FLUXOIA_ROTEIRO.map(p => {
+            const feito = !!roteiro[p.chave];
+            return (
+              <button key={p.chave} onClick={() => onPersistir({ ...dados, roteiro: { ...roteiro, [p.chave]: !feito } })}
+                className="w-full text-left rounded-2xl p-3.5 bg-white border flex items-start gap-3" style={{ borderColor: feito ? VERDE : '#E7E5E4' }}>
+                <span className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={feito ? { background: VERDE } : { background: '#F0EFEC' }}>
+                  {feito && <Check size={14} color="white" strokeWidth={3} />}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold" style={{ color: feito ? '#A8A29E' : INK, textDecoration: feito ? 'line-through' : 'none' }}>{p.titulo}</div>
+                  <div className="text-xs text-stone-400 mt-0.5 leading-relaxed">{p.detalhe}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {aba === 'dataset' && (
+        <div>
+          <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+            <div className="text-xs font-bold" style={{ color: ROXO, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Novo exemplo pro treino</div>
+            {fotoNova ? (
+              <div className="relative inline-block self-start">
+                <img src={fotoNova} alt="" className="w-24 h-24 object-cover rounded-xl" />
+                <button onClick={() => setFotoNova(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+              </div>
+            ) : (
+              <button onClick={() => inputFotoRef.current?.click()} className="w-full py-6 rounded-xl border border-dashed flex flex-col items-center gap-1" style={{ borderColor: ROXO, background: ROXO_SOFT }}>
+                <Camera size={18} style={{ color: ROXO }} />
+                <span className="text-xs font-bold" style={{ color: ROXO }}>Foto do dente / trabalho</span>
+              </button>
+            )}
+            <input className={inputClass} value={rotulo} onChange={e => setRotulo(e.target.value)} placeholder="Rótulo: qual dente e trabalho? (ex.: 11, coroa cerâmica) *" />
+            <input className={inputClass} value={obs} onChange={e => setObs(e.target.value)} placeholder="Observação (material, cor, detalhe importante)" />
+            <button onClick={addExemplo} disabled={!fotoNova || !rotulo.trim()} className="w-full py-2.5 rounded-xl text-xs font-extrabold text-white" style={{ background: (fotoNova && rotulo.trim()) ? ROXO : '#D6D3D1' }}>Adicionar ao dataset</button>
+            <input ref={inputFotoRef} type="file" accept="image/*" className="hidden"
+              onChange={async e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { try { setFotoNova(await compressImage(f)); } catch (err) { /* inválida */ } } }} />
+          </div>
+          {dataset.length === 0 ? (
+            <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-xs px-8 leading-relaxed">Cada foto rotulada que você adicionar aqui vira material de treino da sua IA. Comece pelos trabalhos que você mais faz.</div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {dataset.map(ex => (
+                <div key={ex.id} className="rounded-xl overflow-hidden bg-white border border-stone-200 relative">
+                  <img src={ex.foto} alt="" className="w-full h-24 object-cover cursor-pointer" onClick={() => setFotoAberta(ex.foto)} />
+                  <div className="px-2 py-1.5">
+                    <div className="text-xs font-bold truncate" style={{ color: INK }}>{ex.rotulo}</div>
+                    <div className="text-xs text-stone-400 truncate" style={{ fontSize: 10 }}>{ex.obs || formatDateBR(ex.data)}</div>
+                  </div>
+                  {confRemover === ex.id ? (
+                    <button onClick={() => { onPersistir({ ...dados, dataset: dataset.filter(x => x.id !== ex.id) }); setConfRemover(null); }}
+                      className="absolute top-1 right-1 px-2 py-1 rounded-lg text-white font-bold" style={{ background: '#B42318', fontSize: 9 }}>excluir?</button>
+                  ) : (
+                    <button onClick={() => setConfRemover(ex.id)} className="absolute top-1 right-1 w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}><Trash2 size={12} color="#fff" /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {aba === 'notas' && (
+        <div>
+          <div className="rounded-2xl p-3 bg-white border border-stone-200 mb-3 flex gap-2">
+            <input className={inputClass} value={notaNova} onChange={e => setNotaNova(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addNota(); }} placeholder="Ideia, teste, descoberta…" />
+            <button onClick={addNota} disabled={!notaNova.trim()} className="px-4 rounded-xl text-white" style={{ background: notaNova.trim() ? ROXO : '#D6D3D1' }}><Plus size={16} /></button>
+          </div>
+          {notas.length === 0 ? (
+            <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-xs px-8 leading-relaxed">Anote aqui cada ideia e experimento do projeto — o diário de bordo da sua IA.</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {notas.map(n => (
+                <div key={n.id} className="rounded-2xl px-4 py-3 bg-white border border-stone-200 flex items-start gap-3">
+                  <Lightbulb size={15} style={{ color: ROXO }} className="flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm" style={{ color: INK, whiteSpace: 'pre-wrap' }}>{n.texto}</div>
+                    <div className="text-xs text-stone-400 mt-1">{formatDateBR(n.data)}</div>
+                  </div>
+                  <button onClick={() => onPersistir({ ...dados, notas: notas.filter(x => x.id !== n.id) })} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#FBEBEA' }}><Trash2 size={12} style={{ color: '#B42318' }} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {fotoAberta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setFotoAberta(null)}>
+          <img src={fotoAberta} alt="" className="max-w-full max-h-full rounded-xl" />
         </div>
       )}
     </div>
