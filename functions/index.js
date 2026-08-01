@@ -478,7 +478,10 @@ exports.lerMaterialIA = onCall(
     });
     if (!usoOk) throw new HttpsError('resource-exhausted', 'Limite diário de leitura de materiais atingido. Amanhã tem mais!');
 
-    const PROMPT = `Leia este material ("${nome}") e extraia TODO o conteúdo técnico útil, em português do Brasil, organizado por tópicos em texto corrido (sem markdown pesado). Priorize: nome/fabricante do produto, indicações, técnica de aplicação e estratificação, temperaturas e curvas de queima, proporções de mistura, tempos, cuidados e erros comuns. Comece com uma linha "RESUMO: " descrevendo o material em uma frase. Seja fiel ao documento — não invente dados. Limite: ~8000 caracteres.`;
+    const PROMPT = `Leia este material ("${nome}") e extraia TODO o conteúdo técnico útil, em português do Brasil (traduza o que estiver em inglês, mantendo os códigos/nomes de produto originais entre parênteses), organizado por tópicos.
+PROIBIDO markdown: nada de asteriscos (*) ou sustenidos (#). Títulos simples seguidos de dois-pontos; listas com travessão (—) ou numeração.
+Priorize: nome/fabricante do produto, para que serve CADA massa/cor/código citado, indicações, técnica de aplicação e estratificação, temperaturas e curvas de queima (tabela completa se houver), proporções de mistura, tempos, cuidados e erros comuns.
+Comece com uma linha "RESUMO: " descrevendo o material em uma frase. Seja fiel ao documento — não invente dados. Limite: ~8000 caracteres.`;
     const MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
     for (const modelo of MODELOS) {
       const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=` + chave, {
@@ -546,7 +549,9 @@ exports.estudarIA = onCall(
     const topicos = Array.isArray(request.data && request.data.topicos) ? request.data.topicos.slice(0, 8).map(t => String(t).slice(0, 80)) : [];
 
     const INSTRUCAO = `Você é o PROFESSOR do Logos, o ambiente de estudo do gestor do Laboratório Special (protético, Petrolina/PE) que está aprendendo CERÂMICA FELDSPÁTICA (estratificação, opalescência, queima, caracterização, acabamento).
-Responda SEMPRE em português do Brasil, como um professor prático e direto: passos concretos, temperaturas e proporções quando existirem, e o porquê das coisas. Texto corrido ou listas curtas, sem markdown pesado.
+Responda SEMPRE e SOMENTE em português do Brasil — NUNCA use palavras em inglês (nada de "Group", "Body", "Enamel" sem traduzir/explicar; se o material usar siglas em inglês, explique o que significam em português).
+PROIBIDO usar markdown: nada de asteriscos (*), sustenidos (#) ou formatação especial. Para listas, use travessão (—) ou numeração simples (1. 2. 3.). O texto vai direto pra tela de um celular.
+Seja um professor prático e direto: passos concretos, temperaturas e proporções quando existirem, e o porquê das coisas. Organize respostas longas por tópicos com títulos simples seguidos de dois-pontos.
 ${topicos.length ? `O aluno está estudando agora: ${topicos.join('; ')}.` : ''}
 ${biblioteca ? `Você tem a BIBLIOTECA DO ALUNO abaixo — os materiais que ele realmente usa no laboratório. SEMPRE que a pergunta tocar num desses materiais, responda com base neles e cite o material pelo nome ("no seu <nome>..."). Se o material não cobrir a dúvida, complete com o conhecimento geral e deixe claro o que veio de onde.${biblioteca}` : 'O aluno ainda não anexou materiais — responda com o melhor conhecimento geral e sugira, quando fizer sentido, que ele anexe o PDF do material que usa para respostas sob medida.'}
 Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que melhorar e o próximo exercício prático.`;
@@ -568,7 +573,7 @@ Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que
         body: JSON.stringify({
           system_instruction: { parts: [{ text: INSTRUCAO }] },
           contents,
-          generationConfig: { temperature: 0.5, maxOutputTokens: 1600 },
+          generationConfig: { temperature: 0.5, maxOutputTokens: 2600 },
         }),
       });
       if (!resp.ok) {

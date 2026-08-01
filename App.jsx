@@ -4520,6 +4520,24 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
   );
 }
 
+// A IA às vezes devolve markdown cru (asteriscos, listas com *). Converte pra
+// texto bonito do app: "* item" vira "• item", **negrito** vira negrito de verdade,
+// e asteriscos soltos somem — sem isso a resposta aparecia cheia de * na tela.
+function formatarTextoIA(texto) {
+  return String(texto || '').split('\n').map((linha, i, todas) => {
+    const t = linha.replace(/^\s*[#>]+\s*/, '').replace(/^(\s*)[*\-•]\s+/, '$1• ');
+    const nos = [];
+    let resto = t, m, k = 0;
+    while ((m = resto.match(/\*\*(.+?)\*\*/))) {
+      if (m.index > 0) nos.push(resto.slice(0, m.index).replace(/\*/g, ''));
+      nos.push(<b key={k++}>{m[1]}</b>);
+      resto = resto.slice(m.index + m[0].length);
+    }
+    nos.push(resto.replace(/\*/g, ''));
+    return <span key={i}>{nos}{i < todas.length - 1 ? '\n' : ''}</span>;
+  });
+}
+
 // ─── Logos: ambiente de estudo do gestor (cerâmica feldspática) ───
 const LOGOS_ETAPAS = [
   { chave: 'quero', rotulo: 'Quero aprender', cor: '#B54708', fundo: '#FDECD8' },
@@ -4528,7 +4546,8 @@ const LOGOS_ETAPAS = [
 ];
 
 function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, onVoltar }) {
-  const [aba, setAba] = useState('estudos'); // estudos | biblioteca | ia
+  const [aba, setAba] = useState('estudos'); // estudos | biblioteca
+  const [chatAberto, setChatAberto] = useState(false); // professor IA em tela cheia
   const [addAberto, setAddAberto] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [notas, setNotas] = useState('');
@@ -4576,28 +4595,33 @@ function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, on
             <div className="text-xs" style={{ color: GOLD }}>Ambiente de estudo — cerâmica feldspática</div>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-2 mt-4">
+        {/* Contadores em LINHA (grid inline — o CSS compilado do app não tem grid-cols-4) */}
+        <div className="mt-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
           {LOGOS_ETAPAS.map(et => (
-            <div key={et.chave} className="rounded-xl px-1 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <div className="text-lg font-extrabold text-white">{porEtapa(et.chave).length}</div>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9.5 }}>{et.rotulo}</div>
+            <div key={et.chave} className="rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 2px' }}>
+              <div className="font-extrabold text-white" style={{ fontSize: 17 }}>{porEtapa(et.chave).length}</div>
+              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9.5 }}>{et.rotulo}</div>
             </div>
           ))}
-          <div className="rounded-xl px-1 py-2 text-center" style={{ background: 'rgba(184,147,90,0.14)', border: '1px solid rgba(184,147,90,0.3)' }}>
-            <div className="text-lg font-extrabold" style={{ color: GOLD }}>{materiais.length}</div>
-            <div className="text-xs" style={{ color: GOLD, fontSize: 9.5 }}>Materiais</div>
+          <div className="rounded-xl text-center" style={{ background: 'rgba(184,147,90,0.14)', border: '1px solid rgba(184,147,90,0.3)', padding: '8px 2px' }}>
+            <div className="font-extrabold" style={{ color: GOLD, fontSize: 17 }}>{materiais.length}</div>
+            <div style={{ color: GOLD, fontSize: 9.5 }}>Materiais</div>
           </div>
         </div>
       </div>
 
       <div className="flex gap-1.5 mb-3">
-        {[['estudos', `Estudos (${registros.length})`], ['biblioteca', `Biblioteca (${materiais.length})`], ['ia', 'Professor IA']].map(([ch, rot]) => (
+        {[['estudos', `Estudos (${registros.length})`], ['biblioteca', `Biblioteca (${materiais.length})`]].map(([ch, rot]) => (
           <button key={ch} onClick={() => setAba(ch)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold"
             style={aba === ch ? { background: INK, color: '#fff' } : { background: '#F0EFEC', color: '#78716C' }}>{rot}</button>
         ))}
+        <button onClick={() => setChatAberto(true)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1"
+          style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK }}>
+          <Sparkles size={12} /> Professor IA
+        </button>
       </div>
 
-      {aba === 'ia' && <LogosChatIA registros={registros} materiais={materiais} aoAbrirBiblioteca={() => setAba('biblioteca')} />}
+      {chatAberto && <LogosChatIA registros={registros} materiais={materiais} aoFechar={() => setChatAberto(false)} />}
 
       {aba === 'biblioteca' && (
         <LogosBiblioteca materiais={materiais} onPersistir={onPersistirMateriais} />
@@ -4837,7 +4861,7 @@ function LogosBiblioteca({ materiais, onPersistir }) {
               {expandido === m.id && (
                 <div className="px-3.5 pb-3.5">
                   <div className="rounded-xl p-3 text-xs leading-relaxed" style={{ background: '#FCFBF8', border: '1px solid #F0EFEC', color: '#57534E', whiteSpace: 'pre-wrap', maxHeight: 260, overflowY: 'auto' }}>
-                    {m.texto}
+                    {formatarTextoIA(m.texto)}
                   </div>
                   <div className="flex justify-end mt-2">
                     {confRemover === m.id ? (
@@ -4856,8 +4880,9 @@ function LogosBiblioteca({ materiais, onPersistir }) {
   );
 }
 
-// Chat com o professor IA — responde com base na BIBLIOTECA (materiais anexados)
-function LogosChatIA({ registros, materiais, aoAbrirBiblioteca }) {
+// Professor IA em TELA CHEIA — mesma linguagem visual do chat de perguntas do app
+// (fundo escuro, dourado, sugestões), respondendo com base na Biblioteca do gestor.
+function LogosChatIA({ registros, materiais, aoFechar }) {
   const chaveLS = 'logos-chat-ia';
   const [mensagens, setMensagens] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveLS) || '[]'); } catch (e) { return []; } });
   const [texto, setTexto] = useState('');
@@ -4872,17 +4897,24 @@ function LogosChatIA({ registros, materiais, aoAbrirBiblioteca }) {
     try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-24).map(m => ({ ...m, foto: null })))); } catch (e) { /* sem espaço */ }
   };
   const estudando = registros.filter(r => r.etapa !== 'dominei').map(r => r.titulo).slice(0, 6);
-  const enviar = async () => {
-    const t = texto.trim();
-    if ((!t && !fotoPend) || pensando) return;
+  const SUGESTOES = [
+    'Como estratificar um incisal com efeito natural?',
+    'Qual a curva de queima ideal do meu material?',
+    'Me monte um exercício prático pra hoje',
+    '📷 Avaliar uma foto do meu trabalho',
+  ];
+  const enviar = async (textoLivre) => {
+    const t = String(textoLivre ?? texto).replace('📷 ', '').trim();
+    const fotoEnv = fotoPend;
+    if ((!t && !fotoEnv) || pensando) return;
     if (!window.iaNuvem?.estudar) { setErro('A IA precisa de internet — tente de novo em instantes.'); return; }
-    const minha = { de: 'eu', texto: t, foto: fotoPend };
+    const minha = { de: 'eu', texto: t, foto: fotoEnv || null };
     const historico = mensagens.slice(-6).filter(m => m.texto).map(m => ({ de: m.de, texto: m.texto }));
     const base = [...mensagens, minha];
     persistir(base); setTexto(''); setFotoPend(null); setPensando(true); setErro('');
     try {
       const r = await window.iaNuvem.estudar({
-        pergunta: t, foto: minha.foto ? minha.foto.split(',')[1] : '', historico,
+        pergunta: t, foto: fotoEnv ? fotoEnv.split(',')[1] : '', historico,
         materiais: materiais.map(m => ({ nome: m.nome, texto: m.texto })),
         topicos: estudando,
       });
@@ -4893,49 +4925,94 @@ function LogosChatIA({ registros, materiais, aoAbrirBiblioteca }) {
     }
     setPensando(false);
   };
+  const FONTE_CHAT = "'Manrope', -apple-system, sans-serif";
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white mb-3 overflow-hidden">
-      <div className="px-3.5 py-2.5 flex items-center gap-2" style={{ background: '#F5F4F0' }}>
-        <Sparkles size={13} color={GOLD} />
-        <span className="text-xs font-bold flex-1" style={{ color: '#7A6234' }}>Professor IA — cerâmica feldspática</span>
-        <button onClick={aoAbrirBiblioteca} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: materiais.length ? '#DCF3E4' : '#FDECD8', color: materiais.length ? '#166B3A' : '#B54708' }}>
-          {materiais.length ? `${materiais.length} ${materiais.length === 1 ? 'material' : 'materiais'} ✓` : 'sem materiais'}
-        </button>
-        {mensagens.length > 0 && <button onClick={() => persistir([])} className="text-xs text-stone-400 font-semibold">limpar</button>}
+    <div style={{ position: 'fixed', inset: 0, zIndex: 8900, background: '#141311', display: 'flex', flexDirection: 'column', fontFamily: FONTE_CHAT }}>
+      <style>{`@keyframes logosPonto { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }`}</style>
+
+      {/* Cabeçalho */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(12px + env(safe-area-inset-top)) 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={aoFechar} style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>‹</button>
+        <div style={{ width: 36, height: 36, borderRadius: 18, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <BookOpen size={17} color={INK} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: '#fff' }}>Professor</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '2.5px 7px', letterSpacing: '0.08em' }}>LOGOS</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: materiais.length ? '#7DD8A0' : 'rgba(255,255,255,0.5)' }}>
+            {materiais.length
+              ? `estudando com ${materiais.length} ${materiais.length === 1 ? 'material seu' : 'materiais seus'} ✓`
+              : 'cerâmica feldspática — anexe materiais na Biblioteca'}
+          </div>
+        </div>
+        {mensagens.length > 0 && (
+          <button onClick={() => persistir([])} style={{ border: 'none', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '8px 11px', cursor: 'pointer', flexShrink: 0 }}>limpar</button>
+        )}
       </div>
-      <div style={{ maxHeight: 340, overflowY: 'auto' }} className="px-3 py-3">
+
+      {/* Conversa */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px' }}>
         {mensagens.length === 0 && (
-          <div className="text-xs text-stone-400 leading-relaxed px-1">
-            Pergunte qualquer coisa de cerâmica feldspática — estratificação, queima, caracterização — ou <b>mande foto</b> do seu trabalho pra avaliação.
-            {materiais.length > 0
-              ? <> O professor conhece {materiais.length === 1 ? 'o material' : `os ${materiais.length} materiais`} da sua <b>Biblioteca</b> e responde com base neles.</>
-              : <> Dica: anexe o PDF do seu material na <b>Biblioteca</b> — aí as respostas saem com as temperaturas e técnicas do que VOCÊ usa.</>}
+          <div style={{ marginTop: 8 }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '14px 14px', fontSize: 12.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.55 }}>
+              👋 Sou o seu <b style={{ color: GOLD }}>professor de cerâmica feldspática</b>.
+              {materiais.length
+                ? <> Já li {materiais.length === 1 ? 'o material' : `os ${materiais.length} materiais`} da sua Biblioteca — pergunte sobre <b>técnica, queima e estratificação</b> que eu respondo com base no que VOCÊ usa.</>
+                : <> Anexe o PDF do seu material na <b>Biblioteca</b> e eu passo a responder com as temperaturas e técnicas do que você usa de verdade.</>}
+              {' '}Pode <b>mandar foto</b> do seu trabalho pra eu avaliar.
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 8px' }}>Experimente</div>
+            {SUGESTOES.map(s => (
+              <button key={s} onClick={() => (s.startsWith('📷') ? (inputFotoRef.current && inputFotoRef.current.click()) : enviar(s))}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'rgba(184,147,90,0.1)', border: '1px solid rgba(184,147,90,0.35)', borderRadius: 13, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, fontWeight: 700, color: GOLD, cursor: 'pointer', fontFamily: FONTE_CHAT }}>
+                {s}
+              </button>
+            ))}
           </div>
         )}
         {mensagens.map((m, i) => (
-          <div key={i} className={`mb-2 flex ${m.de === 'eu' ? 'justify-end' : 'justify-start'}`}>
-            <div className="rounded-xl px-3 py-2 text-sm" style={{ maxWidth: '85%', background: m.de === 'eu' ? INK : '#F5F4F0', color: m.de === 'eu' ? '#fff' : INK, whiteSpace: 'pre-wrap' }}>
-              {m.foto && <img src={m.foto} alt="" className="rounded-lg mb-1.5 max-w-full" style={{ maxHeight: 140 }} />}
-              {m.texto}
+          <div key={i} style={{ display: 'flex', justifyContent: m.de === 'eu' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+            <div style={{
+              maxWidth: '88%', borderRadius: 16, padding: '10px 13px', fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-wrap',
+              background: m.de === 'eu' ? 'linear-gradient(135deg, #E8C48A, #B8935A)' : 'rgba(255,255,255,0.07)',
+              color: m.de === 'eu' ? INK : 'rgba(255,255,255,0.92)',
+              border: m.de === 'eu' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+            }}>
+              {m.foto && <img src={m.foto} alt="" style={{ borderRadius: 10, maxWidth: '100%', maxHeight: 180, display: 'block', marginBottom: 8 }} />}
+              {m.de === 'ia' ? formatarTextoIA(m.texto) : m.texto}
             </div>
           </div>
         ))}
-        {pensando && <div className="text-xs text-stone-400 px-1">o professor está pensando…</div>}
-        {erro && <div className="text-xs px-1" style={{ color: '#B42318' }}>{erro}</div>}
-        <div ref={fimRef} />
-      </div>
-      <div className="p-2.5 border-t border-stone-100">
-        {fotoPend && (
-          <div className="relative inline-block mb-1.5">
-            <img src={fotoPend} alt="" className="w-12 h-12 object-cover rounded-lg" />
-            <button onClick={() => setFotoPend(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+        {pensando && (
+          <div style={{ display: 'flex', gap: 5, padding: '6px 4px' }}>
+            {[0, 1, 2].map(i => <span key={i} style={{ width: 7, height: 7, borderRadius: 4, background: GOLD, animation: `logosPonto 1.2s ${i * 0.18}s infinite` }} />)}
           </div>
         )}
-        <div className="flex gap-1.5">
-          <button onClick={() => inputFotoRef.current?.click()} className="p-2.5 rounded-xl" style={{ background: '#F0EFEC' }}><Camera size={15} className="text-stone-500" /></button>
-          <input className="flex-1 px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none" value={texto} onChange={e => setTexto(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') enviar(); }} placeholder="Sua dúvida de cerâmica…" />
-          <button onClick={enviar} disabled={pensando} className="p-2.5 rounded-xl text-white" style={{ background: pensando ? '#D6D3D1' : GOLD }}><Send size={15} /></button>
+        {erro && <div style={{ fontSize: 12, color: '#F87171', padding: '4px 2px' }}>{erro}</div>}
+        <div ref={fimRef} />
+      </div>
+
+      {/* Entrada */}
+      <div style={{ padding: '10px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        {fotoPend && (
+          <div style={{ position: 'relative', display: 'inline-block', marginBottom: 8 }}>
+            <img src={fotoPend} alt="" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 10 }} />
+            <button onClick={() => setFotoPend(null)} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, border: 'none', background: '#B42318', color: '#fff', fontSize: 11, cursor: 'pointer' }}>×</button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => inputFotoRef.current?.click()} style={{ width: 44, height: 44, borderRadius: 14, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <Camera size={17} color="rgba(255,255,255,0.7)" />
+          </button>
+          <input value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') enviar(); }}
+            placeholder="Sua dúvida de cerâmica…"
+            style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 14, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', padding: '0 14px', fontSize: 14, outline: 'none', fontFamily: FONTE_CHAT }} />
+          <button onClick={() => enviar()} disabled={pensando}
+            style={{ width: 44, height: 44, borderRadius: 14, border: 'none', background: pensando ? 'rgba(255,255,255,0.15)' : 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <Send size={17} color={pensando ? 'rgba(255,255,255,0.5)' : INK} />
+          </button>
         </div>
         <input ref={inputFotoRef} type="file" accept="image/*" className="hidden"
           onChange={async e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { try { setFotoPend(await compressImage(f)); } catch (err) { /* inválida */ } } }} />
