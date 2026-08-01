@@ -552,6 +552,7 @@ exports.estudarIA = onCall(
 Responda SEMPRE e SOMENTE em português do Brasil — NUNCA use palavras em inglês (nada de "Group", "Body", "Enamel" sem traduzir/explicar; se o material usar siglas em inglês, explique o que significam em português).
 PROIBIDO usar markdown: nada de asteriscos (*), sustenidos (#) ou formatação especial. Para listas, use travessão (—) ou numeração simples (1. 2. 3.). O texto vai direto pra tela de um celular.
 Seja um professor prático e direto: passos concretos, temperaturas e proporções quando existirem, e o porquê das coisas. Organize respostas longas por tópicos com títulos simples seguidos de dois-pontos.
+Você também pode DESENHAR para ensinar: se um esquema ajudar muito a entender (corte de estratificação com as camadas, mamelões e efeitos incisais, mapa de aplicação das massas, curva de queima, anatomia do dente), ou se o aluno pedir um desenho/imagem/esquema, termine a resposta com UMA linha exatamente neste formato: [ILUSTRAR: detailed English description of a clean professional dental-ceramics educational diagram]. Use no máximo uma ilustração por resposta e apenas quando agregar de verdade — a explicação em texto continua completa mesmo sem o desenho.
 ${topicos.length ? `O aluno está estudando agora: ${topicos.join('; ')}.` : ''}
 ${biblioteca ? `Você tem a BIBLIOTECA DO ALUNO abaixo — os materiais que ele realmente usa no laboratório. SEMPRE que a pergunta tocar num desses materiais, responda com base neles e cite o material pelo nome ("no seu <nome>..."). Se o material não cobrir a dúvida, complete com o conhecimento geral e deixe claro o que veio de onde.${biblioteca}` : 'O aluno ainda não anexou materiais — responda com o melhor conhecimento geral e sugira, quando fizer sentido, que ele anexe o PDF do material que usa para respostas sob medida.'}
 Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que melhorar e o próximo exercício prático.`;
@@ -585,7 +586,42 @@ Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que
       const texto = (((dados.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || '').join('').trim();
       if (texto) {
         console.log(`estudarIA ok: ${quem} | ${modelo} | ${materiais.length} materiais | ${texto.length} chars`);
-        return { resposta: texto };
+        // O professor pediu um desenho? Gera o esquema didático (limite diário próprio)
+        const mIl = texto.match(/\[ILUSTRAR:\s*([^\]]+)\]/i);
+        const resposta = texto.replace(/\[ILUSTRAR:[^\]]*\]/gi, '').trim();
+        if (mIl) {
+          const LIMITE_ILUSTRA = parseInt(process.env.IA_ESTUDO_ILUSTRA_DIA || '15', 10);
+          const refIlustra = admin.firestore().doc(`labs/principal/iaUso/estudoIlustra_${dia}_${quem}`);
+          const podeIlustrar = await admin.firestore().runTransaction(async (tx) => {
+            const s = await tx.get(refIlustra);
+            const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+            if (n > LIMITE_ILUSTRA) return false;
+            tx.set(refIlustra, { n, quem, dia }, { merge: true });
+            return true;
+          });
+          if (podeIlustrar) {
+            const promptImg = `Clean, professional dental ceramics educational diagram for a dental technician learning feldspathic porcelain, neutral light background, clear labeled layers/zones when relevant, no watermark: ${mIl[1].trim()}`;
+            const MODELOS_IMG = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+            for (const mImg of MODELOS_IMG) {
+              try {
+                const ri = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mImg}:generateContent?key=` + chave, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: promptImg }] }] }),
+                });
+                if (!ri.ok) { console.error(`estudoIlustrar ${mImg}`, ri.status, (await ri.text()).slice(0, 160)); continue; }
+                const di = await ri.json();
+                const parteImg = ((((di.candidates || [])[0] || {}).content || {}).parts || []).find(p => p.inline_data || p.inlineData);
+                const inl = parteImg && (parteImg.inline_data || parteImg.inlineData);
+                if (inl && inl.data) {
+                  console.log(`estudoIlustrar ok: ${quem} | ${mImg}`);
+                  return { resposta, imagem: inl.data, imagemMime: inl.mime_type || inl.mimeType || 'image/png' };
+                }
+              } catch (e) { console.error(`estudoIlustrar ${mImg}`, String(e).slice(0, 160)); }
+            }
+          }
+        }
+        return { resposta };
       }
     }
     throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');

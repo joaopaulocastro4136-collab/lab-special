@@ -4892,15 +4892,17 @@ function LogosChatIA({ registros, materiais, aoFechar }) {
   const fimRef = useRef(null);
   const inputFotoRef = useRef(null);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [mensagens.length, pensando]);
+  const [imgAberta, setImgAberta] = useState(null); // desenho/foto ampliado em tela cheia
   const persistir = (lista) => {
     setMensagens(lista);
-    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-24).map(m => ({ ...m, foto: null })))); } catch (e) { /* sem espaço */ }
+    // Fotos e desenhos ficam só na conversa aberta (base64 estoura o localStorage)
+    try { localStorage.setItem(chaveLS, JSON.stringify(lista.slice(-24).map(m => ({ ...m, foto: null, ilustracao: null })))); } catch (e) { /* sem espaço */ }
   };
   const estudando = registros.filter(r => r.etapa !== 'dominei').map(r => r.titulo).slice(0, 6);
   const SUGESTOES = [
     'Como estratificar um incisal com efeito natural?',
     'Qual a curva de queima ideal do meu material?',
-    'Me monte um exercício prático pra hoje',
+    'Me desenhe o esquema de camadas de um incisivo',
     '📷 Avaliar uma foto do meu trabalho',
   ];
   const enviar = async (textoLivre) => {
@@ -4918,7 +4920,7 @@ function LogosChatIA({ registros, materiais, aoFechar }) {
         materiais: materiais.map(m => ({ nome: m.nome, texto: m.texto })),
         topicos: estudando,
       });
-      persistir([...base, { de: 'ia', texto: r.resposta }]);
+      persistir([...base, { de: 'ia', texto: r.resposta, ilustracao: r.ilustracao || null }]);
     } catch (e) {
       const msg = String((e && e.message) || e);
       setErro(msg.includes('limite') || msg.includes('Limite') ? msg : 'Não consegui falar com a IA agora — confira a internet e tente de novo.');
@@ -4980,8 +4982,12 @@ function LogosChatIA({ registros, materiais, aoFechar }) {
               color: m.de === 'eu' ? INK : 'rgba(255,255,255,0.92)',
               border: m.de === 'eu' ? 'none' : '1px solid rgba(255,255,255,0.08)',
             }}>
-              {m.foto && <img src={m.foto} alt="" style={{ borderRadius: 10, maxWidth: '100%', maxHeight: 180, display: 'block', marginBottom: 8 }} />}
+              {m.foto && <img src={m.foto} alt="" onClick={() => setImgAberta(m.foto)} style={{ borderRadius: 10, maxWidth: '100%', maxHeight: 180, display: 'block', marginBottom: 8, cursor: 'zoom-in' }} />}
               {m.de === 'ia' ? formatarTextoIA(m.texto) : m.texto}
+              {m.ilustracao && (
+                <img src={m.ilustracao} alt="Desenho do professor" onClick={() => setImgAberta(m.ilustracao)}
+                  style={{ borderRadius: 12, maxWidth: '100%', display: 'block', marginTop: 10, border: '1px solid rgba(255,255,255,0.15)', cursor: 'zoom-in' }} />
+              )}
             </div>
           </div>
         ))}
@@ -5017,6 +5023,12 @@ function LogosChatIA({ registros, materiais, aoFechar }) {
         <input ref={inputFotoRef} type="file" accept="image/*" className="hidden"
           onChange={async e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { try { setFotoPend(await compressImage(f)); } catch (err) { /* inválida */ } } }} />
       </div>
+
+      {imgAberta && (
+        <div onClick={() => setImgAberta(null)} style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <img src={imgAberta} alt="" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12 }} />
+        </div>
+      )}
     </div>
   );
 }

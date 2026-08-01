@@ -42,10 +42,14 @@ function instalarIA() {
       return { texto: r.data.texto, resumo: r.data.resumo || '' };
     },
     // Logos: professor de cerâmica que responde com base na biblioteca do gestor
+    // (pode devolver também um DESENHO didático — esquema de camadas, curva de queima)
     async estudar({ pergunta, foto, historico, materiais, topicos }) {
-      const chamar = httpsCallable(funcoes, 'estudarIA', { timeout: 120000 });
+      const chamar = httpsCallable(funcoes, 'estudarIA', { timeout: 180000 });
       const r = await chamar({ pergunta, foto, historico, materiais, topicos });
-      return { resposta: r.data.resposta };
+      return {
+        resposta: r.data.resposta,
+        ilustracao: r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null,
+      };
     },
     async listarSimulacoes() {
       const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', 'Laboratório Special')));
