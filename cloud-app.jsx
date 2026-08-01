@@ -35,6 +35,18 @@ function instalarIA() {
         ilustracao: r.data.imagem ? `data:${r.data.imagemMime || 'image/png'};base64,${r.data.imagem}` : null,
       };
     },
+    // Logos: a IA lê um material (PDF/foto) e devolve o conhecimento extraído
+    async lerMaterial({ nome, arquivo, mime }) {
+      const chamar = httpsCallable(funcoes, 'lerMaterialIA', { timeout: 300000 });
+      const r = await chamar({ nome, arquivo, mime });
+      return { texto: r.data.texto, resumo: r.data.resumo || '' };
+    },
+    // Logos: professor de cerâmica que responde com base na biblioteca do gestor
+    async estudar({ pergunta, foto, historico, materiais, topicos }) {
+      const chamar = httpsCallable(funcoes, 'estudarIA', { timeout: 120000 });
+      const r = await chamar({ pergunta, foto, historico, materiais, topicos });
+      return { resposta: r.data.resposta };
+    },
     async listarSimulacoes() {
       const snap = await getDocs(query(collection(db, 'labs', LAB, 'iaSimulacoes'), where('dentista', '==', 'Laboratório Special')));
       const lista = [];

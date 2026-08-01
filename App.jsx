@@ -1200,6 +1200,7 @@ export default function App() {
   const [voltarDentistas, setVoltarDentistas] = useState('ajustes'); // de onde a tela Clientes foi aberta
   // Áreas do gestor: Logos (estudo de cerâmica feldspática) e Fluxo IA (desenvolvimento da IA própria)
   const [logosRegistros, setLogosRegistros] = useState([]);
+  const [logosMateriais, setLogosMateriais] = useState([]); // biblioteca que alimenta o professor IA
   const [fluxoIa, setFluxoIa] = useState({ dataset: [], notas: [], roteiro: {} });
   const [lendoEtiqueta, setLendoEtiqueta] = useState(false);
   const [iaAberta, setIaAberta] = useState(false); // IA Special (transformação de sorriso)
@@ -1360,6 +1361,10 @@ export default function App() {
         if (lg && lg.value) setLogosRegistros(JSON.parse(lg.value));
       } catch (e) { /* sem registros de estudo */ }
       try {
+        const lm = await window.storage.get('logos-materiais');
+        if (lm && lm.value) setLogosMateriais(JSON.parse(lm.value));
+      } catch (e) { /* sem materiais */ }
+      try {
         const fx = await window.storage.get('fluxoia-dados');
         if (fx && fx.value) setFluxoIa({ dataset: [], notas: [], roteiro: {}, ...JSON.parse(fx.value) });
       } catch (e) { /* sem dados do fluxo IA */ }
@@ -1460,6 +1465,10 @@ export default function App() {
   const persistLogos = (novos) => {
     setLogosRegistros(novos);
     flashSave(() => window.storage.set('logos-registros', JSON.stringify(novos)));
+  };
+  const persistLogosMateriais = (novos) => {
+    setLogosMateriais(novos);
+    flashSave(() => window.storage.set('logos-materiais', JSON.stringify(novos)));
   };
   const persistFluxoIa = (novo) => {
     setFluxoIa(novo);
@@ -2497,7 +2506,9 @@ export default function App() {
             onVoltar={() => setView(voltarDentistas === 'dashboard' ? 'dashboard' : 'ajustes')} />
         )}
         {view === 'logos' && ehGestor && (
-          <LogosView registros={logosRegistros} onPersistir={persistLogos} onVoltar={() => setView('dashboard')} />
+          <LogosView registros={logosRegistros} onPersistir={persistLogos}
+            materiais={logosMateriais} onPersistirMateriais={persistLogosMateriais}
+            onVoltar={() => setView('dashboard')} />
         )}
         {view === 'fluxoia' && ehGestor && (
           <FluxoIAView dados={fluxoIa} onPersistir={persistFluxoIa} onVoltar={() => setView('dashboard')} />
@@ -4516,7 +4527,8 @@ const LOGOS_ETAPAS = [
   { chave: 'dominei', rotulo: 'Dominei', cor: '#166B3A', fundo: '#DCF3E4' },
 ];
 
-function LogosView({ registros, onPersistir, onVoltar }) {
+function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, onVoltar }) {
+  const [aba, setAba] = useState('estudos'); // estudos | biblioteca | ia
   const [addAberto, setAddAberto] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [notas, setNotas] = useState('');
@@ -4525,7 +4537,6 @@ function LogosView({ registros, onPersistir, onVoltar }) {
   const [expandido, setExpandido] = useState(null);
   const [confRemover, setConfRemover] = useState(null);
   const [fotoAberta, setFotoAberta] = useState(null);
-  const [chatAberto, setChatAberto] = useState(false);
   const inputFotoRef = useRef(null);
   const inputFotoRegRef = useRef(null);
   const novoIdLocal = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -4560,132 +4571,147 @@ function LogosView({ registros, onPersistir, onVoltar }) {
           <span style={{ width: 46, height: 46, borderRadius: 23, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <BookOpen size={21} color={GOLD} />
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-white font-extrabold text-lg">Logos</div>
             <div className="text-xs" style={{ color: GOLD }}>Ambiente de estudo — cerâmica feldspática</div>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="grid grid-cols-4 gap-2 mt-4">
           {LOGOS_ETAPAS.map(et => (
-            <div key={et.chave} className="rounded-xl px-2 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <div key={et.chave} className="rounded-xl px-1 py-2 text-center" style={{ background: 'rgba(255,255,255,0.06)' }}>
               <div className="text-lg font-extrabold text-white">{porEtapa(et.chave).length}</div>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>{et.rotulo}</div>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9.5 }}>{et.rotulo}</div>
             </div>
           ))}
+          <div className="rounded-xl px-1 py-2 text-center" style={{ background: 'rgba(184,147,90,0.14)', border: '1px solid rgba(184,147,90,0.3)' }}>
+            <div className="text-lg font-extrabold" style={{ color: GOLD }}>{materiais.length}</div>
+            <div className="text-xs" style={{ color: GOLD, fontSize: 9.5 }}>Materiais</div>
+          </div>
         </div>
       </div>
 
-      {/* Professor IA */}
-      <button onClick={() => setChatAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
-        <Sparkles size={15} /> {chatAberto ? 'Fechar o professor IA' : 'Estudar com o professor IA'}
-      </button>
-      {chatAberto && <LogosChatIA registros={registros} />}
+      <div className="flex gap-1.5 mb-3">
+        {[['estudos', `Estudos (${registros.length})`], ['biblioteca', `Biblioteca (${materiais.length})`], ['ia', 'Professor IA']].map(([ch, rot]) => (
+          <button key={ch} onClick={() => setAba(ch)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold"
+            style={aba === ch ? { background: INK, color: '#fff' } : { background: '#F0EFEC', color: '#78716C' }}>{rot}</button>
+        ))}
+      </div>
 
-      <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold text-white" style={{ background: INK }}>
-        <Plus size={16} /> {addAberto ? 'Fechar' : 'Novo tópico de estudo'}
-      </button>
-      {addAberto && (
-        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
-          <input className={inputClass} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que você quer aprender? (ex.: estratificação de incisal) *" />
-          <textarea className={inputClass} rows={3} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Anotações: onde está, o que já sabe, dúvidas…" />
-          <div className="flex gap-1.5">
-            {LOGOS_ETAPAS.map(et => (
-              <button key={et.chave} onClick={() => setEtapaNova(et.chave)} className="flex-1 py-2 rounded-lg text-xs font-bold"
-                style={etapaNova === et.chave ? { background: et.fundo, color: et.cor, border: `1.5px solid ${et.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
-                {et.rotulo}
-              </button>
-            ))}
-          </div>
-          {fotosNovas.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap">
-              {fotosNovas.map((f, i) => (
-                <div key={i} className="relative">
-                  <img src={f} alt="" className="w-14 h-14 object-cover rounded-lg" />
-                  <button onClick={() => setFotosNovas(fotosNovas.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+      {aba === 'ia' && <LogosChatIA registros={registros} materiais={materiais} aoAbrirBiblioteca={() => setAba('biblioteca')} />}
+
+      {aba === 'biblioteca' && (
+        <LogosBiblioteca materiais={materiais} onPersistir={onPersistirMateriais} />
+      )}
+
+      {aba === 'estudos' && (
+        <>
+          <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold text-white" style={{ background: INK }}>
+            <Plus size={16} /> {addAberto ? 'Fechar' : 'Novo tópico de estudo'}
+          </button>
+          {addAberto && (
+            <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+              <input className={inputClass} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que você quer aprender? (ex.: estratificação de incisal) *" />
+              <textarea className={inputClass} rows={3} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Anotações: onde está, o que já sabe, dúvidas…" />
+              <div className="flex gap-1.5">
+                {LOGOS_ETAPAS.map(et => (
+                  <button key={et.chave} onClick={() => setEtapaNova(et.chave)} className="flex-1 py-2 rounded-lg text-xs font-bold"
+                    style={etapaNova === et.chave ? { background: et.fundo, color: et.cor, border: `1.5px solid ${et.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                    {et.rotulo}
+                  </button>
+                ))}
+              </div>
+              {fotosNovas.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {fotosNovas.map((f, i) => (
+                    <div key={i} className="relative">
+                      <img src={f} alt="" className="w-14 h-14 object-cover rounded-lg" />
+                      <button onClick={() => setFotosNovas(fotosNovas.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => inputFotoRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                  <Camera size={13} /> Foto
+                </button>
+                <button onClick={salvarNovo} disabled={!titulo.trim()} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold text-white" style={{ background: titulo.trim() ? VERDE : '#D6D3D1' }}>Salvar</button>
+              </div>
+              <input ref={inputFotoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => anexar(e, (d) => setFotosNovas(p => [...p, d]))} />
             </div>
           )}
-          <div className="flex gap-2">
-            <button onClick={() => inputFotoRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
-              <Camera size={13} /> Foto
-            </button>
-            <button onClick={salvarNovo} disabled={!titulo.trim()} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold text-white" style={{ background: titulo.trim() ? VERDE : '#D6D3D1' }}>Salvar</button>
-          </div>
-          <input ref={inputFotoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => anexar(e, (d) => setFotosNovas(p => [...p, d]))} />
-        </div>
-      )}
 
-      {registros.length === 0 && !addAberto && (
-        <div className="text-center py-10 rounded-2xl bg-white border border-stone-200 mb-3">
-          <Lightbulb size={26} className="text-stone-300 mx-auto mb-2" />
-          <div className="text-sm font-bold" style={{ color: INK }}>Seu caderno de cerâmica começa aqui</div>
-          <div className="text-xs text-stone-400 mt-1 px-8 leading-relaxed">Registre cada técnica que quer dominar — estratificação, queima, caracterização — com fotos do seu progresso. E use o professor IA pra tirar dúvidas.</div>
-        </div>
-      )}
+          {registros.length === 0 && !addAberto && (
+            <div className="text-center py-10 rounded-2xl bg-white border border-stone-200 mb-3">
+              <Lightbulb size={26} className="text-stone-300 mx-auto mb-2" />
+              <div className="text-sm font-bold" style={{ color: INK }}>Seu caderno de cerâmica começa aqui</div>
+              <div className="text-xs text-stone-400 mt-1 px-8 leading-relaxed">Registre cada técnica que quer dominar — estratificação, queima, caracterização — com fotos do seu progresso. Anexe seus materiais na <b>Biblioteca</b> e estude com o <b>professor IA</b>.</div>
+            </div>
+          )}
 
-      {LOGOS_ETAPAS.map(et => porEtapa(et.chave).length > 0 && (
-        <div key={et.chave} className="mb-4">
-          <div className="text-xs font-bold mb-2" style={{ color: et.cor, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{et.rotulo} ({porEtapa(et.chave).length})</div>
-          <div className="flex flex-col gap-2">
-            {porEtapa(et.chave).map(r => (
-              <div key={r.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
-                <button onClick={() => setExpandido(expandido === r.id ? null : r.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold truncate" style={{ color: INK }}>{r.titulo}</div>
-                    <div className="text-xs text-stone-400">{formatDateBR(r.data)}{(r.fotos || []).length > 0 ? ` • ${r.fotos.length} ${r.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}</div>
-                  </div>
-                  <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === r.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
-                </button>
-                {expandido === r.id && (
-                  <div className="px-3.5 pb-3.5">
-                    <textarea className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-stone-50" rows={3}
-                      defaultValue={r.notas || ''} placeholder="Anotações do estudo…" onBlur={e => { if (e.target.value !== (r.notas || '')) mudar(r.id, { notas: e.target.value }); }} />
-                    {(r.fotos || []).length > 0 && (
-                      <div className="flex gap-1.5 flex-wrap mt-2">
-                        {r.fotos.map((f, i) => (
-                          <div key={i} className="relative">
-                            <img src={f} alt="" className="w-16 h-16 object-cover rounded-lg cursor-pointer" onClick={() => setFotoAberta(f)} />
-                            <button onClick={() => mudar(r.id, { fotos: r.fotos.filter((_, j) => j !== i) })} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+          {LOGOS_ETAPAS.map(et => porEtapa(et.chave).length > 0 && (
+            <div key={et.chave} className="mb-4">
+              <div className="text-xs font-bold mb-2" style={{ color: et.cor, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{et.rotulo} ({porEtapa(et.chave).length})</div>
+              <div className="flex flex-col gap-2">
+                {porEtapa(et.chave).map(r => (
+                  <div key={r.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
+                    <button onClick={() => setExpandido(expandido === r.id ? null : r.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold truncate" style={{ color: INK }}>{r.titulo}</div>
+                        <div className="text-xs text-stone-400">{formatDateBR(r.data)}{(r.fotos || []).length > 0 ? ` • ${r.fotos.length} ${r.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}</div>
+                      </div>
+                      <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === r.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+                    </button>
+                    {expandido === r.id && (
+                      <div className="px-3.5 pb-3.5">
+                        <textarea className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-stone-50" rows={3}
+                          defaultValue={r.notas || ''} placeholder="Anotações do estudo…" onBlur={e => { if (e.target.value !== (r.notas || '')) mudar(r.id, { notas: e.target.value }); }} />
+                        {(r.fotos || []).length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap mt-2">
+                            {r.fotos.map((f, i) => (
+                              <div key={i} className="relative">
+                                <img src={f} alt="" className="w-16 h-16 object-cover rounded-lg cursor-pointer" onClick={() => setFotoAberta(f)} />
+                                <button onClick={() => mudar(r.id, { fotos: r.fotos.filter((_, j) => j !== i) })} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white flex items-center justify-center" style={{ background: '#B42318' }}><X size={11} /></button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                        <div className="flex gap-1.5 mt-2.5">
+                          {LOGOS_ETAPAS.map(e2 => (
+                            <button key={e2.chave} onClick={() => mudar(r.id, { etapa: e2.chave })} className="flex-1 py-2 rounded-lg text-xs font-bold"
+                              style={(r.etapa || 'quero') === e2.chave ? { background: e2.fundo, color: e2.cor, border: `1.5px solid ${e2.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                              {e2.rotulo}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => { setExpandido(r.id); inputFotoRegRef.current && (inputFotoRegRef.current.dataset.alvo = r.id, inputFotoRegRef.current.click()); }} className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+                            <Camera size={12} /> Adicionar foto
+                          </button>
+                          {confRemover === r.id ? (
+                            <button onClick={() => { onPersistir(registros.filter(x => x.id !== r.id)); setConfRemover(null); }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Confirmar exclusão</button>
+                          ) : (
+                            <button onClick={() => setConfRemover(r.id)} className="py-2 px-3 rounded-lg" style={{ background: '#FBEBEA' }}><Trash2 size={13} style={{ color: '#B42318' }} /></button>
+                          )}
+                        </div>
                       </div>
                     )}
-                    <div className="flex gap-1.5 mt-2.5">
-                      {LOGOS_ETAPAS.map(e2 => (
-                        <button key={e2.chave} onClick={() => mudar(r.id, { etapa: e2.chave })} className="flex-1 py-2 rounded-lg text-xs font-bold"
-                          style={(r.etapa || 'quero') === e2.chave ? { background: e2.fundo, color: e2.cor, border: `1.5px solid ${e2.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
-                          {e2.rotulo}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => { setExpandido(r.id); inputFotoRegRef.current && (inputFotoRegRef.current.dataset.alvo = r.id, inputFotoRegRef.current.click()); }} className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
-                        <Camera size={12} /> Adicionar foto
-                      </button>
-                      {confRemover === r.id ? (
-                        <button onClick={() => { onPersistir(registros.filter(x => x.id !== r.id)); setConfRemover(null); }} className="flex-1 py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Confirmar exclusão</button>
-                      ) : (
-                        <button onClick={() => setConfRemover(r.id)} className="py-2 px-3 rounded-lg" style={{ background: '#FBEBEA' }}><Trash2 size={13} style={{ color: '#B42318' }} /></button>
-                      )}
-                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      <input ref={inputFotoRegRef} type="file" accept="image/*" multiple className="hidden"
-        onChange={async e => {
-          const alvo = e.target.dataset.alvo;
-          const files = Array.from(e.target.files || []).slice(0, 6);
-          e.target.value = '';
-          const novas = [];
-          for (const f of files) { try { novas.push(await compressImage(f)); } catch (err) { /* foto inválida — pula */ } }
-          const reg = registros.find(x => x.id === alvo);
-          if (reg && novas.length) mudar(alvo, { fotos: [...(reg.fotos || []), ...novas] });
-        }} />
+            </div>
+          ))}
+          <input ref={inputFotoRegRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={async e => {
+              const alvo = e.target.dataset.alvo;
+              const files = Array.from(e.target.files || []).slice(0, 6);
+              e.target.value = '';
+              const novas = [];
+              for (const f of files) { try { novas.push(await compressImage(f)); } catch (err) { /* foto inválida — pula */ } }
+              const reg = registros.find(x => x.id === alvo);
+              if (reg && novas.length) mudar(alvo, { fotos: [...(reg.fotos || []), ...novas] });
+            }} />
+        </>
+      )}
 
       {fotoAberta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setFotoAberta(null)}>
@@ -4696,8 +4722,142 @@ function LogosView({ registros, onPersistir, onVoltar }) {
   );
 }
 
-// Chat com a IA no contexto do estudo de cerâmica — professor particular do Logos
-function LogosChatIA({ registros }) {
+// ─── Biblioteca do Logos: os materiais que ALIMENTAM o professor IA ───
+// O gestor anexa o PDF (ou foto) do material que usa; a IA lê o arquivo inteiro,
+// extrai o conhecimento e passa a responder com base nele.
+function LogosBiblioteca({ materiais, onPersistir }) {
+  const [lendo, setLendo] = useState(null); // nome do arquivo sendo lido pela IA
+  const [erro, setErro] = useState('');
+  const [expandido, setExpandido] = useState(null);
+  const [confRemover, setConfRemover] = useState(null);
+  const [colando, setColando] = useState(false);
+  const [textoColado, setTextoColado] = useState('');
+  const [nomeColado, setNomeColado] = useState('');
+  const inputArqRef = useRef(null);
+  const novoIdLocal = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const inputClass = 'w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-white';
+
+  const anexarArquivo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setErro('');
+    if (f.size > 7 * 1024 * 1024) { setErro('Arquivo grande demais — o limite é 7MB. Se o PDF for maior, divida em partes.'); return; }
+    const ehPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    try {
+      let base64, mime;
+      if (ehPdf) {
+        base64 = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(',')[1]);
+          fr.onerror = () => rej(new Error('não li o arquivo'));
+          fr.readAsDataURL(f);
+        });
+        mime = 'application/pdf';
+      } else {
+        const dataURL = await compressImage(f);
+        base64 = dataURL.split(',')[1];
+        mime = 'image/jpeg';
+      }
+      const nome = f.name.replace(/\.(pdf|jpe?g|png|webp)$/i, '');
+      setLendo(nome);
+      const r = await window.iaNuvem.lerMaterial({ nome, arquivo: base64, mime });
+      onPersistir([{ id: novoIdLocal(), nome, tipo: ehPdf ? 'pdf' : 'foto', resumo: r.resumo, texto: r.texto, data: todayISO() }, ...materiais]);
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      setErro(msg.includes('limite') || msg.includes('Limite') ? msg : 'Não consegui ler este arquivo com a IA — confira a internet e tente de novo.');
+    }
+    setLendo(null);
+  };
+
+  const salvarColado = () => {
+    const t = textoColado.trim();
+    if (!t) return;
+    onPersistir([{ id: novoIdLocal(), nome: nomeColado.trim() || 'Anotação técnica', tipo: 'texto', resumo: t.slice(0, 140), texto: t.slice(0, 9000), data: todayISO() }, ...materiais]);
+    setTextoColado(''); setNomeColado(''); setColando(false);
+  };
+
+  return (
+    <div>
+      <div className="rounded-2xl p-4 mb-3" style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}` }}>
+        <div className="text-xs leading-relaxed" style={{ color: '#7A6234' }}>
+          <b>Alimente o professor IA:</b> anexe o PDF do material que você usa (cerâmica, instruções do fabricante, apostila). A IA <b>lê o arquivo inteiro</b>, guarda o conhecimento e passa a responder <b>com base no que você trabalha</b>.
+        </div>
+      </div>
+
+      {lendo ? (
+        <div className="rounded-2xl p-5 bg-white border border-stone-200 mb-3 text-center">
+          <div className="w-8 h-8 rounded-full border-2 border-stone-200 mx-auto mb-2" style={{ borderTopColor: GOLD, animation: 'girar 0.8s linear infinite' }} />
+          <style>{`@keyframes girar { to { transform: rotate(360deg); } }`}</style>
+          <div className="text-sm font-bold" style={{ color: INK }}>A IA está lendo "{lendo}"…</div>
+          <div className="text-xs text-stone-400 mt-1">Extraindo técnica, temperaturas e instruções. Pode levar até 1 minuto.</div>
+        </div>
+      ) : (
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => inputArqRef.current?.click()} className="flex-1 py-3 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 text-white" style={{ background: INK }}>
+            <Paperclip size={15} /> Anexar PDF ou foto
+          </button>
+          <button onClick={() => setColando(a => !a)} className="py-3 px-4 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
+            <Pencil size={14} /> Colar texto
+          </button>
+        </div>
+      )}
+      <input ref={inputArqRef} type="file" accept=".pdf,application/pdf,image/*" className="hidden" onChange={anexarArquivo} />
+      {erro && <div className="text-xs font-semibold mb-3 px-1" style={{ color: '#B42318' }}>{erro}</div>}
+
+      {colando && (
+        <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+          <input className={inputClass} value={nomeColado} onChange={e => setNomeColado(e.target.value)} placeholder="Nome do material (ex.: Cerâmica XYZ — instruções)" />
+          <textarea className={inputClass} rows={5} value={textoColado} onChange={e => setTextoColado(e.target.value)} placeholder="Cole aqui o texto técnico (instruções, tabela de queima, técnica…)" />
+          <button onClick={salvarColado} disabled={!textoColado.trim()} className="w-full py-2.5 rounded-xl text-xs font-extrabold text-white" style={{ background: textoColado.trim() ? VERDE : '#D6D3D1' }}>Salvar na biblioteca</button>
+        </div>
+      )}
+
+      {materiais.length === 0 && !colando && !lendo ? (
+        <div className="text-center py-10 rounded-2xl bg-white border border-stone-200">
+          <BookOpen size={26} className="text-stone-300 mx-auto mb-2" />
+          <div className="text-sm font-bold" style={{ color: INK }}>Biblioteca vazia</div>
+          <div className="text-xs text-stone-400 mt-1 px-8 leading-relaxed">Comece anexando o PDF da cerâmica que você usa — o professor IA vai conhecer o SEU material, com as temperaturas e técnicas dele.</div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {materiais.map(m => (
+            <div key={m.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
+              <button onClick={() => setExpandido(expandido === m.id ? null : m.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: GOLD_SOFT }}>
+                  {m.tipo === 'pdf' ? <FileText size={16} style={{ color: '#7A6234' }} /> : m.tipo === 'foto' ? <Camera size={16} style={{ color: '#7A6234' }} /> : <Pencil size={15} style={{ color: '#7A6234' }} />}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold truncate" style={{ color: INK }}>{m.nome}</div>
+                  <div className="text-xs text-stone-400 truncate">{m.resumo ? m.resumo.replace(/^RESUMO:\s*/i, '') : formatDateBR(m.data)}</div>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0" style={{ background: '#DCF3E4', color: '#166B3A', fontSize: 9 }}>IA LEU ✓</span>
+                <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === m.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+              </button>
+              {expandido === m.id && (
+                <div className="px-3.5 pb-3.5">
+                  <div className="rounded-xl p-3 text-xs leading-relaxed" style={{ background: '#FCFBF8', border: '1px solid #F0EFEC', color: '#57534E', whiteSpace: 'pre-wrap', maxHeight: 260, overflowY: 'auto' }}>
+                    {m.texto}
+                  </div>
+                  <div className="flex justify-end mt-2">
+                    {confRemover === m.id ? (
+                      <button onClick={() => { onPersistir(materiais.filter(x => x.id !== m.id)); setConfRemover(null); }} className="py-2 px-4 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Confirmar exclusão</button>
+                    ) : (
+                      <button onClick={() => setConfRemover(m.id)} className="py-2 px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold" style={{ background: '#FBEBEA', color: '#B42318' }}><Trash2 size={12} /> Remover da biblioteca</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Chat com o professor IA — responde com base na BIBLIOTECA (materiais anexados)
+function LogosChatIA({ registros, materiais, aoAbrirBiblioteca }) {
   const chaveLS = 'logos-chat-ia';
   const [mensagens, setMensagens] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveLS) || '[]'); } catch (e) { return []; } });
   const [texto, setTexto] = useState('');
@@ -4715,17 +4875,21 @@ function LogosChatIA({ registros }) {
   const enviar = async () => {
     const t = texto.trim();
     if ((!t && !fotoPend) || pensando) return;
-    if (!window.iaNuvem?.perguntar) { setErro('A IA precisa de internet — tente de novo em instantes.'); return; }
+    if (!window.iaNuvem?.estudar) { setErro('A IA precisa de internet — tente de novo em instantes.'); return; }
     const minha = { de: 'eu', texto: t, foto: fotoPend };
     const historico = mensagens.slice(-6).filter(m => m.texto).map(m => ({ de: m.de, texto: m.texto }));
     const base = [...mensagens, minha];
     persistir(base); setTexto(''); setFotoPend(null); setPensando(true); setErro('');
     try {
-      const contexto = `Aja como um professor prático de CERÂMICA FELDSPÁTICA para um protético em aprendizado (estratificação, opalescência, queima, caracterização, acabamento).${estudando.length ? ` Tópicos que ele está estudando agora: ${estudando.join('; ')}.` : ''} Responda em português, direto e didático, com passos práticos. Pergunta do aluno: ${t}`;
-      const r = await window.iaNuvem.perguntar({ pergunta: contexto, foto: minha.foto ? minha.foto.split(',')[1] : '', historico });
+      const r = await window.iaNuvem.estudar({
+        pergunta: t, foto: minha.foto ? minha.foto.split(',')[1] : '', historico,
+        materiais: materiais.map(m => ({ nome: m.nome, texto: m.texto })),
+        topicos: estudando,
+      });
       persistir([...base, { de: 'ia', texto: r.resposta }]);
     } catch (e) {
-      setErro('Não consegui falar com a IA agora — confira a internet e tente de novo.');
+      const msg = String((e && e.message) || e);
+      setErro(msg.includes('limite') || msg.includes('Limite') ? msg : 'Não consegui falar com a IA agora — confira a internet e tente de novo.');
     }
     setPensando(false);
   };
@@ -4734,11 +4898,19 @@ function LogosChatIA({ registros }) {
       <div className="px-3.5 py-2.5 flex items-center gap-2" style={{ background: '#F5F4F0' }}>
         <Sparkles size={13} color={GOLD} />
         <span className="text-xs font-bold flex-1" style={{ color: '#7A6234' }}>Professor IA — cerâmica feldspática</span>
+        <button onClick={aoAbrirBiblioteca} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: materiais.length ? '#DCF3E4' : '#FDECD8', color: materiais.length ? '#166B3A' : '#B54708' }}>
+          {materiais.length ? `${materiais.length} ${materiais.length === 1 ? 'material' : 'materiais'} ✓` : 'sem materiais'}
+        </button>
         {mensagens.length > 0 && <button onClick={() => persistir([])} className="text-xs text-stone-400 font-semibold">limpar</button>}
       </div>
-      <div style={{ maxHeight: 320, overflowY: 'auto' }} className="px-3 py-3">
+      <div style={{ maxHeight: 340, overflowY: 'auto' }} className="px-3 py-3">
         {mensagens.length === 0 && (
-          <div className="text-xs text-stone-400 leading-relaxed px-1">Pergunte qualquer coisa sobre cerâmica feldspática — técnica de estratificação, temperatura de queima, efeitos de incisal… Pode <b>mandar foto</b> do seu trabalho pra IA avaliar.</div>
+          <div className="text-xs text-stone-400 leading-relaxed px-1">
+            Pergunte qualquer coisa de cerâmica feldspática — estratificação, queima, caracterização — ou <b>mande foto</b> do seu trabalho pra avaliação.
+            {materiais.length > 0
+              ? <> O professor conhece {materiais.length === 1 ? 'o material' : `os ${materiais.length} materiais`} da sua <b>Biblioteca</b> e responde com base neles.</>
+              : <> Dica: anexe o PDF do seu material na <b>Biblioteca</b> — aí as respostas saem com as temperaturas e técnicas do que VOCÊ usa.</>}
+          </div>
         )}
         {mensagens.map((m, i) => (
           <div key={i} className={`mb-2 flex ${m.de === 'eu' ? 'justify-end' : 'justify-start'}`}>
@@ -4748,7 +4920,7 @@ function LogosChatIA({ registros }) {
             </div>
           </div>
         ))}
-        {pensando && <div className="text-xs text-stone-400 px-1">pensando…</div>}
+        {pensando && <div className="text-xs text-stone-400 px-1">o professor está pensando…</div>}
         {erro && <div className="text-xs px-1" style={{ color: '#B42318' }}>{erro}</div>}
         <div ref={fimRef} />
       </div>

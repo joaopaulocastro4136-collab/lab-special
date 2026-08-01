@@ -446,3 +446,143 @@ Encerre respostas sobre casos clínicos lembrando, em uma linha, que a conduta f
     throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
   }
 );
+
+// ─── Logos: ler um material de estudo (PDF/foto) e extrair o conhecimento ───
+// O gestor anexa o PDF do material que usa (ex.: cerâmica) e o Gemini lê o arquivo
+// inteiro e devolve o conteúdo técnico em texto — que vira a "memória" do professor IA.
+exports.lerMaterialIA = onCall(
+  { region: 'southamerica-east1', timeoutSeconds: 300, memory: '1GiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA.');
+    const chave = (process.env.GEMINI_API_KEY || '').trim();
+    if (!chave) throw new HttpsError('failed-precondition', 'A IA ainda está sendo ativada pelo laboratório.');
+    const nome = String((request.data && request.data.nome) || 'material').slice(0, 140);
+    const arquivo = String((request.data && request.data.arquivo) || '');
+    const mime = String((request.data && request.data.mime) || 'application/pdf');
+    if (!arquivo) throw new HttpsError('invalid-argument', 'Anexe o arquivo do material.');
+    if (arquivo.length > 9500000) throw new HttpsError('invalid-argument', 'Arquivo grande demais — o limite é ~7MB.');
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
+      throw new HttpsError('invalid-argument', 'Formato não suportado — envie PDF ou foto.');
+    }
+
+    const LIMITE_DIA = parseInt(process.env.IA_MATERIAIS_DIA || '15', 10);
+    const quem = String(request.auth.token.email || request.auth.uid).toLowerCase().replace(/[^\w@.-]/g, '_');
+    const dia = new Date().toISOString().slice(0, 10);
+    const refUso = admin.firestore().doc(`labs/principal/iaUso/material_${dia}_${quem}`);
+    const usoOk = await admin.firestore().runTransaction(async (tx) => {
+      const s = await tx.get(refUso);
+      const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+      if (n > LIMITE_DIA) return false;
+      tx.set(refUso, { n, quem, dia }, { merge: true });
+      return true;
+    });
+    if (!usoOk) throw new HttpsError('resource-exhausted', 'Limite diário de leitura de materiais atingido. Amanhã tem mais!');
+
+    const PROMPT = `Leia este material ("${nome}") e extraia TODO o conteúdo técnico útil, em português do Brasil, organizado por tópicos em texto corrido (sem markdown pesado). Priorize: nome/fabricante do produto, indicações, técnica de aplicação e estratificação, temperaturas e curvas de queima, proporções de mistura, tempos, cuidados e erros comuns. Comece com uma linha "RESUMO: " descrevendo o material em uma frase. Seja fiel ao documento — não invente dados. Limite: ~8000 caracteres.`;
+    const MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    for (const modelo of MODELOS) {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=` + chave, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data: arquivo } }, { text: PROMPT }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 4000 },
+        }),
+      });
+      if (!resp.ok) {
+        console.error(`lerMaterialIA ${modelo}`, resp.status, (await resp.text()).slice(0, 200));
+        if (resp.status === 429) continue;
+        throw new HttpsError('internal', 'A IA não conseguiu ler este arquivo. Tente de novo.');
+      }
+      const dados = await resp.json();
+      const texto = (((dados.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || '').join('').trim();
+      if (texto) {
+        console.log(`lerMaterialIA ok: ${quem} | ${modelo} | ${nome} | ${texto.length} chars`);
+        const m = texto.match(/^RESUMO:\s*(.+)$/m);
+        return { texto: texto.slice(0, 9000), resumo: m ? m[1].trim().slice(0, 200) : '' };
+      }
+    }
+    throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
+  }
+);
+
+// ─── Logos: professor de cerâmica que ESTUDA JUNTO usando a biblioteca do gestor ───
+// Diferente do perguntarIA (dentistas), este recebe os materiais já lidos (lerMaterialIA)
+// e responde com base neles — a IA "treinada" com o que o gestor usa no laboratório.
+exports.estudarIA = onCall(
+  { region: 'southamerica-east1', timeoutSeconds: 120, memory: '512MiB' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar a IA.');
+    const chave = (process.env.GEMINI_API_KEY || '').trim();
+    if (!chave) throw new HttpsError('failed-precondition', 'A IA ainda está sendo ativada pelo laboratório.');
+    const pergunta = String((request.data && request.data.pergunta) || '').slice(0, 4000);
+    const foto = String((request.data && request.data.foto) || '');
+    if (!pergunta.trim() && !foto) throw new HttpsError('invalid-argument', 'Escreva a pergunta (pode anexar foto).');
+    if (foto.length > 4000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
+
+    const LIMITE_DIA = parseInt(process.env.IA_ESTUDO_DIA || '60', 10);
+    const quem = String(request.auth.token.email || request.auth.uid).toLowerCase().replace(/[^\w@.-]/g, '_');
+    const dia = new Date().toISOString().slice(0, 10);
+    const refUso = admin.firestore().doc(`labs/principal/iaUso/estudo_${dia}_${quem}`);
+    const usoOk = await admin.firestore().runTransaction(async (tx) => {
+      const s = await tx.get(refUso);
+      const n = (s.exists ? (s.data().n || 0) : 0) + 1;
+      if (n > LIMITE_DIA) return false;
+      tx.set(refUso, { n, quem, dia }, { merge: true });
+      return true;
+    });
+    if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário do professor IA. Amanhã tem mais! ✨');
+
+    // Biblioteca do aluno: materiais já extraídos pelo lerMaterialIA (até ~30k chars no total)
+    const materiais = Array.isArray(request.data && request.data.materiais) ? request.data.materiais.slice(0, 12) : [];
+    let biblioteca = '';
+    let orcamento = 30000;
+    for (const mt of materiais) {
+      if (!mt || !mt.texto || orcamento <= 500) continue;
+      const fatia = String(mt.texto).slice(0, Math.min(8000, orcamento));
+      biblioteca += `\n\n=== MATERIAL: ${String(mt.nome || 'sem nome').slice(0, 120)} ===\n${fatia}`;
+      orcamento -= fatia.length;
+    }
+    const topicos = Array.isArray(request.data && request.data.topicos) ? request.data.topicos.slice(0, 8).map(t => String(t).slice(0, 80)) : [];
+
+    const INSTRUCAO = `Você é o PROFESSOR do Logos, o ambiente de estudo do gestor do Laboratório Special (protético, Petrolina/PE) que está aprendendo CERÂMICA FELDSPÁTICA (estratificação, opalescência, queima, caracterização, acabamento).
+Responda SEMPRE em português do Brasil, como um professor prático e direto: passos concretos, temperaturas e proporções quando existirem, e o porquê das coisas. Texto corrido ou listas curtas, sem markdown pesado.
+${topicos.length ? `O aluno está estudando agora: ${topicos.join('; ')}.` : ''}
+${biblioteca ? `Você tem a BIBLIOTECA DO ALUNO abaixo — os materiais que ele realmente usa no laboratório. SEMPRE que a pergunta tocar num desses materiais, responda com base neles e cite o material pelo nome ("no seu <nome>..."). Se o material não cobrir a dúvida, complete com o conhecimento geral e deixe claro o que veio de onde.${biblioteca}` : 'O aluno ainda não anexou materiais — responda com o melhor conhecimento geral e sugira, quando fizer sentido, que ele anexe o PDF do material que usa para respostas sob medida.'}
+Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que melhorar e o próximo exercício prático.`;
+
+    const historico = Array.isArray(request.data && request.data.historico) ? request.data.historico.slice(-6) : [];
+    const contents = historico
+      .filter(m => m && m.texto)
+      .map(m => ({ role: m.de === 'ia' ? 'model' : 'user', parts: [{ text: String(m.texto).slice(0, 1500) }] }));
+    const partes = [];
+    if (foto) partes.push({ inline_data: { mime_type: 'image/jpeg', data: foto } });
+    partes.push({ text: pergunta.trim() || 'Avalie esta foto do meu trabalho.' });
+    contents.push({ role: 'user', parts: partes });
+
+    const MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    for (const modelo of MODELOS) {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=` + chave, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: INSTRUCAO }] },
+          contents,
+          generationConfig: { temperature: 0.5, maxOutputTokens: 1600 },
+        }),
+      });
+      if (!resp.ok) {
+        console.error(`estudarIA ${modelo}`, resp.status, (await resp.text()).slice(0, 200));
+        if (resp.status === 429) continue;
+        throw new HttpsError('internal', 'A IA não conseguiu responder agora. Tente de novo.');
+      }
+      const dados = await resp.json();
+      const texto = (((dados.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text || '').join('').trim();
+      if (texto) {
+        console.log(`estudarIA ok: ${quem} | ${modelo} | ${materiais.length} materiais | ${texto.length} chars`);
+        return { resposta: texto };
+      }
+    }
+    throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
+  }
+);
