@@ -6344,6 +6344,13 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
         for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
         html = new TextDecoder('utf-8').decode(u8);
       }
+      // ESCUDO pro Android: dentro do app, o WebView injeta window.cordova no iframe
+      // e o visualizador do exocad se acha num app Cordova — aí chama o plugin
+      // window.StatusBar (que não existe) e quebra com "reading 'show'". O escudo
+      // remove o cordova do iframe e deixa um StatusBar inofensivo de reserva,
+      // fazendo o visualizador rodar como no navegador (que o gestor confirmou abrir).
+      const escudo = '<script>try{delete window.cordova}catch(e){}try{window.cordova=undefined}catch(e){}window.StatusBar=window.StatusBar||{show:function(){},hide:function(){},styleDefault:function(){},overlaysWebView:function(){}};<\/script>';
+      html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + escudo) : escudo + html;
       setExocadAberto(v => v ? { nome: a.nome, html } : null);
     } catch (e) {
       setExocadAberto(null);
