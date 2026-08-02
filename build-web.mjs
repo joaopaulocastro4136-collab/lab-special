@@ -33,8 +33,9 @@ const html = `<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>${tw}</style>
 <style>
-  html, body { margin: 0; padding: 0; background: #F5F4F0; }
-  #root { min-height: 100vh; }
+  /* overflow-x travado: um elemento largo demais não pode deixar a tela "deslizar de lado" */
+  html, body { margin: 0; padding: 0; background: #F5F4F0; overflow-x: hidden; overscroll-behavior-x: none; }
+  #root { min-height: 100vh; overflow-x: clip; }
   * { -webkit-tap-highlight-color: transparent; }
   .rounded-2xl { box-shadow: 0 1px 2px rgba(28,27,25,0.03), 0 12px 32px -20px rgba(28,27,25,0.14); }
   button { transition: transform 0.12s ease, opacity 0.12s ease, background 0.15s ease; }

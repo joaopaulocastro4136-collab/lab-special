@@ -5170,8 +5170,8 @@ function FluxoIAView({ dados, onPersistir, onVoltar }) {
       {aba === 'notas' && (
         <div>
           <div className="rounded-2xl p-3 bg-white border border-stone-200 mb-3 flex gap-2">
-            <input className={inputClass} value={notaNova} onChange={e => setNotaNova(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addNota(); }} placeholder="Ideia, teste, descoberta…" />
-            <button onClick={addNota} disabled={!notaNova.trim()} className="px-4 rounded-xl text-white" style={{ background: notaNova.trim() ? ROXO : '#D6D3D1' }}><Plus size={16} /></button>
+            <input className={inputClass} style={{ minWidth: 0 }} value={notaNova} onChange={e => setNotaNova(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addNota(); }} placeholder="Ideia, teste, descoberta…" />
+            <button onClick={addNota} disabled={!notaNova.trim()} className="px-4 rounded-xl text-white flex-shrink-0" style={{ background: notaNova.trim() ? ROXO : '#D6D3D1' }}><Plus size={16} /></button>
           </div>
           {notas.length === 0 ? (
             <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-xs px-8 leading-relaxed">Anote aqui cada ideia e experimento do projeto — o diário de bordo da sua IA.</div>
@@ -5417,7 +5417,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <input className={inputClass} value={novoFuncNome} onChange={e => { setNovoFuncNome(e.target.value); setErroFunc(''); }} placeholder="Nome do funcionário" />
           <input type="email" className={inputClass} value={novoFuncEmail} onChange={e => { setNovoFuncEmail(e.target.value); setErroFunc(''); }} placeholder="E-mail Google (libera o acesso ao app)" />
           <div className="flex gap-2">
-            <input type="password" inputMode="numeric" maxLength={4} className={inputClass + ' flex-1'} value={novoFuncPin} onChange={e => setNovoFuncPin(e.target.value.replace(/\D/g, ''))} placeholder="PIN 4 dígitos (opcional)" />
+            <input type="password" inputMode="numeric" maxLength={4} className={inputClass + ' flex-1'} style={{ minWidth: 0 }} value={novoFuncPin} onChange={e => setNovoFuncPin(e.target.value.replace(/\D/g, ''))} placeholder="PIN 4 dígitos (opcional)" />
             <button onClick={() => setNovoFuncGestor(!novoFuncGestor)} className="px-3 rounded-xl text-xs font-bold flex items-center gap-1"
               style={novoFuncGestor ? { background: GOLD_SOFT, color: '#7A6234', border: `1.5px solid ${GOLD}` } : { background: '#F0EFEC', color: '#A8A29E' }}>
               gestor
