@@ -1,0 +1,93 @@
+# Fábrica do pacote pro GOOGLE PLAY (.aab): compila e assina o Android App Bundle
+# com o MESMO keystore do APK do site (cofre/lab-ci.keystore.enc) — essa chave vira a
+# "chave de upload" do Play; o Google reassina na distribuição (Play App Signing).
+#
+# O .aab sai como ARTEFATO da execução: aba Actions → esta execução → "LabSpecial-aab"
+# → baixar e subir no Play Console (Produção ou Teste). Quando houver conta de serviço
+# da API do Play, dá pra automatizar o envio direto.
+#
+# IMPORTANTE (login Google no app da loja): depois do PRIMEIRO envio ao Play, copie as
+# impressões SHA-1 e SHA-256 em Play Console → Configurações → Assinatura de apps
+# (chave de ASSINATURA DO APP, não a de upload) e cadastre no Firebase (Configurações
+# do projeto → Apps → Android). Sem isso, o "Entrar com Google" falha no app da loja.
+name: AAB → Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão visível na loja (ex.: 11.2)"
+        default: "11.2"
+      codigo:
+        description: "Código da versão (inteiro, maior que o anterior)"
+        default: "55"
+
+permissions:
+  contents: write
+
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Abre o keystore do cofre
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Falta o segredo FIREBASE_SERVICE_ACCOUNT."
+            exit 1
+          fi
+          if [ ! -f cofre/lab-ci.keystore.enc ]; then
+            echo "::error::O cofre (cofre/lab-ci.keystore.enc) não existe — rode primeiro a fábrica do APK."
+            exit 1
+          fi
+          CHAVE=$(printf '%s' "$FIREBASE_SERVICE_ACCOUNT" | sha256sum | cut -c1-64)
+          echo "::add-mask::$CHAVE"
+          echo "LAB_KS_SENHA=$CHAVE" >> "$GITHUB_ENV"
+          echo "LAB_KS_ARQUIVO=$RUNNER_TEMP/lab-ci.keystore" >> "$GITHUB_ENV"
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:"$CHAVE" \
+            -in cofre/lab-ci.keystore.enc -out "$RUNNER_TEMP/lab-ci.keystore"
+          echo "Keystore do cofre aberto ✓"
+
+      - name: Instala dependências e gera o pacote web
+        env:
+          VERSAO_APP: ${{ github.event.inputs.versao || '11.2' }}
+        run: |
+          npm ci
+          node build-android.mjs
+          npx cap sync android
+
+      - name: Compila e assina o AAB (bundle do Google Play)
+        env:
+          LAB_VERSION_CODE: ${{ github.event.inputs.codigo || '55' }}
+          LAB_VERSION_NAME: ${{ github.event.inputs.versao || '11.2' }}
+        run: |
+          cd android
+          java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain bundleRelease --no-daemon
+          ls -la app/build/outputs/bundle/release/
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/LabSpecial-${LAB_VERSION_NAME}.aab"
+
+      - name: Impressões digitais da chave de UPLOAD (conferência)
+        run: |
+          keytool -list -v -keystore "$LAB_KS_ARQUIVO" -alias labspecial -storepass "$LAB_KS_SENHA" 2>/dev/null | grep -Ei "SHA1:|SHA256:" || true
+          echo "Estas são as SHAs da chave de UPLOAD. As da chave de ASSINATURA DO APP aparecem no Play Console após o 1º envio."
+
+      - name: Publica o AAB como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: LabSpecial-aab
+          path: ${{ runner.temp }}/LabSpecial-*.aab
+          retention-days: 30
+          if-no-files-found: error
