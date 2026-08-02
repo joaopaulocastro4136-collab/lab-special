@@ -6325,34 +6325,32 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   const ehProjetoExocad = (a) => a.categoria === 'exocad' || /\.html?$/i.test(a.nome || '');
 
   // Abre o projeto do exocad DENTRO do app: baixa o HTML e mostra num iframe em tela
-  // cheia (o próprio arquivo carrega o visualizador 3D dele). blob: em vez de data:
-  // porque o WebView roda os scripts do iframe normalmente com blob.
+  // cheia (o próprio arquivo carrega o visualizador 3D dele). srcdoc em vez de blob:
+  // porque no Android o iframe blob: fica sem localStorage e o visualizador do exocad
+  // quebra na inicialização (loadUserBackgroundColor) — com srcdoc o iframe herda a
+  // origem do app, onde o localStorage funciona no Android e no iPhone.
   const abrirExocad = async (a) => {
     setErro('');
-    setExocadAberto({ nome: a.nome, src: null });
+    setExocadAberto({ nome: a.nome, html: null });
     try {
       const data = await getAnexoData(a);
       if (!data) { setExocadAberto(null); return; }
-      let blob;
-      if (data.url) blob = await (await fetch(data.url)).blob();
+      let html;
+      if (data.url) html = await (await fetch(data.url)).text();
       else {
         const b64 = String(data.dataURL || '').split(',')[1] || '';
         const bin = atob(b64);
         const u8 = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-        blob = u8;
+        html = new TextDecoder('utf-8').decode(u8);
       }
-      const tipado = new Blob([blob], { type: 'text/html' });
-      const src = URL.createObjectURL(tipado);
-      setExocadAberto(v => v ? { nome: a.nome, src } : (URL.revokeObjectURL(src), null));
+      setExocadAberto(v => v ? { nome: a.nome, html } : null);
     } catch (e) {
       setExocadAberto(null);
       setErro('Não consegui abrir o projeto — confira a internet e tente de novo.');
     }
   };
-  const fecharExocad = () => {
-    setExocadAberto(v => { if (v?.src) setTimeout(() => URL.revokeObjectURL(v.src), 1000); return null; });
-  };
+  const fecharExocad = () => setExocadAberto(null);
 
   // Abre a tela do 3D NA HORA; formato novo já vem com o link direto do armazém
   const abrirSTL = async (a) => {
@@ -6616,8 +6614,8 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
             <span className="flex-1 truncate" style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700 }}>🦷 {exocadAberto.nome}</span>
             <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '3px 8px', letterSpacing: '0.06em' }}>PROJETO 3D</span>
           </div>
-          {exocadAberto.src ? (
-            <iframe src={exocadAberto.src} title={exocadAberto.nome} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+          {exocadAberto.html ? (
+            <iframe srcDoc={exocadAberto.html} title={exocadAberto.nome} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-3">
               <div className="w-9 h-9 rounded-full border-2" style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: GOLD, animation: 'girarExo 0.8s linear infinite' }} />
