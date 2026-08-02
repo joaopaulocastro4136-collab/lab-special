@@ -21,6 +21,11 @@ on:
       codigo:
         description: "Código da versão (inteiro, maior que o anterior)"
         default: "55"
+  # Enquanto este arquivo não está no branch principal, o disparo manual pela API
+  # não o encontra — mexer NESTE arquivo dispara a compilação (com os padrões acima)
+  push:
+    branches: [claude/special-lab-clinic-adjustments-9o9pbd]
+    paths: ['.github/workflows/aab-play.yml']
 
 permissions:
   contents: write
