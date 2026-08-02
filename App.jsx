@@ -4585,40 +4585,62 @@ function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, on
       <button onClick={onVoltar} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
         <ChevronLeft size={18} /> Início
       </button>
-      <div className="rounded-2xl p-5 mb-4" style={{ background: 'linear-gradient(150deg, #24221E, #1C1B19)', border: '1px solid rgba(184,147,90,0.35)' }}>
-        <div className="flex items-center gap-3">
-          <span style={{ width: 46, height: 46, borderRadius: 23, background: 'rgba(184,147,90,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <BookOpen size={21} color={GOLD} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-white font-extrabold text-lg">Logos</div>
-            <div className="text-xs" style={{ color: GOLD }}>Ambiente de estudo — cerâmica feldspática</div>
-          </div>
-        </div>
-        {/* Contadores em LINHA (grid inline — o CSS compilado do app não tem grid-cols-4) */}
-        <div className="mt-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-          {LOGOS_ETAPAS.map(et => (
-            <div key={et.chave} className="rounded-xl text-center" style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 2px' }}>
-              <div className="font-extrabold text-white" style={{ fontSize: 17 }}>{porEtapa(et.chave).length}</div>
-              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9.5 }}>{et.rotulo}</div>
+
+      {/* ── Capa do Logos ── */}
+      <div className="rounded-2xl mb-4" style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(155deg, #2E2921 0%, #211D18 55%, #191612 100%)', border: '1px solid rgba(184,147,90,0.4)', boxShadow: '0 22px 44px -24px rgba(28,27,25,0.85)' }}>
+        <span style={{ position: 'absolute', right: -34, top: -38, opacity: 0.07, pointerEvents: 'none' }}><EstrelaLogo size={170} color={GOLD} /></span>
+        <span style={{ position: 'absolute', left: -50, bottom: -60, opacity: 0.04, pointerEvents: 'none' }}><EstrelaLogo size={150} color={GOLD} /></span>
+        <div style={{ padding: '20px 20px 16px' }}>
+          <div className="flex items-center gap-3">
+            <span style={{ width: 50, height: 50, borderRadius: 16, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 10px 22px -10px rgba(184,147,90,0.7)' }}>
+              <BookOpen size={23} color={INK} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.22em', color: GOLD, textTransform: 'uppercase' }}>Ambiente de estudo</div>
+              <div className="text-white font-extrabold" style={{ fontSize: 24, lineHeight: 1.15 }}>Logos</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Cerâmica feldspática</div>
             </div>
-          ))}
-          <div className="rounded-xl text-center" style={{ background: 'rgba(184,147,90,0.14)', border: '1px solid rgba(184,147,90,0.3)', padding: '8px 2px' }}>
-            <div className="font-extrabold" style={{ color: GOLD, fontSize: 17 }}>{materiais.length}</div>
-            <div style={{ color: GOLD, fontSize: 9.5 }}>Materiais</div>
+          </div>
+          {/* régua de progresso do aprendizado */}
+          <div className="mt-4" style={{ display: 'flex', alignItems: 'stretch', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14 }}>
+            {LOGOS_ETAPAS.map((et, i) => (
+              <div key={et.chave} style={{ flex: 1, textAlign: 'center', padding: '10px 2px', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                <div className="font-extrabold text-white" style={{ fontSize: 18 }}>{porEtapa(et.chave).length}</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>{et.rotulo}</div>
+              </div>
+            ))}
+            <div style={{ flex: 1, textAlign: 'center', padding: '10px 2px', borderLeft: '1px solid rgba(184,147,90,0.35)', background: 'rgba(184,147,90,0.1)', borderRadius: '0 13px 13px 0' }}>
+              <div className="font-extrabold" style={{ color: GOLD, fontSize: 18 }}>{materiais.length}</div>
+              <div style={{ color: GOLD, fontSize: 9 }}>Materiais</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-1.5 mb-3">
+      {/* ── Professor IA: o destaque ── */}
+      <button onClick={() => setChatAberto(true)} className="w-full mb-3 rounded-2xl text-left" style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, #E8C48A 0%, #C9A063 60%, #B8935A 100%)', boxShadow: '0 16px 32px -14px rgba(184,147,90,0.75)', padding: '14px 16px' }}>
+        <span style={{ position: 'absolute', right: -14, bottom: -20, opacity: 0.14, pointerEvents: 'none' }}><Sparkles size={84} color={INK} /></span>
+        <div className="flex items-center gap-3">
+          <span style={{ width: 40, height: 40, borderRadius: 13, background: 'rgba(28,27,25,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Sparkles size={19} color={INK} />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="font-extrabold" style={{ color: INK, fontSize: 15 }}>Estudar com o professor IA</div>
+            <div style={{ color: 'rgba(28,27,25,0.65)', fontSize: 11.5 }}>
+              {materiais.length ? `Conhece ${materiais.length === 1 ? 'o seu material' : `os seus ${materiais.length} materiais`} • desenha pra ensinar` : 'Tira dúvidas, avalia fotos e desenha pra ensinar'}
+            </div>
+          </div>
+          <ArrowRight size={17} color={INK} />
+        </div>
+      </button>
+
+      {/* ── Abas: controle segmentado ── */}
+      <div className="mb-4" style={{ display: 'flex', background: '#EAE7E1', borderRadius: 14, padding: 3 }}>
         {[['estudos', `Estudos (${registros.length})`], ['biblioteca', `Biblioteca (${materiais.length})`]].map(([ch, rot]) => (
-          <button key={ch} onClick={() => setAba(ch)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold"
-            style={aba === ch ? { background: INK, color: '#fff' } : { background: '#F0EFEC', color: '#78716C' }}>{rot}</button>
+          <button key={ch} onClick={() => setAba(ch)} className="flex-1 text-xs font-extrabold" style={aba === ch
+            ? { background: '#fff', color: INK, borderRadius: 11, padding: '9px 0', boxShadow: '0 3px 10px -3px rgba(28,27,25,0.25)' }
+            : { background: 'transparent', color: '#8A857C', borderRadius: 11, padding: '9px 0' }}>{rot}</button>
         ))}
-        <button onClick={() => setChatAberto(true)} className="flex-1 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1"
-          style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK }}>
-          <Sparkles size={12} /> Professor IA
-        </button>
       </div>
 
       {chatAberto && <LogosChatIA registros={registros} materiais={materiais} aoFechar={() => setChatAberto(false)} />}
@@ -4629,17 +4651,16 @@ function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, on
 
       {aba === 'estudos' && (
         <>
-          <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold text-white" style={{ background: INK }}>
+          <button onClick={() => setAddAberto(a => !a)} className="w-full mb-3 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={addAberto ? { background: '#F0EFEC', color: '#57534E' } : { background: INK, color: '#fff', boxShadow: '0 14px 28px -16px rgba(28,27,25,0.8)' }}>
             <Plus size={16} /> {addAberto ? 'Fechar' : 'Novo tópico de estudo'}
           </button>
           {addAberto && (
-            <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2">
+            <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-3 flex flex-col gap-2" style={{ boxShadow: '0 16px 34px -24px rgba(28,27,25,0.4)' }}>
               <input className={inputClass} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que você quer aprender? (ex.: estratificação de incisal) *" />
               <textarea className={inputClass} rows={3} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Anotações: onde está, o que já sabe, dúvidas…" />
               <div className="flex gap-1.5">
                 {LOGOS_ETAPAS.map(et => (
-                  <button key={et.chave} onClick={() => setEtapaNova(et.chave)} className="flex-1 py-2 rounded-lg text-xs font-bold"
-                    style={etapaNova === et.chave ? { background: et.fundo, color: et.cor, border: `1.5px solid ${et.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                  <button key={et.chave} onClick={() => setEtapaNova(et.chave)} className="flex-1 py-2 text-xs font-bold" style={etapaNova === et.chave ? { background: et.fundo, color: et.cor, border: `1.5px solid ${et.cor}`, borderRadius: 999 } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent', borderRadius: 999 }}>
                     {et.rotulo}
                   </button>
                 ))}
@@ -4665,29 +4686,43 @@ function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, on
           )}
 
           {registros.length === 0 && !addAberto && (
-            <div className="text-center py-10 rounded-2xl bg-white border border-stone-200 mb-3">
-              <Lightbulb size={26} className="text-stone-300 mx-auto mb-2" />
-              <div className="text-sm font-bold" style={{ color: INK }}>Seu caderno de cerâmica começa aqui</div>
-              <div className="text-xs text-stone-400 mt-1 px-8 leading-relaxed">Registre cada técnica que quer dominar — estratificação, queima, caracterização — com fotos do seu progresso. Anexe seus materiais na <b>Biblioteca</b> e estude com o <b>professor IA</b>.</div>
+            <div className="text-center py-12 rounded-2xl bg-white border border-stone-200 mb-3">
+              <span style={{ width: 54, height: 54, borderRadius: 27, background: GOLD_SOFT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                <Lightbulb size={24} style={{ color: '#7A6234' }} />
+              </span>
+              <div className="text-sm font-extrabold" style={{ color: INK }}>Seu caderno de cerâmica começa aqui</div>
+              <div className="text-xs text-stone-400 mt-1.5 px-8 leading-relaxed">Registre cada técnica que quer dominar — estratificação, queima, caracterização — com fotos do seu progresso. Anexe seus materiais na <b>Biblioteca</b> e estude com o <b>professor IA</b>.</div>
             </div>
           )}
 
           {LOGOS_ETAPAS.map(et => porEtapa(et.chave).length > 0 && (
-            <div key={et.chave} className="mb-4">
-              <div className="text-xs font-bold mb-2" style={{ color: et.cor, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{et.rotulo} ({porEtapa(et.chave).length})</div>
+            <div key={et.chave} className="mb-5">
+              <div className="flex items-center gap-2 mb-2 px-0.5">
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: et.cor, flexShrink: 0 }} />
+                <span className="text-xs font-bold" style={{ color: et.cor, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{et.rotulo}</span>
+                <span className="text-xs font-bold" style={{ color: '#C4BFB6' }}>{porEtapa(et.chave).length}</span>
+                <span style={{ flex: 1, height: 1, background: '#EBE8E2' }} />
+              </div>
               <div className="flex flex-col gap-2">
                 {porEtapa(et.chave).map(r => (
-                  <div key={r.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
-                    <button onClick={() => setExpandido(expandido === r.id ? null : r.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
+                  <div key={r.id} className="rounded-2xl bg-white overflow-hidden" style={{ border: '1px solid #E7E5E4', borderLeft: `4px solid ${et.cor}`, boxShadow: '0 10px 26px -20px rgba(28,27,25,0.35)' }}>
+                    <button onClick={() => setExpandido(expandido === r.id ? null : r.id)} className="w-full text-left p-3.5 flex items-center gap-3">
+                      {(r.fotos || []).length > 0 ? (
+                        <img src={r.fotos[0]} alt="" className="w-11 h-11 object-cover rounded-xl flex-shrink-0" />
+                      ) : (
+                        <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#F6F4F0' }}>
+                          <BookOpen size={17} style={{ color: '#B8AE9D' }} />
+                        </span>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold truncate" style={{ color: INK }}>{r.titulo}</div>
-                        <div className="text-xs text-stone-400">{formatDateBR(r.data)}{(r.fotos || []).length > 0 ? ` • ${r.fotos.length} ${r.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}</div>
+                        <div className="text-xs text-stone-400 mt-0.5">{formatDateBR(r.data)}{(r.fotos || []).length > 0 ? ` • ${r.fotos.length} ${r.fotos.length === 1 ? 'foto' : 'fotos'}` : ''}{r.notas ? ' • com anotações' : ''}</div>
                       </div>
                       <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === r.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
                     </button>
                     {expandido === r.id && (
                       <div className="px-3.5 pb-3.5">
-                        <textarea className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none bg-stone-50" rows={3}
+                        <textarea className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm outline-none" style={{ background: '#FAF9F6' }} rows={3}
                           defaultValue={r.notas || ''} placeholder="Anotações do estudo…" onBlur={e => { if (e.target.value !== (r.notas || '')) mudar(r.id, { notas: e.target.value }); }} />
                         {(r.fotos || []).length > 0 && (
                           <div className="flex gap-1.5 flex-wrap mt-2">
@@ -4701,8 +4736,7 @@ function LogosView({ registros, onPersistir, materiais, onPersistirMateriais, on
                         )}
                         <div className="flex gap-1.5 mt-2.5">
                           {LOGOS_ETAPAS.map(e2 => (
-                            <button key={e2.chave} onClick={() => mudar(r.id, { etapa: e2.chave })} className="flex-1 py-2 rounded-lg text-xs font-bold"
-                              style={(r.etapa || 'quero') === e2.chave ? { background: e2.fundo, color: e2.cor, border: `1.5px solid ${e2.cor}` } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent' }}>
+                            <button key={e2.chave} onClick={() => mudar(r.id, { etapa: e2.chave })} className="flex-1 py-2 text-xs font-bold" style={(r.etapa || 'quero') === e2.chave ? { background: e2.fundo, color: e2.cor, border: `1.5px solid ${e2.cor}`, borderRadius: 999 } : { background: '#F0EFEC', color: '#78716C', border: '1.5px solid transparent', borderRadius: 999 }}>
                               {e2.rotulo}
                             </button>
                           ))}
@@ -4847,15 +4881,15 @@ function LogosBiblioteca({ materiais, onPersistir }) {
         <div className="flex flex-col gap-2">
           {materiais.map(m => (
             <div key={m.id} className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
-              <button onClick={() => setExpandido(expandido === m.id ? null : m.id)} className="w-full text-left p-3.5 flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: GOLD_SOFT }}>
-                  {m.tipo === 'pdf' ? <FileText size={16} style={{ color: '#7A6234' }} /> : m.tipo === 'foto' ? <Camera size={16} style={{ color: '#7A6234' }} /> : <Pencil size={15} style={{ color: '#7A6234' }} />}
+              <button onClick={() => setExpandido(expandido === m.id ? null : m.id)} className="w-full text-left p-3.5 flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #F3E7CE, #E6CFA3)', boxShadow: '0 6px 14px -8px rgba(184,147,90,0.6)' }}>
+                  {m.tipo === 'pdf' ? <FileText size={17} style={{ color: '#7A6234' }} /> : m.tipo === 'foto' ? <Camera size={17} style={{ color: '#7A6234' }} /> : <Pencil size={16} style={{ color: '#7A6234' }} />}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold truncate" style={{ color: INK }}>{m.nome}</div>
                   <div className="text-xs text-stone-400 truncate">{m.resumo ? m.resumo.replace(/^RESUMO:\s*/i, '') : formatDateBR(m.data)}</div>
                 </div>
-                <span className="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0" style={{ background: '#DCF3E4', color: '#166B3A', fontSize: 9 }}>IA LEU ✓</span>
+                <span className="font-bold flex-shrink-0" style={{ background: '#E8F6ED', color: '#166B3A', fontSize: 9, borderRadius: 8, padding: '3px 7px', border: '1px solid #C6E8D2' }}>IA LEU ✓</span>
                 <ChevronDown size={15} className="text-stone-300 flex-shrink-0" style={{ transform: expandido === m.id ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
               </button>
               {expandido === m.id && (
