@@ -105,6 +105,22 @@ setTimeout(verificarAtualizacao, 4000);
   } catch (e) { /* plugin indisponível — segue só com a checagem da abertura */ }
 })();
 
+// Ponte pro botão "Verificar atualização" dos Ajustes (SÓ Android — no iPhone a
+// atualização é pela loja/TestFlight e a Apple não permite baixar app por fora).
+if (Capacitor.getPlatform() === 'android') {
+  window.atualizadorAndroid = {
+    async verificar() {
+      const { App: CapApp } = await import('@capacitor/app');
+      const info = await CapApp.getInfo();
+      const resp = await fetch('https://laboratorio-special.web.app/versao-apk.json?nc=' + Date.now());
+      const remoto = await resp.json();
+      const temNova = parseInt(remoto.versionCode, 10) > parseInt(info.build, 10);
+      return { instalada: info.version || '', nova: temNova ? remoto : null };
+    },
+    baixar(url) { window.open(url || 'https://laboratorio-special.web.app/LabSpecial.apk', '_blank'); },
+  };
+}
+
 // Login Google NATIVO (a tela de contas do próprio aparelho) + repasse ao Firebase web
 async function entrarNativo(auth) {
   const resultado = await FirebaseAuthentication.signInWithGoogle();

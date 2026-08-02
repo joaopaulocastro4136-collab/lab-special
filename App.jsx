@@ -5201,6 +5201,56 @@ function FluxoIAView({ dados, onPersistir, onVoltar }) {
   );
 }
 
+// Cartão "Atualização do aplicativo" nos Ajustes — só existe no APK Android
+// (window.atualizadorAndroid vem da ponte do main-android-cloud; iPhone atualiza pela loja)
+function AtualizacaoAppCard() {
+  const [estado, setEstado] = useState('parado'); // parado | verificando | atualizado | tem-nova | erro
+  const [nova, setNova] = useState(null);
+  if (typeof window === 'undefined' || !window.atualizadorAndroid) return null;
+  const versaoAtual = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : '—';
+  const verificar = async () => {
+    setEstado('verificando');
+    try {
+      const r = await window.atualizadorAndroid.verificar();
+      if (r.nova) { setNova(r.nova); setEstado('tem-nova'); } else setEstado('atualizado');
+    } catch (e) { setEstado('erro'); }
+  };
+  return (
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
+      <div className="flex items-center gap-2 mb-1">
+        <Download size={16} color={GOLD} />
+        <div className="flex-1">
+          <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Atualização do aplicativo</h2>
+          <p className="text-xs text-stone-400">Versão instalada: <b>v{versaoAtual}</b></p>
+        </div>
+      </div>
+      {estado === 'tem-nova' && nova ? (
+        <div className="mt-2">
+          <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: GOLD_SOFT }}>
+            <div className="text-sm font-extrabold" style={{ color: '#7A6234' }}>✨ Versão {nova.versionName} disponível</div>
+            {nova.novidades && <div className="text-xs mt-0.5" style={{ color: '#7A6234' }}>{nova.novidades}</div>}
+          </div>
+          <button onClick={() => window.atualizadorAndroid.baixar(nova.url)}
+            className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2" style={{ background: GOLD, color: INK }}>
+            <Download size={15} /> Baixar e instalar agora
+          </button>
+          <div className="text-xs text-stone-400 mt-1.5">O download abre no navegador — toque no arquivo baixado pra instalar por cima (não perde nada).</div>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <button onClick={verificar} disabled={estado === 'verificando'}
+            className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2"
+            style={{ background: estado === 'verificando' ? '#F0EFEC' : INK, color: estado === 'verificando' ? '#A8A29E' : '#fff' }}>
+            <RotateCw size={15} /> {estado === 'verificando' ? 'Verificando…' : 'Verificar atualização agora'}
+          </button>
+          {estado === 'atualizado' && <div className="text-xs font-bold mt-2 text-center" style={{ color: VERDE }}>Você já está na versão mais recente ✓</div>}
+          {estado === 'erro' && <div className="text-xs font-semibold mt-2 text-center" style={{ color: '#B42318' }}>Não consegui verificar — confira a internet e tente de novo.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, onAbrirDentistas, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab, nomeLab, onSetNomeLab }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
@@ -5329,6 +5379,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
   return (
     <div className="flex flex-col gap-6 lg:max-w-[680px]">
       {cartaoInstalar}
+      <AtualizacaoAppCard />
       <ChavePixCard chavePix={chavePix} onSalvar={onSetChavePix} />
       {/* Autorregulação de tempos */}
       <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #E7E5E4', boxShadow: '0 12px 28px -22px rgba(28,27,25,0.3)' }}>
