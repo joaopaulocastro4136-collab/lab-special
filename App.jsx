@@ -6307,17 +6307,52 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
   const [videoAberto, setVideoAberto] = useState(null);
 
   const [stlAberto, setStlAberto] = useState(null);
+  const [exocadAberto, setExocadAberto] = useState(null); // projeto 3D do exocad (HTML) aberto em tela cheia
   const anexos = caso.anexos || [];
   const fotos = anexos.filter(a => a.categoria === 'foto');
   const arquivos = anexos.filter(a => a.categoria !== 'foto');
 
-  // Deslizar da borda esquerda fecha primeiro o STL/foto/vídeo aberto
+  // Deslizar da borda esquerda fecha primeiro o STL/exocad/foto/vídeo aberto
   useGestoVoltar(() => {
+    if (exocadAberto) { fecharExocad(); return; }
     if (stlAberto) { setStlAberto(null); return; }
     if (videoAberto) { setVideoAberto(null); return; }
     if (fotoAberta) { setFotoAberta(null); return; }
     return false;
   });
+
+  // Anexo antigo salvo como "documento" mas que é um .html do exocad também abre em 3D
+  const ehProjetoExocad = (a) => a.categoria === 'exocad' || /\.html?$/i.test(a.nome || '');
+
+  // Abre o projeto do exocad DENTRO do app: baixa o HTML e mostra num iframe em tela
+  // cheia (o próprio arquivo carrega o visualizador 3D dele). blob: em vez de data:
+  // porque o WebView roda os scripts do iframe normalmente com blob.
+  const abrirExocad = async (a) => {
+    setErro('');
+    setExocadAberto({ nome: a.nome, src: null });
+    try {
+      const data = await getAnexoData(a);
+      if (!data) { setExocadAberto(null); return; }
+      let blob;
+      if (data.url) blob = await (await fetch(data.url)).blob();
+      else {
+        const b64 = String(data.dataURL || '').split(',')[1] || '';
+        const bin = atob(b64);
+        const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        blob = u8;
+      }
+      const tipado = new Blob([blob], { type: 'text/html' });
+      const src = URL.createObjectURL(tipado);
+      setExocadAberto(v => v ? { nome: a.nome, src } : (URL.revokeObjectURL(src), null));
+    } catch (e) {
+      setExocadAberto(null);
+      setErro('Não consegui abrir o projeto — confira a internet e tente de novo.');
+    }
+  };
+  const fecharExocad = () => {
+    setExocadAberto(v => { if (v?.src) setTimeout(() => URL.revokeObjectURL(v.src), 1000); return null; });
+  };
 
   // Abre a tela do 3D NA HORA; formato novo já vem com o link direto do armazém
   const abrirSTL = async (a) => {
@@ -6399,11 +6434,13 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     try {
       const ehSTL = file.name.toLowerCase().endsWith('.stl');
       const ehVideo = (file.type || '').startsWith('video');
+      // Projeto do exocad (webview): um HTML com o 3D embutido — abre dentro do app
+      const ehExocad = /\.html?$/i.test(file.name);
       // O arquivo sobe direto como binário (sem converter p/ texto) — muito mais rápido
       await onAddAnexo({
         nome: file.name,
-        mime: file.type || 'application/octet-stream',
-        categoria: ehSTL ? 'stl' : (ehVideo ? 'video' : 'documento'),
+        mime: ehExocad ? 'text/html' : (file.type || 'application/octet-stream'),
+        categoria: ehSTL ? 'stl' : (ehExocad ? 'exocad' : (ehVideo ? 'video' : 'documento')),
         blob: file,
         tamanho: file.size,
         aoProgresso: setProgresso,
@@ -6452,9 +6489,9 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
     } catch (e) { setErro('Não foi possível abrir este vídeo.'); }
   };
 
-  const IconeArquivo = ({ categoria }) => categoria === 'stl'
+  const IconeArquivo = ({ anexo }) => anexo.categoria === 'stl' || ehProjetoExocad(anexo)
     ? <Box size={18} style={{ color: GOLD }} />
-    : categoria === 'video'
+    : anexo.categoria === 'video'
       ? <Play size={18} style={{ color: GOLD }} />
       : <FileText size={18} className="text-stone-400" />;
 
@@ -6535,11 +6572,11 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
           {arquivos.map(a => (
             <div key={a.id} className="py-2.5 border-t border-stone-100">
               <div className="flex items-center gap-3">
-                <IconeArquivo categoria={a.categoria} />
-                <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : (a.categoria === 'stl' ? abrirSTL(a) : baixar(a))} className="flex-1 min-w-0 text-left">
+                <IconeArquivo anexo={a} />
+                <button onClick={() => a.categoria === 'video' ? abrirVideo(a) : (a.categoria === 'stl' ? abrirSTL(a) : (ehProjetoExocad(a) ? abrirExocad(a) : baixar(a)))} className="flex-1 min-w-0 text-left">
                   <div className="text-sm font-medium truncate" style={{ color: INK }}>{a.nome}</div>
-                  <div className="text-xs" style={{ color: (a.categoria === 'video' || a.categoria === 'stl') ? GOLD : '#A8A29E', fontWeight: (a.categoria === 'video' || a.categoria === 'stl') ? 700 : 400 }}>
-                    {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? '🦷 Ver em 3D' : 'Documento')} • {formatBytes(a.tamanho)}
+                  <div className="text-xs" style={{ color: (a.categoria === 'video' || a.categoria === 'stl' || ehProjetoExocad(a)) ? GOLD : '#A8A29E', fontWeight: (a.categoria === 'video' || a.categoria === 'stl' || ehProjetoExocad(a)) ? 700 : 400 }}>
+                    {a.categoria === 'video' ? '▶ Tocar vídeo' : (a.categoria === 'stl' ? '🦷 Ver em 3D' : (ehProjetoExocad(a) ? '🦷 Abrir projeto 3D (exocad)' : 'Documento'))} • {formatBytes(a.tamanho)}
                   </div>
                 </button>
                 <button onClick={() => baixar(a)} className="p-1.5"><Download size={16} className="text-stone-400" /></button>
@@ -6567,11 +6604,29 @@ function AnexosSection({ caso, onAddAnexo, getAnexoData, onRemoveAnexo, onAtuali
       )}
 
       {anexos.length === 0 && !processando && (
-        <div className="text-xs text-stone-400">Nenhum anexo ainda. Adicione fotos do trabalho, receitas, guias ou arquivos STL (até {LIMITE_ARQUIVO_MB} MB cada).</div>
+        <div className="text-xs text-stone-400">Nenhum anexo ainda. Adicione fotos do trabalho, receitas, guias, arquivos STL ou projetos do exocad (.html) — até {LIMITE_ARQUIVO_MB} MB cada.</div>
       )}
 
       {fotoAberta && <VisorFoto foto={fotoAberta} onFechar={() => setFotoAberta(null)} />}
       {stlAberto && <VisorSTL nome={stlAberto.nome} dataURL={stlAberto.dataURL} url={stlAberto.url} onFechar={() => setStlAberto(null)} />}
+      {exocadAberto && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#141311' }}>
+          <div className="flex items-center gap-2" style={{ padding: '10px 12px', paddingTop: 'calc(10px + env(safe-area-inset-top))', background: '#1C1B19' }}>
+            <button onClick={fecharExocad} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 15 }}>‹</button>
+            <span className="flex-1 truncate" style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: 700 }}>🦷 {exocadAberto.nome}</span>
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: INK, background: GOLD, borderRadius: 999, padding: '3px 8px', letterSpacing: '0.06em' }}>PROJETO 3D</span>
+          </div>
+          {exocadAberto.src ? (
+            <iframe src={exocadAberto.src} title={exocadAberto.nome} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+              <div className="w-9 h-9 rounded-full border-2" style={{ borderColor: 'rgba(255,255,255,0.15)', borderTopColor: GOLD, animation: 'girarExo 0.8s linear infinite' }} />
+              <style>{`@keyframes girarExo { to { transform: rotate(360deg); } }`}</style>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12.5 }}>Carregando o projeto 3D…</div>
+            </div>
+          )}
+        </div>
+      )}
       {videoAberto && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'black' }} onClick={() => setVideoAberto(null)}>
           <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
