@@ -1,6 +1,6 @@
 {
-  "versionCode": 59,
-  "versionName": "11.6",
+  "versionCode": 60,
+  "versionName": "11.7",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Anexe o projeto do exocad (.html) no trabalho e abra o 3D dentro do app — modelo, antagonista e camadas, como no exocad. Atualize em Ajustes → Atualização do aplicativo."
+  "novidades": "Corrige o erro ao abrir o projeto 3D do exocad no Android. Atualize em Ajustes → Atualização do aplicativo."
 }
