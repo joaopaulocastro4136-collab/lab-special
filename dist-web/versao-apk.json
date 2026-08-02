@@ -1,6 +1,6 @@
 {
-  "versionCode": 60,
-  "versionName": "11.7",
+  "versionCode": 61,
+  "versionName": "11.8",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Corrige o erro ao abrir o projeto 3D do exocad no Android. Atualize em Ajustes → Atualização do aplicativo."
+  "novidades": "Agora sim: o projeto 3D do exocad abre no Android (achamos e matamos a causa raiz). Atualize em Ajustes → Atualização do aplicativo."
 }
