@@ -1,6 +1,6 @@
 {
-  "versionCode": 56,
-  "versionName": "11.3",
+  "versionCode": 57,
+  "versionName": "11.4",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Novo em Ajustes: botão \"Verificar atualização agora\" — confere e baixa a versão nova por dentro do próprio app. Toque em Baixar para atualizar."
+  "novidades": "Corrige a tela que deslizava pro lado ao arrastar. Toque em Baixar para atualizar — ou use o novo botão em Ajustes → Atualização do aplicativo."
 }
