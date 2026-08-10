@@ -1713,10 +1713,12 @@ export default function App() {
     }
     if (partes.length === 0) return '';
     const novosRegistros = partes.map((p, i) => ({
-      id: Date.now().toString(36) + i, casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i, casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
       valor: p.valor, participacao: p.pct, funcionarioId: p.funcionarioId, funcionario: p.funcionario, data: todayISO(),
     }));
-    persistComissoes([...novosRegistros, ...comissoes].slice(0, 500));
+    // SEM teto: o registro de comissões é um livro-razão permanente — cortar os antigos
+    // faria a trava anti-duplicação esquecê-los (trabalho antigo refeito pagaria de novo)
+    persistComissoes([...novosRegistros, ...comissoes]);
     return partes.length === 1
       ? ` Comissão de ${formatReais(partes[0].valor)} para ${partes[0].funcionario}.`
       : ` Comissão de ${formatReais(valorComissao)} dividida: ${partes.map(p => `${p.funcionario} ${formatReais(p.valor)} (${p.pct}%)`).join(', ')}.`;
