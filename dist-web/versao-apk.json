@@ -1,6 +1,6 @@
 {
-  "versionCode": 61,
-  "versionName": "11.8",
+  "versionCode": 62,
+  "versionName": "11.9",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Agora sim: o projeto 3D do exocad abre no Android (achamos e matamos a causa raiz). Atualize em Ajustes → Atualização do aplicativo."
+  "novidades": "Comissão visível ANTES de iniciar (valor e fatia de cada etapa) e regra nova: cada trabalho paga UMA vez — refazer não paga de novo. Atualize em Ajustes → Atualização do aplicativo."
 }
