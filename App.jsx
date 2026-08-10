@@ -438,6 +438,21 @@ function etapasCompletas(caso) {
 function finalizadoCompleto(caso) {
   return (caso.status === 'Pronto' || caso.status === 'Entregue') && etapasCompletas(caso);
 }
+// Comissão total configurada pro trabalho (soma dos tipos dos itens) — usada pra
+// MOSTRAR o valor antes de iniciar e pra estimar a fatia de cada etapa
+function comissaoTotalDoCaso(caso, tiposTrabalho) {
+  const nomes = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
+  return nomes.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
+}
+// Fatia estimada de uma etapa na comissão do trabalho (peso = horas da etapa)
+function fatiaComissaoEtapa(caso, etapa, tiposTrabalho) {
+  const total = comissaoTotalDoCaso(caso, tiposTrabalho);
+  if (!(total > 0)) return null;
+  const ativas = (caso.etapas || []).filter(e => !e.pulada);
+  const somaHoras = ativas.reduce((s, e) => s + (Number(e.horas) || 1), 0) || 1;
+  const fracao = (Number(etapa.horas) || 1) / somaHoras;
+  return { total, valor: Math.round(total * fracao * 100) / 100, pct: Math.round(fracao * 100) };
+}
 function enderecoDe(dentistas, nome) {
   const d = dentistas.find(d => d.nome === nome);
   return d?.endereco || '';
@@ -1339,17 +1354,10 @@ export default function App() {
       try {
         const cm = await window.storage.get('comissoes-registro');
         if (cm && cm.value) {
-          let regs = JSON.parse(cm.value);
-          // Conserto: comissão presa de finalização desfeita. Se o trabalho ainda existe
-          // e NÃO está finalizado de verdade, o lançamento é resto de um "finalizei sem
-          // querer e voltei" — sai daqui e volta quando o trabalho for finalizado mesmo.
-          const vivos = window.__casosVivos || [];
-          const limpos = regs.filter(r => { const caso = vivos.find(c => c.id === r.casoId); return !caso || finalizadoCompleto(caso); });
-          if (limpos.length !== regs.length) {
-            regs = limpos;
-            try { await window.storage.set('comissoes-registro', JSON.stringify(regs)); } catch (e2) { /* salva na próxima ação */ }
-          }
-          setComissoes(regs);
+          // Lançamento de comissão é PERMANENTE (regra: um trabalho paga uma vez, mesmo
+          // refeito) — nenhuma limpeza automática aqui; correção é manual, pelo gestor,
+          // no relatório da equipe (reatribuir ou excluir o lançamento).
+          setComissoes(JSON.parse(cm.value));
         }
       } catch (e) { /* sem comissões */ }
       try {
@@ -1462,6 +1470,18 @@ export default function App() {
     setComissoes(novas);
     flashSave(() => window.storage.set('comissoes-registro', JSON.stringify(novas)));
   };
+  // REGRA DE OURO da comissão: cada trabalho paga UMA vez, pra sempre. Reabrir/refazer
+  // o trabalho NÃO apaga o lançamento (fica registrado, com a marca de "refeito") e
+  // refinalizar NÃO paga de novo — senão dava pra voltar as etapas e receber toda hora.
+  // Erro genuíno se corrige manualmente no relatório da equipe (reatribuir/excluir).
+  const marcarComissaoReaberta = (casoId) => {
+    if (!comissoes.some(c => c.casoId === casoId)) return false;
+    if (comissoes.some(c => c.casoId === casoId && !c.reaberto)) {
+      persistComissoes(comissoes.map(c => c.casoId === casoId ? { ...c, reaberto: c.reaberto || todayISO() } : c));
+    }
+    return true;
+  };
+  const MSG_COMISSAO_MANTIDA = ' A comissão deste trabalho já foi registrada e fica valendo — refazer NÃO paga de novo.';
   const persistLogos = (novos) => {
     setLogosRegistros(novos);
     flashSave(() => window.storage.set('logos-registros', JSON.stringify(novos)));
@@ -1635,12 +1655,9 @@ export default function App() {
       patch.status = 'Em Produção';
       patch.dataFinalizado = null;
       patch.dataSaida = null;
-      if (comissoes.some(c => c.casoId === caso.id)) {
-        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
-        aviso = 'Itens atualizados — o trabalho voltou pra produção e a comissão foi desfeita (volta quando finalizar de novo).';
-      } else {
-        aviso = 'Itens atualizados — o trabalho voltou pra produção (tem etapa nova por fazer).';
-      }
+      aviso = marcarComissaoReaberta(caso.id)
+        ? 'Itens atualizados — o trabalho voltou pra produção.' + MSG_COMISSAO_MANTIDA
+        : 'Itens atualizados — o trabalho voltou pra produção (tem etapa nova por fazer).';
     }
     updateCaso(id, patch);
     mostrarAviso(aviso);
@@ -1658,7 +1675,9 @@ export default function App() {
     if (!(valorComissao > 0)) return '';
     // TRAVA: comissão é registrada UMA única vez por trabalho — refinalizar após desfazer não duplica
     if (comissoes.some(c => c.casoId === caso.id)) {
-      return ' Comissão deste trabalho já foi registrada antes — não foi duplicada.';
+      const antigo = comissoes.filter(c => c.casoId === caso.id);
+      const quem = [...new Set(antigo.map(c => c.funcionario).filter(Boolean))].join(', ');
+      return ` Comissão deste trabalho JÁ foi registrada em ${formatDateBR(antigo[0].data)}${quem ? ` (${quem})` : ''} — trabalho refeito não paga de novo.`;
     }
     const participantes = {};
     let totalHorasFeitas = 0;
@@ -1733,13 +1752,11 @@ export default function App() {
     if (deixouDeSerFinalizado) patch.dataFinalizado = null;
     updateCaso(id, patch);
 
-    // Desfez a finalização → a comissão daquele trabalho também volta atrás.
-    // Sem isso, uma finalização por engano deixava a comissão lançada pra sempre
-    // (e a trava anti-duplicação impedia o lançamento certo depois).
+    // Desfez a finalização → a comissão JÁ LANÇADA fica valendo (regra de ouro:
+    // um trabalho paga comissão UMA vez, mesmo refeito). Só marca como "refeito".
     let msgDesfeita = '';
-    if (deixouDeSerFinalizado && comissoes.some(c => c.casoId === caso.id)) {
-      persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
-      msgDesfeita = ' A comissão lançada foi desfeita — ela é registrada de novo quando o trabalho for finalizado.';
+    if (deixouDeSerFinalizado && marcarComissaoReaberta(caso.id)) {
+      msgDesfeita = MSG_COMISSAO_MANTIDA;
     }
     if (voltou) {
       mostrarAviso(`${caso.paciente} voltou para "${novoStatus}".${msgDesfeita}`);
@@ -1861,11 +1878,7 @@ export default function App() {
       patch.status = 'Em Produção';
       patch.dataFinalizado = null;
       patch.dataSaida = null;
-      let msgDesfeita = '';
-      if (comissoes.some(c => c.casoId === caso.id)) {
-        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
-        msgDesfeita = ' A comissão foi desfeita — volta quando finalizar de novo.';
-      }
+      const msgDesfeita = marcarComissaoReaberta(caso.id) ? MSG_COMISSAO_MANTIDA : '';
       mostrarAviso(`${caso.paciente} voltou para "Em Produção".${msgDesfeita}`);
     }
     // Etapa reaberta = trabalho na bancada: sai da fila de entrega (tinha entrado
@@ -1901,11 +1914,7 @@ export default function App() {
       patch.status = 'Em Produção';
       patch.dataFinalizado = null;
       patch.dataSaida = null;
-      let msgDesfeita = '';
-      if (comissoes.some(c => c.casoId === caso.id)) {
-        persistComissoes(comissoes.filter(c => c.casoId !== caso.id));
-        msgDesfeita = ' A comissão foi desfeita — volta quando finalizar de novo.';
-      }
+      const msgDesfeita = marcarComissaoReaberta(caso.id) ? MSG_COMISSAO_MANTIDA : '';
       mostrarAviso(`${caso.paciente} voltou para "Em Produção".${msgDesfeita}`);
     }
     updateCaso(casoId, patch);
@@ -2363,7 +2372,7 @@ export default function App() {
             dia={diaSelecionado} setDia={setDiaSelecionado}
             casosHoje={trabalhoHoje} casosAmanha={trabalhoAmanha}
             casosAgenda={emAndamento}
-            tiposTrabalho={tiposTrabalho} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
+            tiposTrabalho={tiposTrabalho} comissoes={comissoes} horasDia={horasDia} horasPorDia={horasPorDia} diasTrabalho={diasTrabalho} pessoas={pessoas}
             funcionarios={funcionarios} ehGestor={ehGestor}
             onAtribuir={atribuirResponsavel} onSetHorasPessoa={setHorasPessoa}
             ajustesDia={ajustesDia} onSetAjusteDia={setAjusteDoDia}
@@ -2396,6 +2405,7 @@ export default function App() {
             endereco={enderecoDe(dentistas, selectedCaso.dentista)}
             horasRestantes={tempoRestante(selectedCaso, tiposTrabalho)}
             usuarioAtivo={usuarioAtivo}
+            comissaoRegistrada={comissoes.filter(c => c.casoId === selectedCaso.id)}
             onVoltar={() => { setView(origemDetalhe && origemDetalhe !== 'detalhe' ? origemDetalhe : 'lista'); setConfirmandoExclusao(false); }}
             onStatusChange={(s) => updateStatus(selectedCaso.id, s)}
             onIniciarEtapa={(i) => iniciarEtapa(selectedCaso.id, i)}
@@ -2481,6 +2491,7 @@ export default function App() {
             medias={calcularMedias(historicoTempos)}
             onUpdateTipo={(nome, patch) => persistConfig({ tiposTrabalho: tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t) })}
             onReatribuirComissao={reatribuirComissao}
+            onExcluirComissao={(id) => persistComissoes(comissoes.filter(c => c.id !== id))}
             onVoltar={() => setView('dashboard')}
             onAbrirMeu={usuarioAtivo ? () => setView('meu') : null} />
         )}
@@ -2975,7 +2986,7 @@ function SeletorDia({ dia, setDia }) {
   );
 }
 
-function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, horasDia, horasPorDia, diasTrabalho, pessoas, funcionarios, ehGestor, onAtribuir, onSetHorasPessoa, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onMoverDia, onNovo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
+function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabalho, comissoes, horasDia, horasPorDia, diasTrabalho, pessoas, funcionarios, ehGestor, onAtribuir, onSetHorasPessoa, ajustesDia, onSetAjusteDia, onSelect, onFinalizar, onIniciarProducao, onAdiar, onMudarPrazo, onMoverDia, onNovo, onIniciarEtapaAtual, onPararEtapaAtual, onConcluirEtapaAtual }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dataSelecionada, setDataSelecionada] = useState(null);
   const [imagemDia, setImagemDia] = useState(null);
@@ -3046,6 +3057,18 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
             </div>
           </div>
         </button>
+        {/* Comissão visível ANTES de iniciar — quem vai fazer já sabe quanto ganha */}
+        {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (() => {
+          if ((comissoes || []).some(x => x.casoId === c.id)) {
+            return <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F0EFEC', color: '#78716C' }}>🔒 Comissão já registrada — refazer não paga de novo</div>;
+          }
+          const fatia = fatiaComissaoEtapa(c, et, tiposTrabalho);
+          return fatia ? (
+            <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold" style={{ background: '#E8F6ED', color: '#166B3A' }}>
+              💰 Esta etapa: ~{formatReais(fatia.valor)} ({fatia.pct}% da comissão de {formatReais(fatia.total)})
+            </div>
+          ) : null;
+        })()}
         {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (
           <div className="flex gap-2 mt-3">
             {et.inicioExec ? (
@@ -5742,9 +5765,10 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
 }
 
 // ─── Relatório da equipe (só gestor) ───
-function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onVoltar, onAbrirMeu }) {
+function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onExcluirComissao, onVoltar, onAbrirMeu }) {
   const [funcionarioSel, setFuncionarioSel] = useState(null);
   const [corrigindo, setCorrigindo] = useState(null); // id do registro de comissão sendo reatribuído
+  const [excluindo, setExcluindo] = useState(null); // id do lançamento em confirmação de exclusão (exceção do gestor)
   if (!ehGestor) {
     return (
       <div className="text-center py-14 px-4 rounded-2xl bg-white border border-stone-200">
@@ -5844,7 +5868,10 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
                   <DollarSign size={16} style={{ color: VERDE }} className="flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
-                    <div className="text-xs text-stone-400">{formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo'}</div>
+                    <div className="text-xs text-stone-400">
+                      {formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo'}
+                      {c.reaberto ? <span className="font-bold" style={{ color: '#B54708' }}> • trabalho refeito em {formatDateBR(c.reaberto)} (não paga de novo)</span> : null}
+                    </div>
                   </div>
                   <span className="text-sm font-extrabold flex-shrink-0" style={{ color: VERDE }}>{formatReais(c.valor)}</span>
                   {onReatribuirComissao && funcionarios.length > 1 && (
@@ -5852,7 +5879,18 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
                       <RotateCw size={13} style={{ color: corrigindo === c.id ? '#7A6234' : '#78716C' }} />
                     </button>
                   )}
+                  {onExcluirComissao && (
+                    <button onClick={() => setExcluindo(excluindo === c.id ? null : c.id)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: excluindo === c.id ? '#FBEBEA' : '#F0EFEC' }} title="Lançamento errado? Excluir (aí o trabalho volta a poder pagar ao finalizar)">
+                      <Trash2 size={13} style={{ color: excluindo === c.id ? '#B42318' : '#78716C' }} />
+                    </button>
+                  )}
                 </div>
+                {excluindo === c.id && (
+                  <div className="mt-2.5 pt-2.5 border-t border-stone-100">
+                    <div className="text-xs text-stone-500 mb-1.5">Excluir este lançamento? Só use pra <b>erro de verdade</b> — sem ele, o trabalho volta a pagar comissão quando for finalizado.</div>
+                    <button onClick={() => { onExcluirComissao(c.id); setExcluindo(null); }} className="w-full py-2 rounded-lg text-xs font-bold text-white" style={{ background: '#B42318' }}>Confirmar exclusão do lançamento</button>
+                  </div>
+                )}
                 {corrigindo === c.id && (
                   <div className="mt-2.5 pt-2.5 border-t border-stone-100">
                     <div className="text-xs text-stone-400 mb-1.5">Quem fez este trabalho? A comissão vai pra:</div>
@@ -6035,13 +6073,15 @@ function TempoDecorrido({ inicioExec }) {
 }
 
 // ─── Checklist de etapas com cronômetro ───
-function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onAbrirSeletorUsuario }) {
+function EtapasCaso({ caso, usuarioAtivo, tiposTrabalho, comissaoRegistrada, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onAbrirSeletorUsuario }) {
   if (!caso.etapas?.length) return null;
   const ativas = caso.etapas.filter(e => !e.pulada);
   const concluidas = ativas.filter(e => e.concluida).length;
   const total = ativas.length || 1;
   const pct = Math.round((concluidas / total) * 100);
   const idxAtual = caso.etapas.findIndex(e => !e.concluida && !e.pulada);
+  const comissaoTotal = comissaoTotalDoCaso(caso, tiposTrabalho || []);
+  const jaRegistrada = (comissaoRegistrada || []).length > 0;
 
   return (
     <div className="rounded-2xl p-4 bg-white border border-stone-200 mb-5">
@@ -6053,6 +6093,19 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
       <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden mb-2">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? VERDE : GOLD, transition: 'width 0.4s' }} />
       </div>
+
+      {/* Comissão VISÍVEL antes de iniciar: quem for fazer já sabe quanto vale */}
+      {jaRegistrada ? (
+        <div className="mb-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#F0EFEC', color: '#57534E' }}>
+          🔒 Comissão deste trabalho <b>já registrada</b> em {formatDateBR(comissaoRegistrada[0].data)}
+          {comissaoRegistrada[0].funcionario ? <> ({[...new Set(comissaoRegistrada.map(c => c.funcionario).filter(Boolean))].join(', ')})</> : null}
+          {' '}— refazer o trabalho <b>não paga de novo</b>.
+        </div>
+      ) : comissaoTotal > 0 ? (
+        <div className="mb-2 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5" style={{ background: '#E8F6ED', color: '#166B3A' }}>
+          <DollarSign size={13} /> Comissão deste trabalho: <b>{formatReais(comissaoTotal)}</b> — dividida por quem fizer as etapas; cai na conta ao finalizar.
+        </div>
+      ) : null}
 
       {!usuarioAtivo && (
         <button onClick={onAbrirSeletorUsuario} className="w-full mb-2 px-3 py-2 rounded-xl text-xs font-semibold text-left flex items-center gap-2" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
@@ -6093,6 +6146,16 @@ function EtapasCaso({ caso, usuarioAtivo, onIniciarEtapa, onCancelarEtapa, onCon
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-xs text-stone-400">est. {formatHoras(e.horas)}</span>
+                    {(() => {
+                      // Fatia da comissão desta etapa, visível ANTES de iniciar (não mostra se já pagou)
+                      if (e.concluida || jaRegistrada) return null;
+                      const fatia = fatiaComissaoEtapa(caso, e, tiposTrabalho || []);
+                      return fatia ? (
+                        <span className="text-xs font-bold" style={{ color: '#166B3A' }}>
+                          💰 ~{formatReais(fatia.valor)} ({fatia.pct}%)
+                        </span>
+                      ) : null;
+                    })()}
                     {e.prova && (
                       <span className="flex items-center gap-0.5 text-xs font-semibold" style={{ color: ROXO }}>
                         <Stethoscope size={10} /> prova
@@ -6918,7 +6981,7 @@ function IdCopiavel({ id }) {
   );
 }
 
-function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, comissaoRegistrada, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -7127,6 +7190,7 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, onVoltar, o
       </button>
 
       <EtapasCaso caso={caso} usuarioAtivo={usuarioAtivo}
+        tiposTrabalho={tiposTrabalho} comissaoRegistrada={comissaoRegistrada}
         onIniciarEtapa={onIniciarEtapa} onCancelarEtapa={onCancelarEtapa}
         onConcluirEtapa={onConcluirEtapa} onDesfazerEtapa={onDesfazerEtapa} onPularEtapa={onPularEtapa}
         onAbrirSeletorUsuario={onAbrirSeletorUsuario} />
