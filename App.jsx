@@ -1690,16 +1690,38 @@ export default function App() {
   };
 
   // Divide a comissão do tipo proporcionalmente entre quem executou as etapas (peso = horas)
+  // MODO POR ETAPA: paga NA HORA em que a etapa é concluída — o valor cai na conta
+  // do executor imediatamente (Equipe/Meu desempenho atualizam no ato). TRAVA POR
+  // ETAPA: a mesma etapa do mesmo trabalho nunca paga duas vezes, mesmo desfeita e
+  // refeita — o registro é permanente (regra de ouro, agora no nível da etapa).
+  const registrarComissoesPorEtapa = (caso, etapas) => {
+    const jaPaga = (e) => comissoes.some(c => c.casoId === caso.id && c.etapa === e.nome && (c.item || null) === (e.item || null));
+    const pagaveis = (etapas || []).filter(e =>
+      e.concluida && !e.pulada && e.funcionarioId && (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0) > 0 && !jaPaga(e));
+    if (!pagaveis.length) return '';
+    const novos = pagaveis.map((e, i) => ({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i,
+      casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
+      etapa: e.nome, item: e.item || null,
+      valor: comissaoConfigDaEtapa(caso, e, tiposTrabalho),
+      participacao: null, funcionarioId: e.funcionarioId, funcionario: e.funcionario || null, data: todayISO(),
+    }));
+    persistComissoes([...novos, ...comissoes]);
+    const porPessoa = {};
+    novos.forEach(n => { porPessoa[n.funcionario || 'equipe'] = (porPessoa[n.funcionario || 'equipe'] || 0) + n.valor; });
+    return ' 💰 ' + Object.entries(porPessoa).map(([nome, v]) => `${formatReais(v)} na conta de ${nome}`).join(', ') + '.';
+  };
+
   const registrarComissoes = (caso, etapasFinais) => {
-    // MODO POR ETAPA (Equipe → Serviços e comissões): quando o gestor definiu valores
-    // por etapa, a comissão do trabalho é a soma das etapas ativas, e cada executor
-    // recebe exatamente o valor das etapas que fez. Sem valores por etapa, vale o
-    // modo antigo: comissão do tipo dividida proporcionalmente às horas executadas.
-    const porEtapa = temComissaoPorEtapa(caso, tiposTrabalho);
+    // Com valores POR ETAPA, o pagamento acontece a cada conclusão; na finalização
+    // só garante que nenhuma etapa concluída ficou sem registrar (é idempotente).
+    if (temComissaoPorEtapa(caso, tiposTrabalho)) {
+      return registrarComissoesPorEtapa(caso, etapasFinais);
+    }
+    // Modo automático (sem valores por etapa): comissão do tipo dividida
+    // proporcionalmente às horas executadas, registrada na finalização.
     const nomesTipos = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
-    const valorComissao = porEtapa
-      ? Math.round((etapasFinais || []).filter(e => !e.pulada).reduce((s, e) => s + (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0), 0) * 100) / 100
-      : nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
+    const valorComissao = nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
     if (!(valorComissao > 0)) return '';
     // TRAVA: comissão é registrada UMA única vez por trabalho — refinalizar após desfazer não duplica
     if (comissoes.some(c => c.casoId === caso.id)) {
@@ -1713,10 +1735,8 @@ export default function App() {
       if (e.concluida && e.funcionarioId) {
         const peso = e.horas || 1;
         totalHorasFeitas += peso;
-        if (!participantes[e.funcionarioId]) participantes[e.funcionarioId] = { nome: e.funcionario, horas: 0, valor: 0 };
+        if (!participantes[e.funcionarioId]) participantes[e.funcionarioId] = { nome: e.funcionario, horas: 0 };
         participantes[e.funcionarioId].horas += peso;
-        // Modo por etapa: cada executor acumula o valor exato das etapas que fez
-        if (porEtapa) participantes[e.funcionarioId].valor += (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0);
       }
     });
     const ids = Object.keys(participantes);
@@ -1729,14 +1749,6 @@ export default function App() {
         const nomeResp = caso.responsavel || funcionarios.find(f => f.id === caso.responsavelId)?.nome;
         partes = [{ funcionarioId: caso.responsavelId, funcionario: nomeResp, valor: valorComissao, pct: 100 }];
       } else if (usuarioAtivo) partes = [{ funcionarioId: usuarioAtivo.id, funcionario: usuarioAtivo.nome, valor: valorComissao, pct: 100 }];
-    } else if (porEtapa) {
-      partes = ids
-        .map(fid => ({
-          funcionarioId: fid, funcionario: participantes[fid].nome,
-          valor: Math.round(participantes[fid].valor * 100) / 100,
-          pct: Math.round((participantes[fid].valor / valorComissao) * 100),
-        }))
-        .filter(p => p.valor > 0);
     } else {
       let acumulado = 0;
       partes = ids.map((fid, idx) => {
@@ -1902,7 +1914,9 @@ export default function App() {
       patch.provaPendente = true;
       patch.naClinica = false;
       updateCaso(casoId, patch);
-      criarNotificacao('clinica', `"${etapa.nome}" concluída${quemFez}${tempoTxt} — ${nome} aguardando ENTREGA na clínica de ${caso.dentista}. Veja em Entregas.`, casoId);
+      // Comissão POR ETAPA cai NA HORA da conclusão — direto na conta do executor
+      const msgComissao = temComissaoPorEtapa(caso, tiposTrabalho) ? registrarComissoesPorEtapa(caso, novasEtapas) : '';
+      criarNotificacao('clinica', `"${etapa.nome}" concluída${quemFez}${tempoTxt} — ${nome} aguardando ENTREGA na clínica de ${caso.dentista}. Veja em Entregas.${msgComissao}`, casoId);
     }
   };
   const desfazerEtapa = (casoId, indice) => {
@@ -3099,6 +3113,16 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
         </button>
         {/* Comissão visível ANTES de iniciar — quem vai fazer já sabe quanto ganha */}
         {et && !c.naClinica && !c.provaPendente && c.status !== 'Pronto' && (() => {
+          if (temComissaoPorEtapa(c, tiposTrabalho)) {
+            const pago = (comissoes || []).some(x => x.casoId === c.id && x.etapa === et.nome && (x.item || null) === (et.item || null));
+            if (pago) return <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F0EFEC', color: '#78716C' }}>💰 Etapa já paga — refazer não paga de novo</div>;
+            const v = comissaoConfigDaEtapa(c, et, tiposTrabalho);
+            return v ? (
+              <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold" style={{ background: '#E8F6ED', color: '#166B3A' }}>
+                💰 Esta etapa: {formatReais(v)}
+              </div>
+            ) : null;
+          }
           if ((comissoes || []).some(x => x.casoId === c.id)) {
             return <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F0EFEC', color: '#78716C' }}>🔒 Comissão já registrada — refazer não paga de novo</div>;
           }
@@ -6082,7 +6106,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
                     <div className="text-xs text-stone-400">
-                      {formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo'}
+                      {formatDateBR(c.data)}{c.etapa ? ` • etapa: ${c.etapa}` : (c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ' • trabalho completo')}
                       {c.reaberto ? <span className="font-bold" style={{ color: '#B54708' }}> • trabalho refeito em {formatDateBR(c.reaberto)} (não paga de novo)</span> : null}
                     </div>
                   </div>
@@ -6242,7 +6266,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
               <DollarSign size={16} style={{ color: VERDE }} className="flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
-                <div className="text-xs text-stone-400">{c.funcionario} • {formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ''}</div>
+                <div className="text-xs text-stone-400">{c.funcionario} • {formatDateBR(c.data)}{c.etapa ? ` • etapa: ${c.etapa}` : (c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : '')}</div>
               </div>
               <span className="text-sm font-extrabold flex-shrink-0" style={{ color: VERDE }}>{formatReais(c.valor)}</span>
             </div>
@@ -6313,8 +6337,10 @@ function EtapasCaso({ caso, usuarioAtivo, tiposTrabalho, comissaoRegistrada, onI
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? VERDE : GOLD, transition: 'width 0.4s' }} />
       </div>
 
-      {/* Comissão visível antes de iniciar — só o VALOR, simples (pedido do gestor) */}
-      {jaRegistrada && (
+      {/* Comissão visível antes de iniciar — só o VALOR, simples (pedido do gestor).
+          No modo por etapa o cadeado é POR ETAPA (chip "pago ✔" em cada uma);
+          o aviso por trabalho vale só pro modo automático. */}
+      {jaRegistrada && !temComissaoPorEtapa(caso, tiposTrabalho || []) && (
         <div className="mb-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#F0EFEC', color: '#57534E' }}>
           🔒 Comissão deste trabalho <b>já registrada</b> em {formatDateBR(comissaoRegistrada[0].data)}
           {comissaoRegistrada[0].funcionario ? <> ({[...new Set(comissaoRegistrada.map(c => c.funcionario).filter(Boolean))].join(', ')})</> : null}
@@ -6362,7 +6388,15 @@ function EtapasCaso({ caso, usuarioAtivo, tiposTrabalho, comissaoRegistrada, onI
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-xs text-stone-400">est. {formatHoras(e.horas)}</span>
                     {(() => {
-                      // Comissão da etapa, visível ANTES de iniciar — só o valor, simples
+                      // Comissão da etapa — só o valor, simples. Modo por etapa:
+                      // "pago ✔" quando já caiu na conta (e refazer não paga de novo)
+                      if (temComissaoPorEtapa(caso, tiposTrabalho || [])) {
+                        const pago = (comissaoRegistrada || []).some(c => c.etapa === e.nome && (c.item || null) === (e.item || null));
+                        if (pago) return <span className="text-xs font-bold" style={{ color: e.concluida ? VERDE : '#A8A29E' }}>💰 pago ✔</span>;
+                        if (e.concluida) return null;
+                        const v = comissaoConfigDaEtapa(caso, e, tiposTrabalho || []);
+                        return v ? <span className="text-xs font-bold" style={{ color: '#166B3A' }}>💰 {formatReais(v)}</span> : null;
+                      }
                       if (e.concluida || jaRegistrada) return null;
                       const v = valorComissaoEtapa(caso, e, tiposTrabalho || []);
                       return v ? (
@@ -7535,7 +7569,7 @@ function MeuView({ usuarioAtivo, comissoes, historicoTempos, tiposTrabalho, onVo
               <DollarSign size={16} style={{ color: VERDE }} className="flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate" style={{ color: INK }}>{c.paciente} • {c.tipoTrabalho}</div>
-                <div className="text-xs text-stone-400">{formatDateBR(c.data)}{c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : ''}</div>
+                <div className="text-xs text-stone-400">{formatDateBR(c.data)}{c.etapa ? ` • etapa: ${c.etapa}` : (c.participacao && c.participacao < 100 ? ` • ${c.participacao}% do trabalho` : '')}</div>
               </div>
               <span className="text-sm font-extrabold flex-shrink-0" style={{ color: VERDE }}>{formatReais(c.valor)}</span>
             </div>
