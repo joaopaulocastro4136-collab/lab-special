@@ -453,6 +453,28 @@ function fatiaComissaoEtapa(caso, etapa, tiposTrabalho) {
   const fracao = (Number(etapa.horas) || 1) / somaHoras;
   return { total, valor: Math.round(total * fracao * 100) / 100, pct: Math.round(fracao * 100) };
 }
+// Valor de comissão CONFIGURADO pra etapa (Equipe → Serviços e comissões).
+// O gestor define quanto paga POR ETAPA — controle manual, nada só automático.
+function comissaoConfigDaEtapa(caso, etapa, tiposTrabalho) {
+  const tipo = (tiposTrabalho || []).find(t => t.nome === (etapa.item || caso.tipoTrabalho));
+  const cfg = tipo?.etapas?.find(x => x.nome === etapa.nome);
+  const v = Number(cfg?.comissao);
+  return v > 0 ? v : null;
+}
+// O trabalho usa comissão POR ETAPA? (alguma etapa dos tipos dele tem valor definido)
+function temComissaoPorEtapa(caso, tiposTrabalho) {
+  const nomes = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
+  return nomes.some(n => ((tiposTrabalho || []).find(t => t.nome === n)?.etapas || []).some(e => Number(e.comissao) > 0));
+}
+// O que a etapa paga: o valor definido pelo gestor; sem definição no modo por etapa,
+// a etapa não paga; sem modo por etapa, estimativa proporcional às horas (como antes)
+function valorComissaoEtapa(caso, etapa, tiposTrabalho) {
+  const cfg = comissaoConfigDaEtapa(caso, etapa, tiposTrabalho);
+  if (cfg !== null) return { valor: cfg, exato: true };
+  if (temComissaoPorEtapa(caso, tiposTrabalho)) return null;
+  const fatia = fatiaComissaoEtapa(caso, etapa, tiposTrabalho);
+  return fatia ? { valor: fatia.valor, exato: false } : null;
+}
 function enderecoDe(dentistas, nome) {
   const d = dentistas.find(d => d.nome === nome);
   return d?.endereco || '';
@@ -1669,9 +1691,15 @@ export default function App() {
 
   // Divide a comissão do tipo proporcionalmente entre quem executou as etapas (peso = horas)
   const registrarComissoes = (caso, etapasFinais) => {
-    // Com vários itens, a comissão do trabalho é a soma das comissões de cada item
+    // MODO POR ETAPA (Equipe → Serviços e comissões): quando o gestor definiu valores
+    // por etapa, a comissão do trabalho é a soma das etapas ativas, e cada executor
+    // recebe exatamente o valor das etapas que fez. Sem valores por etapa, vale o
+    // modo antigo: comissão do tipo dividida proporcionalmente às horas executadas.
+    const porEtapa = temComissaoPorEtapa(caso, tiposTrabalho);
     const nomesTipos = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
-    const valorComissao = nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
+    const valorComissao = porEtapa
+      ? Math.round((etapasFinais || []).filter(e => !e.pulada).reduce((s, e) => s + (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0), 0) * 100) / 100
+      : nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
     if (!(valorComissao > 0)) return '';
     // TRAVA: comissão é registrada UMA única vez por trabalho — refinalizar após desfazer não duplica
     if (comissoes.some(c => c.casoId === caso.id)) {
@@ -1685,8 +1713,10 @@ export default function App() {
       if (e.concluida && e.funcionarioId) {
         const peso = e.horas || 1;
         totalHorasFeitas += peso;
-        if (!participantes[e.funcionarioId]) participantes[e.funcionarioId] = { nome: e.funcionario, horas: 0 };
+        if (!participantes[e.funcionarioId]) participantes[e.funcionarioId] = { nome: e.funcionario, horas: 0, valor: 0 };
         participantes[e.funcionarioId].horas += peso;
+        // Modo por etapa: cada executor acumula o valor exato das etapas que fez
+        if (porEtapa) participantes[e.funcionarioId].valor += (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0);
       }
     });
     const ids = Object.keys(participantes);
@@ -1699,6 +1729,14 @@ export default function App() {
         const nomeResp = caso.responsavel || funcionarios.find(f => f.id === caso.responsavelId)?.nome;
         partes = [{ funcionarioId: caso.responsavelId, funcionario: nomeResp, valor: valorComissao, pct: 100 }];
       } else if (usuarioAtivo) partes = [{ funcionarioId: usuarioAtivo.id, funcionario: usuarioAtivo.nome, valor: valorComissao, pct: 100 }];
+    } else if (porEtapa) {
+      partes = ids
+        .map(fid => ({
+          funcionarioId: fid, funcionario: participantes[fid].nome,
+          valor: Math.round(participantes[fid].valor * 100) / 100,
+          pct: Math.round((participantes[fid].valor / valorComissao) * 100),
+        }))
+        .filter(p => p.valor > 0);
     } else {
       let acumulado = 0;
       partes = ids.map((fid, idx) => {
@@ -3064,10 +3102,10 @@ function DiaView({ dia, setDia, casosHoje, casosAmanha, casosAgenda, tiposTrabal
           if ((comissoes || []).some(x => x.casoId === c.id)) {
             return <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#F0EFEC', color: '#78716C' }}>🔒 Comissão já registrada — refazer não paga de novo</div>;
           }
-          const fatia = fatiaComissaoEtapa(c, et, tiposTrabalho);
-          return fatia ? (
+          const v = valorComissaoEtapa(c, et, tiposTrabalho);
+          return v ? (
             <div className="mt-2.5 px-2.5 py-1.5 rounded-lg text-xs font-bold" style={{ background: '#E8F6ED', color: '#166B3A' }}>
-              💰 Esta etapa: ~{formatReais(fatia.valor)} ({fatia.pct}% da comissão de {formatReais(fatia.total)})
+              💰 Esta etapa: {formatReais(v.valor)}
             </div>
           ) : null;
         })()}
@@ -5767,6 +5805,99 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
 }
 
 // ─── Relatório da equipe (só gestor) ───
+// Equipe → Serviços e comissões: o gestor controla as etapas de cada serviço e o
+// VALOR que paga por cada etapa. Com valores definidos, a comissão deixa de ser
+// automática — paga exatamente o que o gestor decidiu, etapa por etapa.
+function ServicosComissoesCard({ tiposTrabalho, onUpdateTipo }) {
+  const [aberto, setAberto] = useState(false);
+  const [tipoAberto, setTipoAberto] = useState(null);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoValor, setNovoValor] = useState('');
+  const [removendo, setRemovendo] = useState(null); // "tipo|etapa" aguardando confirmação
+  const numero = (v) => Math.max(0, Number(String(v).replace(',', '.')) || 0);
+  const mudarValor = (tipo, etapaNome, v) => {
+    onUpdateTipo(tipo.nome, { etapas: (tipo.etapas || []).map(et => et.nome === etapaNome ? { ...et, comissao: numero(v) } : et) });
+  };
+  const addEtapa = (tipo) => {
+    const nome = novoNome.trim();
+    if (!nome || (tipo.etapas || []).some(et => et.nome.toLowerCase() === nome.toLowerCase())) return;
+    onUpdateTipo(tipo.nome, { etapas: [...(tipo.etapas || []), { nome, horas: 1, dias: 1, prova: false, comissao: numero(novoValor) }] });
+    setNovoNome(''); setNovoValor('');
+  };
+  return (
+    <div className="rounded-2xl bg-white border border-stone-200 mb-5 overflow-hidden">
+      <button onClick={() => setAberto(a => !a)} className="w-full flex items-center gap-2 p-4 text-left">
+        <DollarSign size={16} color={GOLD} />
+        <div className="flex-1">
+          <div className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Serviços e comissões</div>
+          <div className="text-xs text-stone-400">As etapas de cada serviço e quanto você paga por etapa</div>
+        </div>
+        <ChevronDown size={16} className="text-stone-400" style={{ transform: aberto ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3">
+          {tiposTrabalho.map(tipo => {
+            const etapas = tipo.etapas || [];
+            const somaEtapas = etapas.reduce((s, et) => s + (Number(et.comissao) || 0), 0);
+            const modoEtapa = somaEtapas > 0;
+            const expandido = tipoAberto === tipo.nome;
+            return (
+              <div key={tipo.nome} className="rounded-xl border border-stone-200 mb-2 overflow-hidden">
+                <button onClick={() => { setTipoAberto(expandido ? null : tipo.nome); setNovoNome(''); setNovoValor(''); setRemovendo(null); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-left" style={{ background: expandido ? '#F8F6F1' : '#fff' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate" style={{ color: INK }}>{tipo.nome}</div>
+                    <div className="text-xs" style={{ color: modoEtapa ? '#166B3A' : '#A8A29E' }}>
+                      {modoEtapa
+                        ? `paga por etapa — total ${formatReais(somaEtapas)}`
+                        : ((tipo.comissao || 0) > 0 ? `automática: ${formatReais(tipo.comissao)} dividida por horas` : 'sem comissão definida')}
+                    </div>
+                  </div>
+                  <span className="text-xs text-stone-400 flex-shrink-0">{etapas.length} {etapas.length === 1 ? 'etapa' : 'etapas'}</span>
+                  <ChevronDown size={14} className="text-stone-300 flex-shrink-0" style={{ transform: expandido ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform 0.15s' }} />
+                </button>
+                {expandido && (
+                  <div className="px-3 pb-3 pt-1">
+                    {etapas.map(et => (
+                      <div key={et.nome} className="flex items-center gap-2 py-2" style={{ borderBottom: '1px solid #F5F5F4' }}>
+                        <div className="flex-1 min-w-0 text-sm font-medium truncate" style={{ color: INK }}>{et.nome}</div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-xs text-stone-400">R$</span>
+                          <input type="number" inputMode="decimal" min="0" step="0.5" defaultValue={et.comissao || ''}
+                            onBlur={e => mudarValor(tipo, et.nome, e.target.value)} placeholder="0"
+                            className="rounded-lg border border-stone-200 text-sm outline-none text-right"
+                            style={{ width: 74, padding: '6px 8px', minWidth: 0 }} />
+                        </div>
+                        {removendo === `${tipo.nome}|${et.nome}` ? (
+                          <button onClick={() => { onUpdateTipo(tipo.nome, { etapas: etapas.filter(x => x.nome !== et.nome) }); setRemovendo(null); }}
+                            className="px-2 py-1.5 rounded-lg text-white font-bold flex-shrink-0" style={{ background: '#B42318', fontSize: 10 }}>retirar?</button>
+                        ) : (
+                          <button onClick={() => setRemovendo(`${tipo.nome}|${et.nome}`)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#F0EFEC' }}>
+                            <Trash2 size={12} style={{ color: '#78716C' }} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 pt-2.5">
+                      <input value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Nova etapa (ex.: Glaze)"
+                        className="flex-1 rounded-lg border border-stone-200 text-sm outline-none" style={{ padding: '7px 10px', minWidth: 0 }} />
+                      <input type="number" inputMode="decimal" min="0" value={novoValor} onChange={e => setNovoValor(e.target.value)} placeholder="R$"
+                        className="rounded-lg border border-stone-200 text-sm outline-none text-right" style={{ width: 64, padding: '7px 8px', minWidth: 0 }} />
+                      <button onClick={() => addEtapa(tipo)} disabled={!novoNome.trim()} className="px-2.5 py-2 rounded-lg text-white flex-shrink-0" style={{ background: novoNome.trim() ? INK : '#D6D3D1' }}>
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <div className="text-xs text-stone-400 mt-2 leading-relaxed">Com valores por etapa, cada pessoa recebe <b>exatamente o valor das etapas que fez</b> — e é isso que aparece pra ela antes de iniciar. Deixe tudo em 0 pra voltar ao modo automático (comissão do serviço dividida por horas).</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onExcluirComissao, onVoltar, onAbrirMeu }) {
   const [funcionarioSel, setFuncionarioSel] = useState(null);
   const [corrigindo, setCorrigindo] = useState(null); // id do registro de comissão sendo reatribuído
@@ -5832,6 +5963,59 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
             <div className="text-xs text-stone-500">tempo de bancada ({mesNome})</div>
           </div>
         </div>
+
+        {/* Médias REAIS por serviço/etapa + alerta de discrepância (2x mais lento que a média) */}
+        {(() => {
+          const grupos = {};
+          meusTempos.forEach(h => {
+            const k = `${h.tipo}|${h.etapa}`;
+            (grupos[k] = grupos[k] || []).push(h);
+          });
+          const linhas = Object.entries(grupos).map(([k, regs]) => {
+            const [tipo, etapa] = k.split('|');
+            const media = regs.reduce((s, r) => s + r.minutos, 0) / regs.length;
+            const ultimo = regs[0]; // histórico é mais novo primeiro
+            const anteriores = regs.slice(1);
+            const mediaAnt = anteriores.length ? anteriores.reduce((s, r) => s + r.minutos, 0) / anteriores.length : null;
+            // Discrepância: o último tempo deu 2x (ou mais) a média do que ele fazia antes
+            const alerta = anteriores.length >= 2 && mediaAnt > 0 && ultimo.minutos >= mediaAnt * 2;
+            return { tipo, etapa, n: regs.length, media, ultimo, mediaAnt, alerta };
+          }).sort((a, b) => (b.alerta ? 1 : 0) - (a.alerta ? 1 : 0) || b.n - a.n);
+          const alertas = linhas.filter(l => l.alerta);
+          if (linhas.length === 0) return null;
+          return (
+            <div className="mb-6">
+              <h2 className="text-sm font-bold mb-1" style={{ color: INK }}>Médias por serviço</h2>
+              <p className="text-xs text-stone-400 mb-3">O tempo REAL que {f.nome.split(' ')[0]} leva em cada etapa, por tipo de trabalho.</p>
+              {alertas.length > 0 && (
+                <div className="rounded-xl px-3 py-2.5 mb-2 text-xs font-bold" style={{ background: '#FCE4E4', color: '#B42318' }}>
+                  ⚠ {alertas.length === 1 ? 'Discrepância detectada' : `${alertas.length} discrepâncias detectadas`}: o último tempo deu o dobro (ou mais) da média — vale conferir o que houve.
+                </div>
+              )}
+              <div className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
+                {linhas.slice(0, 30).map((l, i) => (
+                  <div key={i} className="px-4 py-2.5" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none', background: l.alerta ? '#FEF6F5' : 'transparent' }}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate" style={{ color: INK }}>{l.etapa}</div>
+                        <div className="text-xs text-stone-400 truncate">{l.tipo} • {l.n} {l.n === 1 ? 'registro' : 'registros'}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-extrabold" style={{ color: l.alerta ? '#B42318' : INK }}>{formatMinutos(Math.round(l.media))}</div>
+                        <div className="text-xs text-stone-400">média</div>
+                      </div>
+                    </div>
+                    {l.alerta && (
+                      <div className="mt-1 text-xs font-semibold" style={{ color: '#B42318' }}>
+                        ⚠ Último: {formatMinutos(l.ultimo.minutos)} em {formatDateBR(l.ultimo.data)} — antes fazia em ~{formatMinutos(Math.round(l.mediaAnt))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         <h2 className="text-sm font-bold mb-3" style={{ color: INK }}>Etapas executadas (cronometradas)</h2>
         {meusTempos.length === 0 ? (
@@ -5952,8 +6136,14 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
       </div>
 
-      <h2 className="font-bold mb-1" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Produção por funcionário ({mesNome})</h2>
-      <p className="text-xs text-stone-400 mb-3">Toque num funcionário para abrir a ficha dele: etapas executadas, tempos e comissões por serviço.</p>
+      {/* Serviços e comissões: o gestor controla o valor pago por etapa */}
+      <ServicosComissoesCard tiposTrabalho={tiposTrabalho} onUpdateTipo={onUpdateTipo} />
+
+      <div className="flex items-center gap-2 mb-1">
+        <Users size={15} color={GOLD} />
+        <h2 className="font-bold" style={{ color: '#7A6234', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Time ({porFuncionario.length})</h2>
+      </div>
+      <p className="text-xs text-stone-400 mb-3">Toque em alguém pra abrir a ficha: médias reais por serviço, alertas de discrepância, etapas e comissões.</p>
       {porFuncionario.length === 0 ? (
         <div className="text-center py-8 rounded-2xl bg-white border border-stone-200 text-stone-400 text-sm">Nenhum funcionário cadastrado.</div>
       ) : (
@@ -6096,18 +6286,14 @@ function EtapasCaso({ caso, usuarioAtivo, tiposTrabalho, comissaoRegistrada, onI
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? VERDE : GOLD, transition: 'width 0.4s' }} />
       </div>
 
-      {/* Comissão VISÍVEL antes de iniciar: quem for fazer já sabe quanto vale */}
-      {jaRegistrada ? (
+      {/* Comissão visível antes de iniciar — só o VALOR, simples (pedido do gestor) */}
+      {jaRegistrada && (
         <div className="mb-2 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#F0EFEC', color: '#57534E' }}>
           🔒 Comissão deste trabalho <b>já registrada</b> em {formatDateBR(comissaoRegistrada[0].data)}
           {comissaoRegistrada[0].funcionario ? <> ({[...new Set(comissaoRegistrada.map(c => c.funcionario).filter(Boolean))].join(', ')})</> : null}
           {' '}— refazer o trabalho <b>não paga de novo</b>.
         </div>
-      ) : comissaoTotal > 0 ? (
-        <div className="mb-2 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5" style={{ background: '#E8F6ED', color: '#166B3A' }}>
-          <DollarSign size={13} /> Comissão deste trabalho: <b>{formatReais(comissaoTotal)}</b> — dividida por quem fizer as etapas; cai na conta ao finalizar.
-        </div>
-      ) : null}
+      )}
 
       {!usuarioAtivo && (
         <button onClick={onAbrirSeletorUsuario} className="w-full mb-2 px-3 py-2 rounded-xl text-xs font-semibold text-left flex items-center gap-2" style={{ background: GOLD_SOFT, color: '#7A6234' }}>
@@ -6149,12 +6335,12 @@ function EtapasCaso({ caso, usuarioAtivo, tiposTrabalho, comissaoRegistrada, onI
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="text-xs text-stone-400">est. {formatHoras(e.horas)}</span>
                     {(() => {
-                      // Fatia da comissão desta etapa, visível ANTES de iniciar (não mostra se já pagou)
+                      // Comissão da etapa, visível ANTES de iniciar — só o valor, simples
                       if (e.concluida || jaRegistrada) return null;
-                      const fatia = fatiaComissaoEtapa(caso, e, tiposTrabalho || []);
-                      return fatia ? (
+                      const v = valorComissaoEtapa(caso, e, tiposTrabalho || []);
+                      return v ? (
                         <span className="text-xs font-bold" style={{ color: '#166B3A' }}>
-                          💰 ~{formatReais(fatia.valor)} ({fatia.pct}%)
+                          💰 {formatReais(v.valor)}
                         </span>
                       ) : null;
                     })()}
