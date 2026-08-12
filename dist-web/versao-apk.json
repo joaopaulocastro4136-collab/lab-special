@@ -1,6 +1,6 @@
 {
-  "versionCode": 62,
-  "versionName": "11.9",
+  "versionCode": 63,
+  "versionName": "12.0",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Comissão visível ANTES de iniciar (valor e fatia de cada etapa) e regra nova: cada trabalho paga UMA vez — refazer não paga de novo. Atualize em Ajustes → Atualização do aplicativo."
+  "novidades": "Você no controle: defina o valor da comissão de CADA etapa em Equipe → Serviços e comissões. Pasta Time com médias reais e alerta de discrepância. Atualize em Ajustes → Atualização do aplicativo."
 }
