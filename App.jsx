@@ -4208,7 +4208,10 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
   };
 
   const salvar = () => {
-    onUpdateTipo(tipo.nome, { etapas, comissao, valor });
+    // Comissão do trabalho ESPELHA a soma das etapas quando há valores por etapa
+    // (mantém Ajustes e Equipe → Serviços e comissões sempre iguais)
+    const somaEtapas = Math.round((etapas || []).reduce((s, et) => s + (Number(et.comissao) || 0), 0) * 100) / 100;
+    onUpdateTipo(tipo.nome, { etapas, comissao: somaEtapas > 0 ? somaEtapas : comissao, valor });
     setSalvo(true);
     setTimeout(() => setSalvo(false), 2500);
   };
@@ -4231,9 +4234,21 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
       <div className="flex items-center gap-2 pb-2.5 mb-1 border-b border-stone-200">
         <Users size={14} style={{ color: GOLD }} />
         <span className="text-xs font-semibold flex-1" style={{ color: INK }}>Comissão por trabalho:</span>
-        <span className="text-xs text-stone-400">R$</span>
-        <InputNumero className="px-2 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center" style={{ width: '72px' }}
-          valor={comissao} min={0} onValor={v => { setComissao(v); setSalvo(false); }} />
+        {(() => {
+          // CONECTADO com Equipe → Serviços e comissões: com valores por etapa,
+          // a comissão do trabalho é a SOMA das etapas (mesma coisa nas duas telas)
+          const somaEtapas = (etapas || []).reduce((s, et) => s + (Number(et.comissao) || 0), 0);
+          if (somaEtapas > 0) {
+            return <span className="text-xs font-bold" style={{ color: '#166B3A' }}>{formatReais(somaEtapas)} — soma das etapas 💰 abaixo</span>;
+          }
+          return (
+            <>
+              <span className="text-xs text-stone-400">R$</span>
+              <InputNumero className="px-2 py-1 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center" style={{ width: '72px' }}
+                valor={comissao} min={0} onValor={v => { setComissao(v); setSalvo(false); }} />
+            </>
+          );
+        })()}
       </div>
 
       {etapas.map((e, i) => {
@@ -4258,6 +4273,13 @@ function EditorEtapas({ tipo, onUpdateTipo, medias }) {
               <button onClick={() => { setEtapasDraft(etapas.filter((_, j) => j !== i)); setSalvo(false); }} className="p-0.5 flex-shrink-0">
                 <Trash2 size={13} className="text-stone-300" />
               </button>
+            </div>
+            {/* Comissão da etapa — o MESMO valor editado em Equipe → Serviços e comissões */}
+            <div className="flex items-center gap-1.5 ml-6 mt-1">
+              <span className="text-xs" style={{ color: '#166B3A' }}>💰 comissão</span>
+              <span className="text-xs text-stone-400">R$</span>
+              <InputNumero className="px-1.5 py-0.5 rounded-lg border border-stone-200 text-xs outline-none bg-white text-center flex-shrink-0" style={{ width: '56px' }}
+                valor={e.comissao ?? 0} min={0} onValor={v => { setEtapasDraft(etapas.map((et, j) => j === i ? { ...et, comissao: v } : et)); setSalvo(false); }} />
             </div>
             {m && (
               <div className="flex items-center gap-2 ml-6 mt-0.5">
@@ -5815,13 +5837,18 @@ function ServicosComissoesCard({ tiposTrabalho, onUpdateTipo }) {
   const [novoValor, setNovoValor] = useState('');
   const [removendo, setRemovendo] = useState(null); // "tipo|etapa" aguardando confirmação
   const numero = (v) => Math.max(0, Number(String(v).replace(',', '.')) || 0);
+  // Toda mudança espelha a comissão do trabalho = soma das etapas (conectado com Ajustes)
+  const salvarEtapas = (tipo, novasEtapas) => {
+    const soma = Math.round(novasEtapas.reduce((s, et) => s + (Number(et.comissao) || 0), 0) * 100) / 100;
+    onUpdateTipo(tipo.nome, soma > 0 ? { etapas: novasEtapas, comissao: soma } : { etapas: novasEtapas });
+  };
   const mudarValor = (tipo, etapaNome, v) => {
-    onUpdateTipo(tipo.nome, { etapas: (tipo.etapas || []).map(et => et.nome === etapaNome ? { ...et, comissao: numero(v) } : et) });
+    salvarEtapas(tipo, (tipo.etapas || []).map(et => et.nome === etapaNome ? { ...et, comissao: numero(v) } : et));
   };
   const addEtapa = (tipo) => {
     const nome = novoNome.trim();
     if (!nome || (tipo.etapas || []).some(et => et.nome.toLowerCase() === nome.toLowerCase())) return;
-    onUpdateTipo(tipo.nome, { etapas: [...(tipo.etapas || []), { nome, horas: 1, dias: 1, prova: false, comissao: numero(novoValor) }] });
+    salvarEtapas(tipo, [...(tipo.etapas || []), { nome, horas: 1, dias: 1, prova: false, comissao: numero(novoValor) }]);
     setNovoNome(''); setNovoValor('');
   };
   return (
@@ -5868,7 +5895,7 @@ function ServicosComissoesCard({ tiposTrabalho, onUpdateTipo }) {
                             style={{ width: 74, padding: '6px 8px', minWidth: 0 }} />
                         </div>
                         {removendo === `${tipo.nome}|${et.nome}` ? (
-                          <button onClick={() => { onUpdateTipo(tipo.nome, { etapas: etapas.filter(x => x.nome !== et.nome) }); setRemovendo(null); }}
+                          <button onClick={() => { salvarEtapas(tipo, etapas.filter(x => x.nome !== et.nome)); setRemovendo(null); }}
                             className="px-2 py-1.5 rounded-lg text-white font-bold flex-shrink-0" style={{ background: '#B42318', fontSize: 10 }}>retirar?</button>
                         ) : (
                           <button onClick={() => setRemovendo(`${tipo.nome}|${et.nome}`)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#F0EFEC' }}>
