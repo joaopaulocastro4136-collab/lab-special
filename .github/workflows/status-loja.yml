@@ -5,6 +5,9 @@ name: Status da loja
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/status-loja.yml
 
 jobs:
   status:
