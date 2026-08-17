@@ -1,6 +1,6 @@
 {
-  "versionCode": 63,
-  "versionName": "12.0",
+  "versionCode": 66,
+  "versionName": "12.3",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "Você no controle: defina o valor da comissão de CADA etapa em Equipe → Serviços e comissões. Pasta Time com médias reais e alerta de discrepância. Atualize em Ajustes → Atualização do aplicativo."
+  "novidades": "Trabalhos antigos agora se alinham sozinhos à configuração atual dos serviços: etapa nova entra, etapa retirada sai, e o que já foi feito fica. Com isso os antigos também contam a comissão por etapa."
 }
