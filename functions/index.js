@@ -299,12 +299,25 @@ exports.transformarSorriso = onCall(
     });
     if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário da IA Special. Amanhã pode transformar mais sorrisos! ✨');
 
-    const prompt = `Edit this photo: perform a photorealistic cosmetic dental smile makeover.
-Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
-Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
+    const prompt = `Edit this photo: professional DIGITAL SMILE DESIGN makeover performed by a master dental ceramist.
 
-    // Tenta os modelos em sequência: cada um tem cota própria — se um esgotar, o próximo assume
-    const MODELOS = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+TRANSFORM THE TEETH — the change must be clearly visible, the smile MUST look treated and improved:
+- Rebuild the smile with well-aligned, symmetric teeth in natural proportions: central incisors slightly dominant, lateral incisors a little narrower, canines with soft natural tips.
+- Close gaps and black spaces, repair chips and worn or uneven incisal edges, correct crowding, rotated and tilted teeth.
+- The incisal edge line must gently follow the curve of the lower lip (natural smile arc), never a flat straight line.
+- If dark corridors show at the corners of the smile, fill them with naturally shaped premolars.
+- Tooth color: ${TONS_DENTE[tom]}. Apply it evenly across ALL visible teeth, with slightly more translucency on the incisal third and subtle natural surface texture. Never flat, chalky, glowing or "painted" white.
+- Gums stay healthy pink with a balanced gum line; adjust the gum contour only where clearly uneven.
+
+KEEP EXACTLY UNCHANGED — this is critical:
+- Same person, same identity: face shape, skin (with its real texture, marks and beard/makeup), nose, eyes, lip shape and volume, expression, head position, framing, lighting, white balance and background must remain IDENTICAL to the original photo.
+- Do not beautify the skin, do not slim the face, do not touch anything outside the mouth area.
+
+RESULT: one photorealistic photograph of the SAME person after high-end cosmetic dentistry — like the "after" photo of a real dental clinic case. Natural and believable; never cartoonish, never AI-looking, no fake uniform "denture" effect.`;
+
+    // Tenta os modelos em sequência, DO MELHOR para o mais simples (qualidade primeiro;
+    // cada um tem cota própria — se um esgotar/faltar, o próximo assume)
+    const MODELOS = ['gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
     let dados = null;
     let esgotados = 0;
     for (const modelo of MODELOS) {
@@ -319,11 +332,19 @@ Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, 
           generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
         }),
       });
-      if (resp.ok) { dados = await resp.json(); console.log(`Modelo usado: ${modelo}`); break; }
+      if (resp.ok) {
+        const d = await resp.json();
+        const ps = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+        const temImg = ps.some((p) => (p.inlineData || p.inline_data) && (p.inlineData || p.inline_data).data);
+        // Modelo respondeu mas SEM imagem (recusou/só texto)? Tenta o próximo — não desiste
+        if (temImg) { dados = d; console.log(`Modelo usado: ${modelo}`); break; }
+        console.error(`Gemini ${modelo} respondeu sem imagem:`, JSON.stringify(d).slice(0, 300));
+        continue;
+      }
       const txt = await resp.text();
       console.error(`Gemini ${modelo} falhou`, resp.status, txt.slice(0, 300));
-      if (resp.status === 429) { esgotados++; continue; }
-      throw new HttpsError('internal', 'A IA não conseguiu processar esta foto. Tente outra.');
+      if (resp.status === 429) esgotados++;
+      // Qualquer erro (modelo indisponível, 404, 400): tenta o próximo da fila
     }
     if (!dados) {
       if (esgotados === MODELOS.length) throw new HttpsError('resource-exhausted', 'A IA Special está sem créditos no Google neste momento. Avise o laboratório para reativar.');
