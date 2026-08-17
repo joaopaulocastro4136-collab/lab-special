@@ -402,6 +402,38 @@ function etapasDeItens(tiposTrabalho, nomes) {
 function rotuloItens(itens) {
   return (itens || []).map(i => (i.quantidade || 1) > 1 ? `${i.nome} ×${i.quantidade}` : i.nome).join(' + ');
 }
+// Alinha as etapas de um trabalho EM ABERTO com a configuração ATUAL do serviço:
+// etapa nova no serviço entra no trabalho, etapa removida sai (se não foi iniciada),
+// horas/prova/dias acompanham — e o progresso feito NUNCA se perde (concluída,
+// cronometrando ou pulada fica como está, mesmo que tenha saído da configuração).
+// Devolve a lista nova ou null se nada mudou. Trabalho finalizado não é tocado.
+function alinharEtapasDoCaso(caso, tiposTrabalho) {
+  const multi = (caso.itens || []).length > 1;
+  const usaItem = multi || (caso.etapas || []).some(e => e.item);
+  const nomes = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
+  // Se algum serviço do trabalho sumiu da configuração, não mexe — senão as etapas
+  // dele seriam trocadas pela "Execução" genérica do fallback
+  if (nomes.some(n => !tiposTrabalho.find(t => t.nome === n))) return null;
+  const alvo = usaItem
+    ? etapasDeItens(tiposTrabalho, nomes)
+    : etapasDoTipo(tiposTrabalho.find(t => t.nome === caso.tipoTrabalho)).map(e => ({ ...e }));
+  if (!alvo.length) return null; // tipo sumiu da configuração — não mexe no trabalho
+  const chave = (e) => `${e.item || ''}|${e.nome}`;
+  const alvosLivres = [...alvo];
+  const consome = (idx) => idx === -1 ? null : alvosLivres.splice(idx, 1)[0];
+  const pares = (caso.etapas || []).map(e => ({ e, cfg: consome(alvosLivres.findIndex(a => chave(a) === chave(e))) }));
+  for (const p of pares) {
+    if (!p.cfg && !p.e.item) p.cfg = consome(alvosLivres.findIndex(a => a.nome === p.e.nome));
+  }
+  const mexida = (e) => e.concluida || e.inicioExec || e.pulada;
+  const mantidas = pares
+    .filter(p => mexida(p.e) || p.cfg)
+    .map(p => (p.cfg && !mexida(p.e)) ? { ...p.e, horas: p.cfg.horas, dias: p.cfg.dias, prova: p.cfg.prova } : p.e);
+  const novas = alvosLivres.map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, funcionarioId: null, duracaoMin: null, inicioExec: null }));
+  const final = [...mantidas, ...novas];
+  const assina = (arr) => JSON.stringify((arr || []).map(e => [e.item || '', e.nome, Number(e.horas) || 0, Number(e.dias) || 0, !!e.prova, !!e.concluida, !!e.pulada]));
+  return assina(final) !== assina(caso.etapas) ? final : null;
+}
 // Divide um trabalho com vários itens em blocos separados para a agenda do dia:
 // cada item vira uma entrada com suas próprias etapas e horas (o trabalho continua sendo um só)
 function expandirPorItem(casos) {
@@ -1340,6 +1372,13 @@ export default function App() {
                 .map(e => ({ ...e, concluida: false, dataConclusao: null, funcionario: null, duracaoMin: null, inicioExec: null }));
               if (novas.length) c = { ...c, etapas: novas };
             }
+            // Alinha as etapas dos trabalhos EM ABERTO com a configuração ATUAL dos serviços:
+            // etapa nova entra, etapa retirada (e não iniciada) sai, o que já foi feito fica.
+            // Assim os trabalhos antigos passam a contar a comissão por etapa certinha.
+            if (c.status !== 'Pronto' && c.status !== 'Entregue') {
+              const alinhadas = alinharEtapasDoCaso(c, tiposCarregados);
+              if (alinhadas) c = { ...c, etapas: alinhadas };
+            }
             // Sincroniza marcação de prova/horas das etapas ainda não concluídas com a configuração atual
             // (quando a etapa pertence a um item, usa a configuração do tipo daquele item)
             if (c.status !== 'Entregue') {
@@ -2040,6 +2079,23 @@ export default function App() {
     updateCaso(casoId, patch);
   };
   const setHorasPessoa = (id, h) => persistConfig({ funcionarios: funcionarios.map(f => f.id === id ? { ...f, horasDia: h } : f) });
+  // Mexeu nas ETAPAS de um serviço (Ajustes ou Equipe → Serviços e comissões)?
+  // Os trabalhos EM ABERTO daquele serviço se alinham NA HORA com a configuração
+  // nova — etapa adicionada entra, etapa retirada sai (sem perder o que foi feito).
+  const atualizarTipo = (nome, patch) => {
+    const tiposNovos = tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t);
+    persistConfig({ tiposTrabalho: tiposNovos });
+    if (!patch.etapas) return;
+    const lista = casosVivos();
+    let mudou = false;
+    const sincronizada = lista.map(c => {
+      if (c.status === 'Pronto' || c.status === 'Entregue') return c;
+      const novas = alinharEtapasDoCaso(c, tiposNovos);
+      if (novas) { mudou = true; return { ...c, etapas: novas }; }
+      return c;
+    });
+    if (mudou) persistCasos(sincronizada);
+  };
   // Corrige uma comissão já registrada que foi pro nome errado (ex.: foi pra quem finalizou
   // em vez de quem fez). Move o registro pra pessoa certa — sem duplicar nada.
   const reatribuirComissao = (registroId, novoFuncId) => {
@@ -2503,7 +2559,7 @@ export default function App() {
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(n) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== n) })}
             onAddTipo={(nome, dias) => persistConfig({ tiposTrabalho: [...tiposTrabalho, { nome, prazoDias: dias, tempoHoras: 2, comissao: 0, valor: 0, etapas: [{ nome: 'Execução', horas: 2, dias: dias || 1, prova: false }] }] })}
-            onUpdateTipo={(nome, patch) => persistConfig({ tiposTrabalho: tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t) })}
+            onUpdateTipo={atualizarTipo}
             onRemoveTipo={(nome) => persistConfig({ tiposTrabalho: tiposTrabalho.filter(t => t.nome !== nome) })}
             onSetHorasDia={(h) => persistConfig({ horasDia: h })}
             onAddFuncionario={(f) => persistConfig({ funcionarios: [...funcionarios, f] })}
@@ -2543,7 +2599,7 @@ export default function App() {
           <EquipeView funcionarios={funcionarios} comissoes={comissoes} historicoTempos={historicoTempos}
             tiposTrabalho={tiposTrabalho} ehGestor={ehGestor}
             medias={calcularMedias(historicoTempos)}
-            onUpdateTipo={(nome, patch) => persistConfig({ tiposTrabalho: tiposTrabalho.map(t => t.nome === nome ? { ...t, ...patch } : t) })}
+            onUpdateTipo={atualizarTipo}
             onReatribuirComissao={reatribuirComissao}
             onExcluirComissao={(id) => persistComissoes(comissoes.filter(c => c.id !== id))}
             onVoltar={() => setView('dashboard')}
