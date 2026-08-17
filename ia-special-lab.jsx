@@ -74,6 +74,13 @@ const TONS_IA = [
   { rotulo: 'A1', valor: 'a1', cor: '#EFE3C9', desc: 'natural clássico, levemente quente' },
   { rotulo: 'A2', valor: 'a2', cor: '#E3D0A6', desc: 'mais amarelado — tom natural sem clareamento' },
 ];
+// Formato do dente: a IA segue à risca o que for escolhido aqui
+const FORMATOS_IA = [
+  { rotulo: 'Natural', valor: 'natural', desc: 'harmônico com o rosto (padrão)' },
+  { rotulo: 'Quadrado', valor: 'quadrado', desc: 'bordas retas e cantos marcados' },
+  { rotulo: 'Redondo', valor: 'redondo', desc: 'cantos arredondados e suaves' },
+  { rotulo: 'Retangular', valor: 'retangular', desc: 'mais alongado, lados paralelos' },
+];
 function rotuloTom(v) {
   const t = TONS_IA.find(x => x.valor === v);
   if (t) return t.rotulo;
@@ -267,6 +274,7 @@ export function IASpecialLab({ aoFechar }) {
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
   const [tom, setTom] = useState('a1');
+  const [formato, setFormato] = useState('natural');
   const [corte, setCorte] = useState(50);
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null);
@@ -318,13 +326,15 @@ export function IASpecialLab({ aoFechar }) {
     } catch (err) { aoAvisar('Não consegui ler essa foto. Tente outra.'); }
   };
 
-  const gerar = async (tomNovo) => {
+  const gerar = async (tomNovo, formatoNovo) => {
     if (!foto || processando) return;
     const alvo = tomNovo ?? tom;
+    const alvoFormato = formatoNovo ?? formato;
     setTom(alvo);
+    setFormato(alvoFormato);
     setProcessando(true);
     try {
-      const out = await window.iaNuvem.transformar(foto, alvo);
+      const out = await window.iaNuvem.transformar(foto, alvo, alvoFormato);
       setResultado(out);
       setCorte(50);
       salvarSimulacao(foto, out, alvo);
@@ -476,8 +486,21 @@ export function IASpecialLab({ aoFechar }) {
             <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
               {(TONS_IA.find(t => t.valor === tom) || {}).desc}
             </div>
+
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Formato dos dentes</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {FORMATOS_IA.map(f => (
+                <button key={f.valor} onClick={() => resultado ? gerar(null, f.valor) : setFormato(f.valor)} disabled={processando}
+                  style={{ padding: '10px 0', borderRadius: 12, fontFamily: FONTE, fontSize: 10.5, fontWeight: 800, cursor: 'pointer', border: formato === f.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: formato === f.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: formato === f.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+                  {f.rotulo}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
+              {(FORMATOS_IA.find(f => f.valor === formato) || {}).desc}
+            </div>
             {resultado && !processando && (
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor para gerar de novo com ela</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor ou formato para gerar de novo</div>
             )}
 
             {!resultado && (

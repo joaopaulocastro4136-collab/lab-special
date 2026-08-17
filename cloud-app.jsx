@@ -22,9 +22,9 @@ import logoMarca from './logo-special.png';
 function instalarIA() {
   const funcoes = getFunctions(fbApp, 'southamerica-east1');
   window.iaNuvem = {
-    async transformar(fotoDataURL, tom) {
+    async transformar(fotoDataURL, tom, formato) {
       const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
-      const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+      const r = await chamar({ foto: fotoDataURL.split(',')[1], tom, formato: formato || 'natural' });
       return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
     },
     async perguntar({ pergunta, foto, historico }) {

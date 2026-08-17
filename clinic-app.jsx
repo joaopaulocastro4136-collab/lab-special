@@ -740,6 +740,13 @@ const TONS_IA = [
   { rotulo: 'A1', valor: 'a1', cor: '#EFE3C9', desc: 'natural clássico, levemente quente' },
   { rotulo: 'A2', valor: 'a2', cor: '#E3D0A6', desc: 'mais amarelado — tom natural sem clareamento' },
 ];
+// Formato do dente: a IA segue à risca o que for escolhido aqui
+const FORMATOS_IA = [
+  { rotulo: 'Natural', valor: 'natural', desc: 'harmônico com o rosto (padrão)' },
+  { rotulo: 'Quadrado', valor: 'quadrado', desc: 'bordas retas e cantos marcados' },
+  { rotulo: 'Redondo', valor: 'redondo', desc: 'cantos arredondados e suaves' },
+  { rotulo: 'Retangular', valor: 'retangular', desc: 'mais alongado, lados paralelos' },
+];
 // Transformações antigas do histórico usavam outros nomes de tom
 function rotuloTom(v) {
   const t = TONS_IA.find(x => x.valor === v);
@@ -747,9 +754,9 @@ function rotuloTom(v) {
   return { claro: 'Mais claro', natural: 'Natural', escuro: 'Mais escuro' }[v] || v || 'A1';
 }
 
-async function transformarSorrisoNaNuvem(fotoDataURL, tom) {
+async function transformarSorrisoNaNuvem(fotoDataURL, tom, formato) {
   const chamar = httpsCallable(funcoes, 'transformarSorriso', { timeout: 120000 });
-  const r = await chamar({ foto: fotoDataURL.split(',')[1], tom });
+  const r = await chamar({ foto: fotoDataURL.split(',')[1], tom, formato: formato || 'natural' });
   return `data:${r.data.mime || 'image/png'};base64,${r.data.foto}`;
 }
 
@@ -1106,6 +1113,7 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
   const [tom, setTom] = useState('a1');
+  const [formato, setFormato] = useState('natural');
   const [corte, setCorte] = useState(50); // posição do divisor antes/depois (%)
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null); // null = carregando
@@ -1165,13 +1173,15 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
     } catch (err) { aoAvisar('Não consegui ler essa foto. Tente outra.'); }
   };
 
-  const gerar = async (tomNovo) => {
+  const gerar = async (tomNovo, formatoNovo) => {
     if (!foto || processando) return;
     const alvo = tomNovo ?? tom;
+    const alvoFormato = formatoNovo ?? formato;
     setTom(alvo);
+    setFormato(alvoFormato);
     setProcessando(true);
     try {
-      const out = await transformarSorrisoNaNuvem(foto, alvo);
+      const out = await transformarSorrisoNaNuvem(foto, alvo, alvoFormato);
       setResultado(out);
       setCorte(50);
       salvarSimulacao(foto, out, alvo); // guarda no histórico em segundo plano
@@ -1325,8 +1335,21 @@ function IASpecial({ dentista, aoFechar, aoAvisar }) {
             <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
               {(TONS_IA.find(t => t.valor === tom) || {}).desc}
             </div>
+
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Formato dos dentes</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {FORMATOS_IA.map(f => (
+                <button key={f.valor} onClick={() => resultado ? gerar(null, f.valor) : setFormato(f.valor)} disabled={processando}
+                  style={{ padding: '10px 0', borderRadius: 12, fontFamily: FONTE, fontSize: 10.5, fontWeight: 800, cursor: 'pointer', border: formato === f.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: formato === f.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: formato === f.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+                  {f.rotulo}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
+              {(FORMATOS_IA.find(f => f.valor === formato) || {}).desc}
+            </div>
             {resultado && !processando && (
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor para gerar de novo com ela</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor ou formato para gerar de novo</div>
             )}
 
             {!resultado && (

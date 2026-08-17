@@ -262,6 +262,13 @@ exports.cobrancaAtrasada = onSchedule({ ...OPCOES, schedule: '0 9 * * *', timeZo
 // A chave chega por variável de ambiente (functions/.env, escrita pelo robô de
 // publicação a partir do segredo GEMINI_API_KEY do GitHub — nunca vai pro git).
 
+// Formato do dente que o dentista escolhe no app — a IA precisa ser FIEL ao pedido
+const FORMATOS_DENTE = {
+  natural: 'a harmonious natural tooth shape that suits the face — balanced between square and round, nothing exaggerated',
+  quadrado: 'SQUARE teeth: flat, straight incisal edges and clearly squared incisal corners, broad flat facial surfaces, dominant square central incisors. The SQUARE character must be immediately visible in the final smile',
+  redondo: 'ROUNDED (ovoid) teeth: clearly rounded incisal corners, softly curved incisal edges and convex, egg-like contours. The ROUNDED character must be immediately visible in the final smile',
+  retangular: 'RECTANGULAR teeth: visibly longer than they are wide, straight and parallel sides, flat incisal edges with only minimal corner rounding. The RECTANGULAR character must be immediately visible in the final smile',
+};
 // Escala de cor odontológica (VITA) que o dentista escolhe no app
 const TONS_DENTE = {
   bl: 'a very bright bleached "Hollywood white" (VITA BL1 bleach shade) — clearly and strongly whitened, yet still looking like real polished enamel, never chalky or fake',
@@ -282,6 +289,7 @@ exports.transformarSorriso = onCall(
     if (!chave) throw new HttpsError('failed-precondition', 'A IA Special ainda está sendo ativada pelo laboratório.');
     const foto = String((request.data && request.data.foto) || '');
     const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'a1';
+    const formato = FORMATOS_DENTE[request.data && request.data.formato] ? request.data.formato : 'natural';
     if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
     if (foto.length > 6000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
 
@@ -304,9 +312,10 @@ exports.transformarSorriso = onCall(
 TRANSFORM THE TEETH — the change must be clearly visible, the smile MUST look treated and improved:
 - Rebuild the smile with well-aligned, symmetric teeth in natural proportions: central incisors slightly dominant, lateral incisors a little narrower, canines with soft natural tips.
 - Close gaps and black spaces, repair chips and worn or uneven incisal edges, correct crowding, rotated and tilted teeth.
+- TOOTH SHAPE — MANDATORY AND STRICT, the patient explicitly chose it: sculpt every visible tooth as ${FORMATOS_DENTE[formato]}.
+- TOOTH SHADE — MANDATORY AND STRICT, the patient explicitly chose it: ${TONS_DENTE[tom]}. Respect the VITA scale relationships: BL1 is dramatically whiter than B1, B1 is clearly brighter than A1, A1 is a neutral natural enamel, A2 is noticeably warmer and more yellow. The chosen shade must be obvious at first glance — never drift toward a generic average white. Apply it evenly across ALL visible teeth, with slightly more translucency on the incisal third and subtle natural surface texture. Never flat, chalky, glowing or "painted" white.
 - The incisal edge line must gently follow the curve of the lower lip (natural smile arc), never a flat straight line.
 - If dark corridors show at the corners of the smile, fill them with naturally shaped premolars.
-- Tooth color: ${TONS_DENTE[tom]}. Apply it evenly across ALL visible teeth, with slightly more translucency on the incisal third and subtle natural surface texture. Never flat, chalky, glowing or "painted" white.
 - Gums stay healthy pink with a balanced gum line; adjust the gum contour only where clearly uneven.
 
 KEEP EXACTLY UNCHANGED — this is critical:
@@ -356,7 +365,7 @@ RESULT: one photorealistic photograph of the SAME person after high-end cosmetic
       console.error('Gemini respondeu sem imagem:', JSON.stringify(dados).slice(0, 500));
       throw new HttpsError('internal', 'A IA não devolveu a imagem. Tente uma foto mais nítida do sorriso.');
     }
-    console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | ${Math.round(parteImg.data.length / 1024)}KB`);
+    console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | formato ${formato} | ${Math.round(parteImg.data.length / 1024)}KB`);
     return { foto: parteImg.data, mime: parteImg.mimeType || parteImg.mime_type || 'image/png' };
   }
 );
