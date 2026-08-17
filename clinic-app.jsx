@@ -330,6 +330,63 @@ function FormEntrarLab({ email, carregando, onConectar, onSair, onVoltar, nomeIn
 }
 
 // ─── Tela de entrada premium: preto com brilho dourado, marca centrada e botões Apple + Google ───
+// Exclusão da própria conta DENTRO do app (exigência da App Store e do Google Play).
+// Fluxo: botão → aviso → digitar EXCLUIR → o servidor apaga perfil, vínculos e conta.
+function ExcluirContaClinic() {
+  const [fase, setFase] = useState(0); // 0 fechado · 1 aviso · 2 confirmação final
+  const [texto, setTexto] = useState('');
+  const [excluindo, setExcluindo] = useState(false);
+  const [erro, setErro] = useState('');
+  const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+  const executar = async () => {
+    setExcluindo(true); setErro('');
+    try {
+      const chamar = httpsCallable(funcoes, 'excluirConta', { timeout: 540000 });
+      await chamar({});
+      try { localStorage.removeItem('specialClinicLabId'); } catch (e) { }
+      try { await signOut(auth); } catch (e) { }
+    } catch (e) {
+      setExcluindo(false);
+      setErro('Não foi possível excluir agora. Verifique a internet e tente de novo.');
+    }
+  };
+  const btn = (extra) => ({ flex: 1, padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE, ...extra });
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #F5B5B5', borderRadius: 14, padding: 13, background: '#fff' }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: '#B42318' }}>Excluir conta</div>
+      {fase === 0 && (<>
+        <div style={{ fontSize: 11.5, color: '#A8A29E', margin: '4px 0 10px' }}>Apaga o seu perfil de dentista, os vínculos com laboratórios e a sua conta de acesso, de forma permanente.</div>
+        <button onClick={() => setFase(1)} style={{ width: '100%', padding: 12, borderRadius: 12, border: '1px solid #F5B5B5', background: '#fff', color: '#B42318', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE }}>
+          Quero excluir minha conta
+        </button>
+      </>)}
+      {fase >= 1 && (
+        <div style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: 6, padding: '8px 11px', borderRadius: 11, background: '#FDECEC', color: '#7F1D1D' }}>
+          <b>Isso não tem volta.</b> Serão apagados o seu perfil, os vínculos com os laboratórios e a sua conta de acesso. Os trabalhos já enviados permanecem no laboratório (são o registro da produção dele).
+        </div>
+      )}
+      {fase === 1 && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={() => setFase(0)} style={btn({ background: '#F5F4F0', color: INK })}>Cancelar</button>
+          <button onClick={() => setFase(2)} style={btn({ background: '#B42318', color: '#fff' })}>Continuar</button>
+        </div>
+      )}
+      {fase === 2 && (<>
+        <div style={{ fontSize: 11.5, color: '#78716C', margin: '10px 0 4px' }}>Para confirmar, escreva <b>EXCLUIR</b> na caixa abaixo:</div>
+        <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="EXCLUIR"
+          style={{ width: '100%', boxSizing: 'border-box', minWidth: 0, padding: '10px 12px', borderRadius: 11, border: '1px solid #E7E5E4', fontSize: 13.5, fontFamily: FONTE }} />
+        {erro && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', marginTop: 6 }}>{erro}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={() => { setFase(0); setTexto(''); setErro(''); }} disabled={excluindo} style={btn({ background: '#F5F4F0', color: INK })}>Cancelar</button>
+          <button onClick={executar} disabled={excluindo || !confirmado} style={btn({ background: '#B42318', color: '#fff', opacity: (excluindo || !confirmado) ? 0.5 : 1 })}>
+            {excluindo ? 'Excluindo…' : 'Excluir de vez'}
+          </button>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 function TelaLogin({ children }) {
   return (
     <div style={{ minHeight: '100vh', background: 'radial-gradient(130% 55% at 50% -8%, #3B2E1B 0%, #1C1B19 52%, #121110 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 28px calc(40px + env(safe-area-inset-bottom))', fontFamily: FONTE, position: 'relative', overflow: 'hidden' }}>
@@ -1981,6 +2038,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
               style={{ width: '100%', padding: 13, borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', color: '#B42318', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <LogOut size={16} /> Sair da conta
             </button>
+            <ExcluirContaClinic />
             <button onClick={() => setMeusDados(false)}
               style={{ width: '100%', marginTop: 8, padding: 13, borderRadius: 14, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
               Fechar

@@ -62,6 +62,15 @@ The companion app for dentists, "Special Clinic", is already live on the App Sto
 
 If you prefer to review with a PRE-POPULATED DEMO ACCOUNT instead of creating your own workspace, we will gladly provide one — email joaopaulocastro41@gmail.com and we set it up immediately.
 
+ANSWER TO GUIDELINE 5.1.1(v) — ACCOUNT DELETION (implemented in this version):
+The app now offers full in-app account deletion, initiated and completed entirely inside the app:
+1. Sign in -> open the "Ajustes" (Settings) tab.
+2. Scroll to the red card "Excluir conta" (Delete account).
+3. Tap "Quero excluir minha conta" -> a warning explains the deletion is permanent -> tap "Continuar".
+4. Type EXCLUIR (Portuguese for DELETE) in the confirmation box and tap "Excluir de vez".
+5. The server then PERMANENTLY deletes the user's laboratory workspace (all cases, dentists, finances, commissions, settings), the account mappings, and the authentication account itself. The user is signed out and returned to the sign-in screen. This is real deletion, not deactivation. No website visit, phone call or e-mail is required.
+The same flow exists for team members and dentists (their access/profile is deleted; the laboratory's own production records remain with the laboratory, as its business records).
+
 Answers to the 3.2 review questions:
 1. The app is NOT restricted to users of a single company — any dental laboratory can create its own account.
 2. It is not limited to a specific group of companies: any dental prosthesis laboratory can become a user, each with an independent workspace.
@@ -154,7 +163,7 @@ console.log('Build anexado à versão ✓');
 // Em ATUALIZAÇÃO (já existe versão publicada), o texto de "Novidades" é obrigatório.
 const jaPublicado = ((vers.dados && vers.dados.data) || []).some(v => ['READY_FOR_SALE', 'PENDING_APPLE_RELEASE', 'PENDING_DEVELOPER_RELEASE', 'IN_REVIEW', 'PROCESSING_FOR_APP_STORE'].includes(v.attributes.appStoreState) && v.id !== versao.id);
 const NOVIDADES = (process.env.NOVIDADES || '').trim()
-  || 'Novidades desta versão:\n• Entrar com Apple\n• Notificações mais confiáveis\n• Correções de estabilidade e melhorias de desempenho';
+  || 'Novidades desta versão:\n• Excluir conta dentro do aplicativo (Ajustes → Excluir conta)\n• Comissões por etapa pagas na hora da conclusão\n• Correções de estabilidade e melhorias de desempenho';
 const locs = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreVersionLocalizations`);
 for (const loc of ((locs.dados && locs.dados.data) || [])) {
   const atributos = { supportUrl: URL_SUPORTE };

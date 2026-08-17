@@ -61,6 +61,14 @@ function instalarIA() {
       await setDoc(doc(db, 'labs', LAB, 'iaSimulacoes', sim.id), sim);
     },
   };
+  // Exclusão de conta (exigência das lojas): o servidor apaga os dados e a conta;
+  // aqui só chamamos e saímos do aparelho
+  window.excluirContaNuvem = async () => {
+    const chamar = httpsCallable(funcoes, 'excluirConta', { timeout: 540000 });
+    await chamar({});
+    try { localStorage.removeItem('specialLabId'); } catch (e) { }
+    try { await signOut(auth); } catch (e) { }
+  };
 }
 
 // Grava UM caso direto na nuvem (usado pelo pedido de aprovação — precisa

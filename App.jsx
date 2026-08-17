@@ -5450,6 +5450,63 @@ function AtualizacaoAppCard() {
   );
 }
 
+// Exclusão da própria conta DENTRO do app (exigência da App Store e do Google Play).
+// Fluxo: botão → aviso do que será apagado → digitar EXCLUIR → apaga e volta ao login.
+// Só aparece na versão em nuvem (window.excluirContaNuvem instalado pelo cloud-app).
+function ExcluirContaCard() {
+  const [fase, setFase] = useState(0); // 0 fechado · 1 aviso · 2 confirmação final
+  const [texto, setTexto] = useState('');
+  const [excluindo, setExcluindo] = useState(false);
+  const [erro, setErro] = useState('');
+  if (typeof window === 'undefined' || !window.excluirContaNuvem) return null;
+  const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+  const executar = async () => {
+    setExcluindo(true); setErro('');
+    try { await window.excluirContaNuvem(); }
+    catch (e) {
+      setExcluindo(false);
+      setErro('Não foi possível excluir agora. Verifique a internet e tente de novo.');
+    }
+  };
+  return (
+    <div className="rounded-2xl p-4 bg-white" style={{ border: '1px solid #F5B5B5' }}>
+      <div className="text-sm font-bold" style={{ color: '#B42318' }}>Excluir conta</div>
+      {fase === 0 && (<>
+        <p className="text-xs text-stone-400 mt-1 mb-3">Apaga a sua conta e os dados dela deste aplicativo, de forma permanente.</p>
+        <button onClick={() => setFase(1)} className="w-full py-3 rounded-xl text-sm font-bold bg-white" style={{ color: '#B42318', border: '1px solid #F5B5B5' }}>
+          Quero excluir minha conta
+        </button>
+      </>)}
+      {fase >= 1 && (
+        <div className="text-xs mt-2 px-3 py-2 rounded-xl leading-relaxed" style={{ background: '#FDECEC', color: '#7F1D1D' }}>
+          <b>Isso não tem volta.</b> Será apagada a sua conta de acesso e, se você for o dono do laboratório, também todos os trabalhos, dentistas, financeiro, comissões e configurações. Se você for da equipe, apenas o seu acesso é removido — o laboratório continua.
+        </div>
+      )}
+      {fase === 1 && (
+        <div className="flex gap-2 mt-3">
+          <button onClick={() => setFase(0)} className="flex-1 py-3 rounded-xl text-sm font-bold" style={{ background: '#F5F4F0', color: INK }}>Cancelar</button>
+          <button onClick={() => setFase(2)} className="flex-1 py-3 rounded-xl text-sm font-bold text-white" style={{ background: '#B42318' }}>Continuar</button>
+        </div>
+      )}
+      {fase === 2 && (<>
+        <p className="text-xs text-stone-500 mt-3 mb-1">Para confirmar, escreva <b>EXCLUIR</b> na caixa abaixo:</p>
+        <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="EXCLUIR"
+          className="w-full px-3 py-2.5 rounded-xl text-sm" style={{ border: '1px solid #E7E5E4', minWidth: 0 }} />
+        {erro && <div className="text-xs font-bold mt-2" style={{ color: '#B42318' }}>{erro}</div>}
+        <div className="flex gap-2 mt-3">
+          <button onClick={() => { setFase(0); setTexto(''); setErro(''); }} disabled={excluindo}
+            className="flex-1 py-3 rounded-xl text-sm font-bold" style={{ background: '#F5F4F0', color: INK }}>Cancelar</button>
+          <button onClick={executar} disabled={excluindo || !confirmado}
+            className="flex-1 py-3 rounded-xl text-sm font-bold text-white"
+            style={{ background: '#B42318', opacity: (excluindo || !confirmado) ? 0.5 : 1 }}>
+            {excluindo ? 'Excluindo…' : 'Excluir de vez'}
+          </button>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDiasTrabalho, horasPorDia, onSetHorasPorDia, funcionarios, ehGestor, medias, onAddDentista, onUpdateDentista, onRemoveDentista, onAddTipo, onUpdateTipo, onRemoveTipo, onSetHorasDia, onAddFuncionario, onUpdateFuncionario, onRemoveFuncionario, onAbrirEquipe, onAbrirDentistas, autoAjuste, onSetAutoAjuste, chavePix, onSetChavePix, pessoas, onSetPessoas, codigoLab, onGerarCodigoLab, nomeLab, onSetNomeLab }) {
   const [novoDentista, setNovoDentista] = useState('');
   const [novoEndereco, setNovoEndereco] = useState('');
@@ -5571,6 +5628,14 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <div className="text-sm font-bold mb-1" style={{ color: INK }}>O que você pode fazer:</div>
           <div className="text-xs text-stone-500 leading-relaxed">Ver e trabalhar nos casos, usar a tela "Dia", cronometrar suas etapas com Iniciar/Concluir, enviar trabalhos para prova e finalizar. Suas comissões e tempos ficam em <b>Meu desempenho</b>, no Início.</div>
         </div>
+        {typeof window !== 'undefined' && window.sairDaConta && (
+          <button onClick={() => { if (confirm('Sair da conta neste aparelho? Você volta para a tela de entrada.')) window.sairDaConta(); }}
+            className="w-full py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 bg-white"
+            style={{ color: '#B42318', border: '1px solid #F5B5B5' }}>
+            <LogOut size={16} /> Sair da conta
+          </button>
+        )}
+        <ExcluirContaCard />
       </div>
     );
   }
@@ -5902,6 +5967,7 @@ function AjustesView({ dentistas, tiposTrabalho, horasDia, diasTrabalho, onSetDi
           <LogOut size={16} /> Sair da conta
         </button>
       )}
+      <ExcluirContaCard />
     </div>
   );
 }

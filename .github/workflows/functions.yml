@@ -10,7 +10,7 @@ name: Funções → Firebase
 on:
   workflow_dispatch:
   push:
-    branches: [claude/special-lab-test-mode-9jrxb1]
+    branches: [claude/special-lab-clinic-adjustments-9o9pbd]
     paths: ['functions/**', '.github/workflows/functions.yml', 'abrir-porta-funcao.mjs', 'firestore.rules']
 
 jobs:

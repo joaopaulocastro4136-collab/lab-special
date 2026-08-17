@@ -629,3 +629,65 @@ Se ele mandar FOTO de um trabalho, avalie como professor: o que está bom, o que
     throw new HttpsError('resource-exhausted', 'A IA está sem créditos neste momento. Tente mais tarde.');
   }
 );
+
+// ─── Exclusão de conta (exigência da App Store 5.1.1(v) e do Google Play) ───
+// O usuário apaga a própria conta DENTRO do app: some o acesso, somem os dados.
+// • Dono de laboratório: apaga o laboratório inteiro (casos, equipe, financeiro,
+//   configurações), o índice, os códigos de conexão e o mapa do e-mail.
+// • Técnico da equipe: remove só o próprio acesso — o laboratório continua.
+// • Dentista (Special Clinic): apaga o perfil e os vínculos com os laboratórios.
+// Por fim, apaga a conta de login (Firebase Auth). Não tem volta.
+// O laboratório "principal" nunca é apagado por aqui (proteção extra).
+exports.excluirConta = onCall({ region: 'southamerica-east1', timeoutSeconds: 540, memory: '512MiB' }, async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na conta para poder excluí-la.');
+  const uid = req.auth.uid;
+  const email = String(req.auth.token.email || '').toLowerCase();
+  const db = admin.firestore();
+
+  if (email) {
+    // Lado clínica: perfil de dentista e vínculos com laboratórios
+    try {
+      const labsVinc = new Set();
+      const cu = await db.doc(`clinicaUsuarios/${email}`).get();
+      if (cu.exists) (cu.data().labs || []).forEach((l) => l && l.lab && labsVinc.add(l.lab));
+      const idx = await db.doc(`dentistasIndex/${email}`).get();
+      if (idx.exists && idx.data().lab) labsVinc.add(idx.data().lab);
+      for (const lab of labsVinc) {
+        await db.doc(`labs/${lab}/dentistasAcesso/${email}`).delete().catch(() => { });
+        await db.doc(`labs/${lab}/dentistasAuto/${email}`).delete().catch(() => { });
+      }
+      await db.doc(`clinicaUsuarios/${email}`).delete().catch(() => { });
+      await db.doc(`dentistasIndex/${email}`).delete().catch(() => { });
+    } catch (e) { console.error('excluirConta clínica', String(e).slice(0, 200)); }
+
+    // Lado laboratório
+    try {
+      const u = await db.doc(`usuarios/${email}`).get();
+      const lab = u.exists ? u.data().lab : null;
+      if (lab) {
+        const li = await db.doc(`labsIndex/${lab}`).get();
+        const dono = li.exists ? String(li.data().dono || '').toLowerCase() : '';
+        if (dono === email && lab !== 'principal') {
+          // Dono: o laboratório inteiro vai junto
+          const cods = await db.collection('codigosLab').where('lab', '==', lab).get().catch(() => null);
+          if (cods) await Promise.all(cods.docs.map((d) => d.ref.delete().catch(() => { })));
+          await db.recursiveDelete(db.doc(`labs/${lab}`));
+          await db.doc(`labsIndex/${lab}`).delete().catch(() => { });
+        } else {
+          // Equipe: remove só o próprio e-mail da lista de acesso
+          const refAcesso = db.doc(`labs/${lab}/kv/acesso`);
+          const ac = await refAcesso.get().catch(() => null);
+          if (ac && ac.exists && Array.isArray(ac.data().emails)) {
+            const emails = ac.data().emails.filter((e2) => String(e2).toLowerCase() !== email);
+            await refAcesso.set({ emails }, { merge: true }).catch(() => { });
+          }
+        }
+      }
+      await db.doc(`usuarios/${email}`).delete().catch(() => { });
+    } catch (e) { console.error('excluirConta lab', String(e).slice(0, 200)); }
+  }
+
+  await admin.auth().deleteUser(uid);
+  console.log(`excluirConta ok: ${email || uid}`);
+  return { ok: true };
+});
