@@ -1603,8 +1603,14 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
   const totalEntregue = Math.round(todasEntregas.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
   const naoEntregues = casos.filter(c => c.status !== 'Entregue');
   const totalAndamento = Math.round(naoEntregues.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+  // Valor pago marcado PELO LABORATÓRIO em cada trabalho (Special Lab) — chega aqui na
+  // hora pela nuvem e desconta do saldo, além das baixas gerais registradas pelo gestor
+  const pagoTrab = (c) => Math.min(Math.max(Number(c.valorPago) || 0, 0), Number(c.valor) || 0);
+  const efetivoDe = (c) => Math.round(((c.valor || 0) - pagoTrab(c)) * 100) / 100;
+  const totalPagoTrabalhos = Math.round(casos.reduce((s, c) => s + pagoTrab(c), 0) * 100) / 100;
+  const totalPagoGeral = Math.round((totalPago + totalPagoTrabalhos) * 100) / 100;
   // O valor entra na conta assim que o trabalho é criado (andamento + entregues − pago)
-  const saldo = Math.round((totalAndamento + totalEntregue - totalPago) * 100) / 100;
+  const saldo = Math.round((totalAndamento + totalEntregue - totalPagoGeral) * 100) / 100;
 
   // Vencimento por entrega: o combinado (N dias após a entrega) vira uma data em cada
   // trabalho entregue. Os pagamentos quitam as entregas mais antigas primeiro; o que
@@ -1618,8 +1624,10 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
       .filter(c => (c.valor || 0) > 0)
       .sort((a, b) => String(a.dataSaida || '').localeCompare(String(b.dataSaida || '')))
       .forEach(c => {
-        if (restante >= (c.valor || 0) - 0.005) {
-          restante = Math.round((restante - (c.valor || 0)) * 100) / 100;
+        // O que o trabalho ainda deve = valor − o pago marcado nele; as baixas gerais quitam esse resto
+        const efetivo = efetivoDe(c);
+        if (restante >= efetivo - 0.005) {
+          restante = Math.round((restante - efetivo) * 100) / 100;
           situacaoPag[c.id] = { pago: true };
         } else if (c.dataSaida && (dataPagamentoStr || diasPagamentoN !== null)) {
           const vence = (dataPagamentoStr && c.dataSaida <= dataPagamentoStr)
@@ -1633,7 +1641,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
       });
   }
   const entregasVencidas = todasEntregas.filter(c => situacaoPag[c.id] && !situacaoPag[c.id].pago && situacaoPag[c.id].vence && situacaoPag[c.id].diasV < 0);
-  const totalVencido = Math.round(entregasVencidas.reduce((s, c) => s + (c.valor || 0), 0) * 100) / 100;
+  const totalVencido = Math.round(entregasVencidas.reduce((s, c) => s + efetivoDe(c), 0) * 100) / 100;
   const vencidoDesde = entregasVencidas.map(c => situacaoPag[c.id].vence).sort()[0] || null;
   const formatReais = (v) => 'R$ ' + (v || 0).toFixed(2).replace('.', ',');
   const copiar = async (texto, aviso) => {
@@ -2435,7 +2443,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
                 {[
                   ['Em andamento', totalAndamento, '#F5A54A'],
                   ['Entregues', totalEntregue, '#E0BC85'],
-                  ['Já pago', totalPago, '#4ADE80'],
+                  ['Já pago', totalPagoGeral, '#4ADE80'],
                 ].map(([rot, val, cor]) => (
                   <div key={rot} style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 13, padding: '9px 10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -2580,6 +2588,8 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
             {todasEntregas.slice(0, 30).map(c => {
               const sp = situacaoPag[c.id];
               const vencido = sp && !sp.pago && sp.vence && sp.diasV < 0;
+              const pgT = pagoTrab(c);
+              const parcial = pgT > 0 && !(sp && sp.pago);
               let pill = null;
               if (sp && sp.pago) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#166B3A', background: '#DCF3E4', borderRadius: 999, padding: '3px 9px' }}>pago ✓</span>;
               else if (vencido) pill = <span style={{ fontSize: 9.5, fontWeight: 800, color: '#fff', background: '#DC2626', borderRadius: 999, padding: '3px 9px' }}>VENCIDO {-sp.diasV === 1 ? 'há 1 dia' : `há ${-sp.diasV} dias`}</span>;
@@ -2590,9 +2600,21 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{c.paciente}</div>
                     <div style={{ fontSize: 11, color: '#A8A29E', marginTop: 1 }}>{c.tipoTrabalho}{c.dataSaida ? ` • ${formatDateBR(c.dataSaida)}` : ''}</div>
-                    {pill && <div style={{ marginTop: 5 }}>{pill}</div>}
+                    {(pill || parcial) && (
+                      <div style={{ marginTop: 5, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        {pill}
+                        {parcial && <span style={{ fontSize: 9.5, fontWeight: 800, color: '#B45309', background: '#FEF3E2', borderRadius: 999, padding: '3px 9px' }}>pago {formatReais(pgT)} • resta {formatReais(efetivoDe(c))}</span>}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: vencido ? '#DC2626' : (c.valor > 0 ? '#166B3A' : '#A8A29E'), flexShrink: 0 }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
+                  {parcial ? (
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: vencido ? '#DC2626' : '#166B3A' }}>{formatReais(efetivoDe(c))}</div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#A8A29E' }}>de {formatReais(c.valor)}</div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 14, fontWeight: 800, color: vencido ? '#DC2626' : (c.valor > 0 ? '#166B3A' : '#A8A29E'), flexShrink: 0 }}>{c.valor > 0 ? formatReais(c.valor) : '—'}</div>
+                  )}
                 </div>
               );
             })}
