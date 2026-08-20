@@ -1,6 +1,6 @@
 {
-  "versionCode": 69,
-  "versionName": "12.6",
+  "versionCode": 70,
+  "versionName": "12.7",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Extrato do dentista: escolha os trabalhos (todos ou selecionados)\n• Marque o valor já pago em cada trabalho — o extrato cobra só o que resta"
+  "novidades": "• Valor pago bate na hora no total do cliente (resta • pago • total)\n• Extrato do dentista: escolha os trabalhos e cobre só o que resta"
 }
