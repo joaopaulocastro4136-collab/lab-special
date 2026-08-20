@@ -2647,6 +2647,10 @@ export default function App() {
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(nome) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== nome) })}
             onVerCaso={goToDetalhe}
+            onSetValorPago={(mapa) => {
+              const lista = casosVivos();
+              persistCasos(lista.map(c => mapa[c.id] !== undefined ? { ...c, valorPago: mapa[c.id] > 0 ? mapa[c.id] : null } : c));
+            }}
             onImprimirRelatorio={async (dent, lista, modo, baixarDireto) => {
               try {
                 const r = await compartilharRelatorioDentista(dent, lista, modo, nomeLab, baixarDireto);
@@ -4500,9 +4504,13 @@ function ChavePixCard({ chavePix, onSalvar }) {
 
 // Página dedicada de dentistas: lista → toca num dentista → ficha completa dele
 // (e-mail, telefone, endereço, combinado de pagamento) + os trabalhos só dele.
-function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onImprimirRelatorio, onVoltar, tituloVoltar }) {
+function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onImprimirRelatorio, onSetValorPago, onVoltar, tituloVoltar }) {
   const [sel, setSel] = useState(null); // dentista aberto (nome)
   const [verTrabalhos, setVerTrabalhos] = useState(false);
+  // Relatório com escolha: quais trabalhos entram + valor já pago de cada um
+  const [escolhendo, setEscolhendo] = useState(false);
+  const [marcadosRel, setMarcadosRel] = useState({}); // id -> true
+  const [pagoEditRel, setPagoEditRel] = useState({}); // id -> texto digitado
   const [combinadoAberto, setCombinadoAberto] = useState(false);
   const [confRemover, setConfRemover] = useState(false);
   const [novoNome, setNovoNome] = useState('');
@@ -4515,6 +4523,24 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
 
   const dentista = sel ? dentistas.find(d => d.nome === sel) : null;
   const trabalhosDoDentista = sel ? casos.filter(c => c.dentista === sel) : [];
+
+  const pagoDe = (c) => Math.min(Math.max(Number(c.valorPago) || 0, 0), Number(c.valor) || 0);
+  const pagoDigitadoRel = (id) => Math.round((parseFloat(String(pagoEditRel[id] || '').replace(',', '.')) || 0) * 100) / 100;
+  const abrirEscolha = () => {
+    const sel2 = {}, pagos = {};
+    trabalhosDoDentista.forEach(c => { sel2[c.id] = true; pagos[c.id] = c.valorPago > 0 ? String(c.valorPago).replace('.', ',') : ''; });
+    setMarcadosRel(sel2);
+    setPagoEditRel(pagos);
+    setEscolhendo(true);
+  };
+  const imprimirEscolhidos = (baixar) => {
+    const escolhidos = trabalhosDoDentista.filter(c => marcadosRel[c.id]).map(c => ({ ...c, valorPago: pagoDigitadoRel(c.id) }));
+    if (!escolhidos.length) return;
+    const mapa = {};
+    trabalhosDoDentista.forEach(c => { mapa[c.id] = pagoDigitadoRel(c.id); });
+    onSetValorPago && onSetValorPago(mapa);
+    onImprimirRelatorio(dentista, escolhidos, 'selecionados', baixar);
+  };
 
   const addDentista = () => {
     const nome = novoNome.trim(), endereco = novoEndereco.trim(), telefone = novoTelefone.trim();
@@ -4536,7 +4562,7 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
     );
     return (
       <div>
-        <button onClick={() => { setSel(null); setVerTrabalhos(false); setCombinadoAberto(false); setConfRemover(false); }} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
+        <button onClick={() => { setSel(null); setVerTrabalhos(false); setCombinadoAberto(false); setConfRemover(false); setEscolhendo(false); }} className="flex items-center gap-1 mb-4 text-sm font-bold" style={{ color: INK }}>
           <ChevronLeft size={18} /> Dentistas
         </button>
 
@@ -4559,6 +4585,9 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
           const emAberto = trabalhosDoDentista.filter(c => !finalizadoCompleto(c));
           const totalGeral = trabalhosDoDentista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
           const totalFinalizado = finalizados.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+          // Valor pago marcado nos trabalhos bate direto no total do cliente
+          const totalPago = trabalhosDoDentista.reduce((s, c) => s + pagoDe(c), 0);
+          const restaGeral = Math.round((totalGeral - totalPago) * 100) / 100;
           return (
             <>
               <div className="grid grid-cols-3 gap-2 mb-3">
@@ -4573,8 +4602,19 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
                 <div>
                   <div className="text-xs text-stone-400">Total dos trabalhos</div>
                   <div className="text-xs text-stone-400 mt-0.5">Finalizados: <b style={{ color: VERDE }}>{formatReais(totalFinalizado)}</b></div>
+                  {totalPago > 0 && (
+                    <div className="text-xs text-stone-400 mt-0.5">Já pago: <b style={{ color: '#7A6234' }}>{formatReais(totalPago)}</b></div>
+                  )}
                 </div>
-                <div className="text-xl font-extrabold" style={{ color: INK }}>{formatReais(totalGeral)}</div>
+                {totalPago > 0 ? (
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-xs font-bold text-stone-400">resta</div>
+                    <div className="text-xl font-extrabold" style={{ color: restaGeral > 0 ? INK : '#A8A29E' }}>{restaGeral > 0 ? formatReais(restaGeral) : 'pago ✓'}</div>
+                    <div className="font-semibold text-stone-400" style={{ fontSize: 10 }}>de {formatReais(totalGeral)}</div>
+                  </div>
+                ) : (
+                  <div className="text-xl font-extrabold" style={{ color: INK }}>{formatReais(totalGeral)}</div>
+                )}
               </div>
 
               {/* Relatórios em folha A4 */}
@@ -4591,6 +4631,96 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
                   className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 border" style={{ borderColor: VERDE, color: VERDE, background: '#fff' }}>
                   <CheckCircle2 size={15} /> Só os finalizados ({finalizados.length})
                 </button>
+                <button onClick={() => escolhendo ? setEscolhendo(false) : abrirEscolha()}
+                  className="w-full mt-2 py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 border"
+                  style={{ borderColor: GOLD, color: '#7A6234', background: escolhendo ? GOLD_SOFT : '#fff' }}>
+                  <ListChecks size={15} /> {escolhendo ? 'Fechar seleção' : 'Escolher trabalhos e marcar pagos'}
+                </button>
+
+                {escolhendo && (() => {
+                  const escolhidos = trabalhosDoDentista.filter(c => marcadosRel[c.id]);
+                  const totSel = escolhidos.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+                  const pagoSel = escolhidos.reduce((s, c) => s + Math.min(pagoDigitadoRel(c.id), Number(c.valor) || 0), 0);
+                  const restaSel = Math.round((totSel - pagoSel) * 100) / 100;
+                  const todosMarc = escolhidos.length === trabalhosDoDentista.length;
+                  return (
+                    <div className="mt-2 rounded-xl" style={{ border: '1px solid #E7E5E4', overflow: 'hidden' }}>
+                      <div className="flex gap-2 p-2" style={{ background: '#FAF9F7' }}>
+                        <button onClick={abrirEscolha}
+                          className="flex-1 py-2 rounded-lg text-xs font-bold"
+                          style={{ border: todosMarc ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: todosMarc ? GOLD_SOFT : '#fff', color: todosMarc ? '#7A6234' : '#78716C' }}>
+                          Todos
+                        </button>
+                        <button onClick={() => setMarcadosRel({})}
+                          className="flex-1 py-2 rounded-lg text-xs font-bold"
+                          style={{ border: !todosMarc ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: !todosMarc ? GOLD_SOFT : '#fff', color: !todosMarc ? '#7A6234' : '#78716C' }}>
+                          Selecionados
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                        {trabalhosDoDentista.map((c, i) => {
+                          const marcado = !!marcadosRel[c.id];
+                          const v = Number(c.valor) || 0;
+                          const pg = Math.min(pagoDigitadoRel(c.id), v);
+                          const rs = Math.round((v - pg) * 100) / 100;
+                          return (
+                            <div key={c.id} className="px-3 py-2.5" style={{ borderTop: '1px solid #F5F5F4', opacity: marcado ? 1 : 0.45 }}>
+                              <button onClick={() => setMarcadosRel(m => ({ ...m, [c.id]: !m[c.id] }))} className="w-full flex items-center gap-2.5 text-left">
+                                <span className="flex-shrink-0 rounded-md flex items-center justify-center" style={{ width: 20, height: 20, border: marcado ? 'none' : '1.5px solid #D6D3D1', background: marcado ? VERDE : '#fff', color: '#fff', fontSize: 12, fontWeight: 900 }}>
+                                  {marcado ? '✓' : ''}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-sm font-bold truncate" style={{ color: INK }}>{c.paciente}</span>
+                                  <span className="block text-xs text-stone-400 truncate">{(c.itens && c.itens.length) ? rotuloItens(c.itens) : c.tipoTrabalho}</span>
+                                </span>
+                                <span className="text-sm font-extrabold flex-shrink-0" style={{ color: v > 0 ? '#166B3A' : '#A8A29E' }}>{v > 0 ? formatReais(v) : 'sem valor'}</span>
+                              </button>
+                              {v > 0 && (
+                                <div className="flex items-center gap-2 mt-1.5" style={{ paddingLeft: 30 }}>
+                                  <span className="text-xs font-bold text-stone-500 flex-shrink-0">Pago R$</span>
+                                  <input value={pagoEditRel[c.id] || ''} inputMode="decimal" placeholder="0,00"
+                                    onChange={e => setPagoEditRel(p => ({ ...p, [c.id]: e.target.value }))}
+                                    onBlur={() => onSetValorPago && onSetValorPago({ [c.id]: pagoDigitadoRel(c.id) })}
+                                    className="px-2.5 py-1.5 rounded-lg text-sm font-bold"
+                                    style={{ border: '1px solid #E7E5E4', width: 90, minWidth: 0, color: INK }} />
+                                  {pg > 0 && (
+                                    <span className="text-xs font-bold flex-shrink-0" style={{ color: rs > 0 ? '#B45309' : VERDE }}>
+                                      {rs > 0 ? `resta ${formatReais(rs)}` : 'pago ✓'}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="px-3 py-2.5" style={{ borderTop: '1px solid #E7E5E4', background: '#FAF9F7' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-stone-500">{escolhidos.length} {escolhidos.length === 1 ? 'trabalho' : 'trabalhos'}</span>
+                          <span className="text-right">
+                            <span className="block text-sm font-extrabold" style={{ color: pagoSel > 0 && restaSel <= 0 ? '#A8A29E' : INK }}>
+                              {pagoSel > 0 ? (restaSel > 0 ? `resta ${formatReais(restaSel)}` : 'tudo pago ✓') : formatReais(totSel)}
+                            </span>
+                            {pagoSel > 0 && <span className="block font-semibold text-stone-400" style={{ fontSize: 10 }}>total {formatReais(totSel)} • pago {formatReais(pagoSel)}</span>}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => imprimirEscolhidos(false)} disabled={!escolhidos.length}
+                            className="flex-1 py-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5"
+                            style={{ background: escolhidos.length ? INK : '#E7E5E4', color: escolhidos.length ? '#fff' : '#A8A29E' }}>
+                            <FileText size={13} /> Imprimir seleção
+                          </button>
+                          <button onClick={() => imprimirEscolhidos(true)} disabled={!escolhidos.length}
+                            className="flex-1 py-2.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5"
+                            style={{ background: '#F0EFEC', color: escolhidos.length ? '#57534E' : '#A8A29E' }}>
+                            <Download size={13} /> Baixar seleção
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => onImprimirRelatorio(dentista, trabalhosDoDentista, 'todos', true)}
                     className="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5" style={{ background: '#F0EFEC', color: '#57534E' }}>
@@ -4601,7 +4731,7 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
                     <Download size={12} /> Baixar finalizados
                   </button>
                 </div>
-                <div className="text-xs text-stone-400 mt-2 leading-relaxed">Sai em <b>PDF folha A4</b>, com paciente, trabalho, datas, situação e <b>valores somados</b>. Abre o compartilhamento do celular: dá pra <b>imprimir</b>, mandar no WhatsApp ou salvar.</div>
+                <div className="text-xs text-stone-400 mt-2 leading-relaxed">Sai em <b>PDF folha A4</b>, com paciente, trabalho, datas, situação, <b>valores somados</b> e — quando marcado — o <b>que já foi pago e o que resta</b>. Abre o compartilhamento do celular: dá pra <b>imprimir</b>, mandar no WhatsApp ou salvar.</div>
               </div>
             </>
           );
@@ -8643,7 +8773,13 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
     .slice().sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
   const total = lista.reduce((s, c) => s + (Number(c.valor) || 0), 0);
   const semValor = lista.filter(c => !(Number(c.valor) > 0)).length;
-  const titulo = modo === 'finalizados' ? 'Relatório de Trabalhos Finalizados' : 'Relatório de Trabalhos';
+  // Valor já pago marcado em cada trabalho: entra como coluna e desconta do total
+  const pagoDe = (c) => Math.min(Math.max(Number(c.valorPago) || 0, 0), Number(c.valor) || 0);
+  const totalPago = lista.reduce((s, c) => s + pagoDe(c), 0);
+  const temPago = totalPago > 0;
+  const totalResta = Math.round((total - totalPago) * 100) / 100;
+  const titulo = modo === 'finalizados' ? 'Relatório de Trabalhos Finalizados'
+    : (modo === 'selecionados' ? 'Relatório de Trabalhos Selecionados' : 'Relatório de Trabalhos');
   const situacao = (c) => {
     if (c.status === 'Entregue') return 'Entregue';
     if (c.status === 'Pronto') return 'Finalizado';
@@ -8656,7 +8792,18 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
     : c.tipoTrabalho;
 
   // Colunas: #, Paciente, Trabalho, Entrada, Prazo/Entrega, Situação, Valor
-  const COLS = [
+  // (com pagamento marcado, entram também as colunas Pago e Resta)
+  const COLS = temPago ? [
+    { x: 0, w: 36, tit: '#', al: 'center' },
+    { x: 36, w: 184, tit: 'Paciente', al: 'left' },
+    { x: 220, w: 176, tit: 'Trabalho', al: 'left' },
+    { x: 396, w: 112, tit: 'Entrada', al: 'center' },
+    { x: 508, w: 112, tit: modo === 'finalizados' ? 'Entrega' : 'Prazo', al: 'center' },
+    { x: 620, w: 104, tit: 'Status', al: 'center' },
+    { x: 724, w: 125, tit: 'Valor', al: 'right' },
+    { x: 849, w: 125, tit: 'Pago', al: 'right' },
+    { x: 974, w: CW - 974, tit: 'Resta', al: 'right' },
+  ] : [
     { x: 0, w: 44, tit: '#', al: 'center' },
     { x: 44, w: 250, tit: 'Paciente', al: 'left' },
     { x: 294, w: 268, tit: 'Trabalho', al: 'left' },
@@ -8668,7 +8815,7 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
   const ROW = 46;
   const TOPO_1 = 470;  // onde a tabela começa na 1ª folha (depois do cabeçalho)
   const TOPO_N = 150;  // nas folhas seguintes
-  const RODAPE = 210;  // espaço reservado no fim da última folha (total + assinaturas)
+  const RODAPE = temPago ? 300 : 210;  // espaço reservado no fim da última folha (totais + assinaturas)
 
   const cabe1 = Math.max(1, Math.floor((H - TOPO_1 - 120) / ROW));
   const cabeN = Math.max(1, Math.floor((H - TOPO_N - 120) / ROW));
@@ -8731,7 +8878,7 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
     // Cabeçalho da tabela
     if (linhas.length > 0) {
       ctx.fillStyle = '#F3EBDA'; ctx.fillRect(PAD, y, CW, 42);
-      COLS.forEach(col => escrever(col.tit.toUpperCase(), col, y + 11, '#7A6234', 800, 19));
+      COLS.forEach(col => escrever(col.tit.toUpperCase(), col, y + 11, '#7A6234', 800, temPago ? 17 : 19));
       y += 42;
       linhas.forEach((c, i) => {
         if (i % 2 === 1) { ctx.fillStyle = '#FCFBF8'; ctx.fillRect(PAD, y, CW, ROW); }
@@ -8744,10 +8891,16 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
         escrever(String(num), COLS[0], y + 13, '#A8A29E', 600, 20);
         escrever(c.paciente, COLS[1], y + 12, INK, 700, 22);
         escrever(nomeTrab(c), COLS[2], y + 12, '#57534E', 500, 21);
-        escrever(c.dataEntrada ? formatDateBR(c.dataEntrada) : '—', COLS[3], y + 14, '#57534E', 500, 19);
-        escrever(dataFim, COLS[4], y + 14, '#57534E', 500, 19);
-        escrever(situacao(c), COLS[5], y + 14, c.status === 'Entregue' ? '#166B3A' : '#78716C', 600, 18);
-        escrever(Number(c.valor) > 0 ? formatReais(c.valor) : '—', COLS[6], y + 13, Number(c.valor) > 0 ? INK : '#A8A29E', 700, 20);
+        escrever(c.dataEntrada ? formatDateBR(c.dataEntrada) : '—', COLS[3], y + 14, '#57534E', 500, temPago ? 18 : 19);
+        escrever(dataFim, COLS[4], y + 14, '#57534E', 500, temPago ? 18 : 19);
+        escrever(temPago ? situacao(c).replace(/Em produção/i, 'Produção') : situacao(c), COLS[5], y + 14, c.status === 'Entregue' ? '#166B3A' : '#78716C', 600, temPago ? 16 : 18);
+        escrever(Number(c.valor) > 0 ? formatReais(c.valor) : '—', COLS[6], y + 13, Number(c.valor) > 0 ? INK : '#A8A29E', 700, temPago ? 19 : 20);
+        if (temPago) {
+          const pg = pagoDe(c);
+          const rs = Math.round(((Number(c.valor) || 0) - pg) * 100) / 100;
+          escrever(pg > 0 ? formatReais(pg) : '—', COLS[7], y + 13, pg > 0 ? '#166B3A' : '#A8A29E', 600, 19);
+          escrever(Number(c.valor) > 0 ? (rs > 0 ? formatReais(rs) : 'pago ✓') : '—', COLS[8], y + 13, Number(c.valor) > 0 ? (rs > 0 ? INK : '#166B3A') : '#A8A29E', 700, 19);
+        }
         y += ROW;
       });
     } else if (pg === 0) {
@@ -8762,13 +8915,39 @@ function desenharRelatorioDentista(dentista, casos, modo, nomeLab) {
       y += 24;
       ctx.fillStyle = INK; ctx.fillRect(PAD, y, CW, 4);
       y += 24;
-      ctx.fillStyle = '#78716C'; ctx.font = `700 22px ${F}`; ctx.letterSpacing = '2px';
-      ctx.fillText(`TOTAL${modo === 'finalizados' ? ' FINALIZADO' : ''}`, PAD, y + 12);
-      ctx.letterSpacing = '0px';
-      ctx.fillStyle = INK; ctx.font = `800 44px ${F}`; ctx.textAlign = 'right';
-      ctx.fillText(formatReais(total), PAD + CW, y);
-      ctx.textAlign = 'left';
-      y += 60;
+      if (temPago) {
+        // Três totais: total dos trabalhos, já pago e o que resta (destaque)
+        ctx.fillStyle = '#78716C'; ctx.font = `700 22px ${F}`; ctx.letterSpacing = '2px';
+        ctx.fillText(`TOTAL${modo === 'finalizados' ? ' FINALIZADO' : ' DOS TRABALHOS'}`, PAD, y + 4);
+        ctx.letterSpacing = '0px';
+        ctx.fillStyle = INK; ctx.font = `800 30px ${F}`; ctx.textAlign = 'right';
+        ctx.fillText(formatReais(total), PAD + CW, y);
+        ctx.textAlign = 'left';
+        y += 44;
+        ctx.fillStyle = '#78716C'; ctx.font = `700 22px ${F}`; ctx.letterSpacing = '2px';
+        ctx.fillText('JÁ PAGO', PAD, y + 4);
+        ctx.letterSpacing = '0px';
+        ctx.fillStyle = '#166B3A'; ctx.font = `800 30px ${F}`; ctx.textAlign = 'right';
+        ctx.fillText('− ' + formatReais(totalPago), PAD + CW, y);
+        ctx.textAlign = 'left';
+        y += 48;
+        ctx.fillStyle = GOLD_SOFT; ctx.fillRect(PAD, y - 8, CW, 62);
+        ctx.fillStyle = '#7A6234'; ctx.font = `800 24px ${F}`; ctx.letterSpacing = '2px';
+        ctx.fillText('RESTA A PAGAR', PAD + 16, y + 8);
+        ctx.letterSpacing = '0px';
+        ctx.fillStyle = INK; ctx.font = `800 44px ${F}`; ctx.textAlign = 'right';
+        ctx.fillText(formatReais(totalResta), PAD + CW - 16, y - 2);
+        ctx.textAlign = 'left';
+        y += 70;
+      } else {
+        ctx.fillStyle = '#78716C'; ctx.font = `700 22px ${F}`; ctx.letterSpacing = '2px';
+        ctx.fillText(`TOTAL${modo === 'finalizados' ? ' FINALIZADO' : ''}`, PAD, y + 12);
+        ctx.letterSpacing = '0px';
+        ctx.fillStyle = INK; ctx.font = `800 44px ${F}`; ctx.textAlign = 'right';
+        ctx.fillText(formatReais(total), PAD + CW, y);
+        ctx.textAlign = 'left';
+        y += 60;
+      }
       if (semValor > 0) {
         ctx.fillStyle = '#A8A29E'; ctx.font = `500 19px ${F}`;
         ctx.fillText(`* ${semValor} ${semValor === 1 ? 'trabalho está' : 'trabalhos estão'} sem valor lançado e não ${semValor === 1 ? 'entra' : 'entram'} no total.`, PAD, y);
