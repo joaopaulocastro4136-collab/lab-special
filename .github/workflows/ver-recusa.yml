@@ -1,0 +1,28 @@
+# Lê o motivo da recusa na App Store (Resolution Center) — READ-ONLY.
+# Dispara no push deste arquivo/script (dispatch não funciona fora da main).
+name: Ver recusa da Apple
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/ver-recusa.yml
+      - ver-recusa.mjs
+
+jobs:
+  ver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Consulta o Resolution Center
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node ver-recusa.mjs
