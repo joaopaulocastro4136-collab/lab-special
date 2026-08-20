@@ -1,6 +1,6 @@
 {
-  "versionCode": 70,
-  "versionName": "12.7",
+  "versionCode": 71,
+  "versionName": "12.8",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Valor pago bate na hora no total do cliente (resta • pago • total)\n• Extrato do dentista: escolha os trabalhos e cobre só o que resta"
+  "novidades": "• Clientes: total, já pago e RESTA direto na ficha do dentista\n• Relatório A4: escolha os trabalhos, marque os pagos — sai com colunas Pago e Resta"
 }
