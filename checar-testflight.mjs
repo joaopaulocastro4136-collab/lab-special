@@ -19,7 +19,9 @@ const api = async (caminho) => {
 const apps = await api('/apps?filter[bundleId]=com.laboratorio.special,com.laboratorio.specialclinic');
 for (const app of apps.data || []) {
   console.log(`\n══ ${app.attributes.name} (${app.attributes.bundleId}) ══`);
-  const builds = await api(`/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=6&include=preReleaseVersion&fields[builds]=version,processingState,uploadedDate,expired&fields[preReleaseVersions]=version`);
+  const builds = await api(`/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=8&include=preReleaseVersion`);
+  if (builds.errors) console.log('  ERRO da API:', JSON.stringify(builds.errors).slice(0, 300));
+  if (!(builds.data || []).length) console.log('  (a consulta não devolveu build nenhum)');
   const versoes = {};
   for (const inc of builds.included || []) versoes[inc.id] = inc.attributes.version;
   for (const b of builds.data || []) {
