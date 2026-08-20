@@ -46,7 +46,8 @@ for (const t of (th.dados && th.dados.data) || []) {
 
 // 2) Reserva: submissões de análise + itens (estado da rejeição)
 console.log('\n── Submissões de análise ──');
-const subs = await api(`/v1/reviewSubmissions?filter[app]=${app.id}&limit=5&sort=-submittedDate`);
+const subs = await api(`/v1/reviewSubmissions?filter[app]=${app.id}&filter[platform]=IOS&limit=5`);
+if (subs.dados && subs.dados.errors) console.log('erros:', JSON.stringify(subs.dados.errors).slice(0, 400));
 console.log(`status ${subs.status}; submissões: ${((subs.dados && subs.dados.data) || []).length}`);
 for (const s of (subs.dados && subs.dados.data) || []) {
   console.log(`\nsubmissão ${s.id} | ${JSON.stringify(s.attributes)}`);
