@@ -8031,10 +8031,13 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
   // Extrato por dentista: só o que foi ENTREGUE no mês (é o que se cobra)
   const porDentista = {};
   entregues.forEach(c => {
-    if (!porDentista[c.dentista]) porDentista[c.dentista] = { trabalhos: [], total: 0 };
+    if (!porDentista[c.dentista]) porDentista[c.dentista] = { trabalhos: [], total: 0, pago: 0 };
     porDentista[c.dentista].trabalhos.push(c);
     porDentista[c.dentista].total += (c.valor || 0);
+    // Valor já pago marcado no trabalho bate automaticamente no total do cliente
+    porDentista[c.dentista].pago += Math.min(Math.max(Number(c.valorPago) || 0, 0), c.valor || 0);
   });
+  Object.values(porDentista).forEach(d => { d.resta = Math.round((d.total - d.pago) * 100) / 100; });
   const dentistasOrdenados = Object.entries(porDentista).sort((a, b) => b[1].total - a[1].total);
 
   // ── Contas a receber (acumulado geral): entregues − pagamentos ──
@@ -8213,8 +8216,13 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
               <div className="px-5 py-4" style={{ borderTop: '1px solid #F0EFEC', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-stone-500">{qtd} {qtd === 1 ? 'trabalho' : 'trabalhos'} no extrato</span>
-                  <span className="text-sm font-extrabold" style={{ color: INK }}>
-                    {pagoSel > 0 ? `resta ${formatReais(restaSel)}` : formatReais(totalSel)}
+                  <span className="flex-shrink-0 text-right">
+                    <span className="block text-sm font-extrabold" style={{ color: pagoSel > 0 && restaSel <= 0 ? '#A8A29E' : INK }}>
+                      {pagoSel > 0 ? (restaSel > 0 ? `resta ${formatReais(restaSel)}` : 'tudo pago ✓') : formatReais(totalSel)}
+                    </span>
+                    {pagoSel > 0 && (
+                      <span className="block font-semibold text-stone-400" style={{ fontSize: 10 }}>total {formatReais(totalSel)} • pago {formatReais(pagoSel)}</span>
+                    )}
                   </span>
                 </div>
                 <button onClick={enviarExtratoEscolhido} disabled={qtd === 0}
@@ -8428,7 +8436,14 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
                 <div className="text-sm font-bold truncate" style={{ color: INK }}>{nomeD}</div>
                 <div className="text-xs text-stone-400">{dados.trabalhos.length} {dados.trabalhos.length === 1 ? 'trabalho entregue' : 'trabalhos entregues'}</div>
               </div>
-              <span className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(dados.total)}</span>
+              {dados.pago > 0 ? (
+                <span className="flex-shrink-0 text-right">
+                  <span className="block text-sm font-extrabold" style={{ color: dados.resta > 0 ? '#166B3A' : '#A8A29E' }}>{dados.resta > 0 ? `resta ${formatReais(dados.resta)}` : 'pago ✓'}</span>
+                  <span className="block font-semibold text-stone-400" style={{ fontSize: 10 }}>de {formatReais(dados.total)} • pago {formatReais(dados.pago)}</span>
+                </span>
+              ) : (
+                <span className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(dados.total)}</span>
+              )}
               <button onClick={() => abrirExtrato(nomeD)} className="p-2 rounded-lg flex-shrink-0" style={{ background: '#25D366' }} title="Enviar extrato em PDF">
                 <Share2 size={14} color="white" />
               </button>
