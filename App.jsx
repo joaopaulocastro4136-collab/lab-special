@@ -1026,13 +1026,15 @@ function desenharTrabalhosDeHoje({ casos }) {
 }
 
 // ─── Gera a imagem do extrato de serviços de um dentista (para PDF) ───
+// Cada trabalho pode ter um valor JÁ PAGO (c.valorPago): a linha e o total
+// passam a cobrar apenas o que resta.
 function desenharExtratoDentista({ dentistaNome, mesLabel, trabalhos, total }) {
   const FONTE = "'Manrope', -apple-system, sans-serif";
   const W = 1080;
   const PAD = 56;
   const ROW_H = 96;
   const HEADER_H = 320;
-  const H = HEADER_H + Math.max(trabalhos.length, 1) * ROW_H + 240;
+  const H = HEADER_H + Math.max(trabalhos.length, 1) * ROW_H + 300;
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -1078,36 +1080,63 @@ function desenharExtratoDentista({ dentistaNome, mesLabel, trabalhos, total }) {
     ctx.fillText('Nenhum trabalho entregue neste mês.', PAD, y + 20);
     y += ROW_H;
   }
+  let totalValor = 0;
+  let totalPago = 0;
   trabalhos.forEach((c, i) => {
+    const v = c.valor || 0;
+    const pago = Math.min(Math.max(Number(c.valorPago) || 0, 0), v);
+    const resta = Math.round((v - pago) * 100) / 100;
+    totalValor += v;
+    totalPago += pago;
     if (i % 2 === 0) {
       ctx.fillStyle = '#FAF9F7';
       ctx.fillRect(PAD - 16, y, W - PAD * 2 + 32, ROW_H);
     }
     ctx.fillStyle = INK;
     ctx.font = `700 30px ${FONTE}`;
-    ctx.fillText(fitText(c.paciente, W - PAD * 2 - 260), PAD, y + 14);
+    ctx.fillText(fitText(c.paciente, W - PAD * 2 - 360), PAD, y + 14);
     ctx.fillStyle = '#78716C';
     ctx.font = `600 24px ${FONTE}`;
-    ctx.fillText(fitText(`${c.tipoTrabalho} • entregue em ${formatDateBR(c.dataSaida)}`, W - PAD * 2 - 260), PAD, y + 54);
+    ctx.fillText(fitText(`${c.tipoTrabalho} • entregue em ${formatDateBR(c.dataSaida)}`, W - PAD * 2 - 360), PAD, y + 54);
     ctx.textAlign = 'right';
-    ctx.fillStyle = c.valor > 0 ? '#166B3A' : '#A8A29E';
-    ctx.font = `800 32px ${FONTE}`;
-    ctx.fillText(c.valor > 0 ? formatReais(c.valor) : 'sem valor', W - PAD, y + 28);
+    if (v <= 0) {
+      ctx.fillStyle = '#A8A29E';
+      ctx.font = `800 32px ${FONTE}`;
+      ctx.fillText('sem valor', W - PAD, y + 28);
+    } else if (pago > 0) {
+      ctx.fillStyle = resta > 0 ? '#166B3A' : '#A8A29E';
+      ctx.font = `800 32px ${FONTE}`;
+      ctx.fillText(resta > 0 ? formatReais(resta) : 'PAGO ✓', W - PAD, y + 14);
+      ctx.fillStyle = '#A8A29E';
+      ctx.font = `600 20px ${FONTE}`;
+      ctx.fillText(`valor ${formatReais(v)} • pago ${formatReais(pago)}`, W - PAD, y + 58);
+    } else {
+      ctx.fillStyle = '#166B3A';
+      ctx.font = `800 32px ${FONTE}`;
+      ctx.fillText(formatReais(v), W - PAD, y + 28);
+    }
     ctx.textAlign = 'left';
     y += ROW_H;
   });
+  const totalResta = Math.round((totalValor - totalPago) * 100) / 100;
 
-  // Total
+  // Total (com pagamento parcial, o destaque é o que RESTA a pagar)
   y += 24;
+  if (totalPago > 0) {
+    ctx.fillStyle = '#78716C';
+    ctx.font = `600 26px ${FONTE}`;
+    ctx.fillText(`Total dos trabalhos ${formatReais(totalValor)} • já pago ${formatReais(totalPago)}`, PAD, y);
+    y += 48;
+  }
   ctx.fillStyle = GOLD_SOFT;
   ctx.fillRect(PAD - 16, y, W - PAD * 2 + 32, 92);
   ctx.fillStyle = '#7A6234';
   ctx.font = `800 32px ${FONTE}`;
-  ctx.fillText('TOTAL DO MÊS', PAD, y + 28);
+  ctx.fillText(totalPago > 0 ? 'RESTA A PAGAR' : 'TOTAL DO MÊS', PAD, y + 28);
   ctx.textAlign = 'right';
   ctx.fillStyle = INK;
   ctx.font = `800 42px ${FONTE}`;
-  ctx.fillText(formatReais(total), W - PAD, y + 22);
+  ctx.fillText(formatReais(totalPago > 0 ? totalResta : totalValor), W - PAD, y + 22);
   ctx.textAlign = 'left';
 
   ctx.fillStyle = '#A8A29E';
@@ -2592,6 +2621,10 @@ export default function App() {
             onSalvarCombinado={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRegistrarPagamento={registrarPagamento}
             onRemoverPagamento={removerPagamento}
+            onSetValorPago={(mapa) => {
+              const lista = casosVivos();
+              persistCasos(lista.map(c => mapa[c.id] !== undefined ? { ...c, valorPago: mapa[c.id] > 0 ? mapa[c.id] : null } : c));
+            }}
             onSelect={goToDetalhe}
             onVoltar={() => setView('dashboard')} />
         )}
@@ -7931,11 +7964,15 @@ function PrazoPagamentoEdit({ diasAtual, dataAtual, onSalvar }) {
   );
 }
 
-function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSalvarCombinado, onRegistrarPagamento, onRemoverPagamento, onSelect, onVoltar }) {
+function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSalvarCombinado, onRegistrarPagamento, onRemoverPagamento, onSetValorPago, onSelect, onVoltar }) {
   const [mesOffset, setMesOffset] = useState(0);
   const [dentistaCobranca, setDentistaCobranca] = useState(null);
   const [valorPagamento, setValorPagamento] = useState('');
   const [filtroDentistaFin, setFiltroDentistaFin] = useState('Todos');
+  // Extrato com escolha: quais trabalhos entram no PDF (todos ou selecionados)
+  const [extratoDe, setExtratoDe] = useState(null); // nome do dentista com a janela aberta
+  const [marcados, setMarcados] = useState({}); // id do trabalho -> true (entra no extrato)
+  const [pagoEdit, setPagoEdit] = useState({}); // id -> texto digitado no campo "pago"
 
   if (!ehGestor) {
     return (
@@ -8044,6 +8081,37 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
     setValorPagamento('');
   };
 
+  // Abre a janela de escolha do extrato: começa com TODOS os trabalhos marcados
+  const abrirExtrato = (nomeDentista) => {
+    const dados = porDentista[nomeDentista];
+    if (!dados) return;
+    const sel = {};
+    dados.trabalhos.forEach(c => { sel[c.id] = true; });
+    const pagos = {};
+    dados.trabalhos.forEach(c => { pagos[c.id] = c.valorPago > 0 ? String(c.valorPago).replace('.', ',') : ''; });
+    setMarcados(sel);
+    setPagoEdit(pagos);
+    setExtratoDe(nomeDentista);
+  };
+
+  const pagoDigitado = (casoId) => Math.round((parseFloat(String(pagoEdit[casoId] || '').replace(',', '.')) || 0) * 100) / 100;
+  const salvarPago = (casoId) => {
+    onSetValorPago && onSetValorPago({ [casoId]: pagoDigitado(casoId) });
+  };
+
+  // Gera e envia o PDF só com os trabalhos marcados (e grava os valores pagos digitados)
+  const enviarExtratoEscolhido = () => {
+    const dados = porDentista[extratoDe];
+    if (!dados) return;
+    const escolhidos = dados.trabalhos.filter(c => marcados[c.id]).map(c => ({ ...c, valorPago: pagoDigitado(c.id) }));
+    if (!escolhidos.length) return;
+    const mapa = {};
+    dados.trabalhos.forEach(c => { mapa[c.id] = pagoDigitado(c.id); });
+    onSetValorPago && onSetValorPago(mapa);
+    compartilharExtratoDentista(extratoDe, { trabalhos: escolhidos, total: escolhidos.reduce((s, c) => s + (c.valor || 0), 0) });
+    setExtratoDe(null);
+  };
+
   const compartilharExtratoDentista = async (nomeDentista, dados) => {
     try {
       const url = desenharExtratoDentista({ dentistaNome: nomeDentista, mesLabel: `${mesNome} de ${base.getFullYear()}`, trabalhos: dados.trabalhos, total: dados.total });
@@ -8067,6 +8135,98 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
 
   return (
     <div>
+      {/* Janela do extrato: escolher os trabalhos (todos ou selecionados) e o valor já pago */}
+      {extratoDe && porDentista[extratoDe] && (() => {
+        const dados = porDentista[extratoDe];
+        const selecionadosLista = dados.trabalhos.filter(c => marcados[c.id]);
+        const qtd = selecionadosLista.length;
+        const totalSel = selecionadosLista.reduce((s, c) => s + (c.valor || 0), 0);
+        const pagoSel = selecionadosLista.reduce((s, c) => s + Math.min(pagoDigitado(c.id), c.valor || 0), 0);
+        const restaSel = Math.round((totalSel - pagoSel) * 100) / 100;
+        const todosMarcados = qtd === dados.trabalhos.length;
+        const marcarTodos = () => { const sel = {}; dados.trabalhos.forEach(c => { sel[c.id] = true; }); setMarcados(sel); };
+        return (
+          <div className="fixed inset-0 flex items-end justify-center" style={{ background: 'rgba(28,27,25,0.55)', zIndex: 60 }} onClick={() => setExtratoDe(null)}>
+            <div className="bg-white w-full rounded-t-3xl flex flex-col" style={{ maxWidth: 520, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 px-5 pt-4 pb-3" style={{ borderBottom: '1px solid #F0EFEC' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-extrabold truncate" style={{ color: INK }}>Extrato — {extratoDe}</div>
+                  <div className="text-xs text-stone-400">Escolha o que entra no PDF e marque o que já foi pago</div>
+                </div>
+                <button onClick={() => setExtratoDe(null)} className="p-2 rounded-full flex-shrink-0" style={{ background: '#F5F4F0' }}>
+                  <X size={16} style={{ color: INK }} />
+                </button>
+              </div>
+
+              <div className="flex gap-2 px-5 pt-3 pb-1">
+                <button onClick={marcarTodos}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ border: todosMarcados ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: todosMarcados ? GOLD_SOFT : '#fff', color: todosMarcados ? '#7A6234' : '#78716C' }}>
+                  Todos
+                </button>
+                <button onClick={() => setMarcados({})}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ border: !todosMarcados ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: !todosMarcados ? GOLD_SOFT : '#fff', color: !todosMarcados ? '#7A6234' : '#78716C' }}>
+                  Selecionados
+                </button>
+              </div>
+              <div className="text-xs text-stone-400 px-5 pb-2">Toque num trabalho para marcar ou desmarcar.</div>
+
+              <div className="flex-1 overflow-y-auto px-5" style={{ minHeight: 0 }}>
+                {dados.trabalhos.map((c, i) => {
+                  const marcado = !!marcados[c.id];
+                  const v = c.valor || 0;
+                  const pago = Math.min(pagoDigitado(c.id), v);
+                  const resta = Math.round((v - pago) * 100) / 100;
+                  return (
+                    <div key={c.id} className="py-3" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none', opacity: marcado ? 1 : 0.45 }}>
+                      <button onClick={() => setMarcados(m => ({ ...m, [c.id]: !m[c.id] }))} className="w-full flex items-center gap-3 text-left">
+                        <span className="flex-shrink-0 rounded-md flex items-center justify-center" style={{ width: 22, height: 22, border: marcado ? 'none' : '1.5px solid #D6D3D1', background: marcado ? VERDE : '#fff', color: '#fff', fontSize: 13, fontWeight: 900 }}>
+                          {marcado ? '✓' : ''}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-bold truncate" style={{ color: INK }}>{c.paciente}</span>
+                          <span className="block text-xs text-stone-400 truncate">{c.tipoTrabalho} • entregue em {formatDateBR(c.dataSaida)}</span>
+                        </span>
+                        <span className="text-sm font-extrabold flex-shrink-0" style={{ color: v > 0 ? '#166B3A' : '#A8A29E' }}>{v > 0 ? formatReais(v) : 'sem valor'}</span>
+                      </button>
+                      {v > 0 && (
+                        <div className="flex items-center gap-2 mt-2" style={{ paddingLeft: 34 }}>
+                          <span className="text-xs font-bold text-stone-500 flex-shrink-0">Pago R$</span>
+                          <input value={pagoEdit[c.id] || ''} inputMode="decimal" placeholder="0,00"
+                            onChange={e => setPagoEdit(p => ({ ...p, [c.id]: e.target.value }))}
+                            onBlur={() => salvarPago(c.id)}
+                            className="px-2.5 py-1.5 rounded-lg text-sm font-bold"
+                            style={{ border: '1px solid #E7E5E4', width: 92, minWidth: 0, color: INK }} />
+                          {pago > 0 && (
+                            <span className="text-xs font-bold flex-shrink-0" style={{ color: resta > 0 ? '#B45309' : VERDE }}>
+                              {resta > 0 ? `resta ${formatReais(resta)}` : 'pago ✓'}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 py-4" style={{ borderTop: '1px solid #F0EFEC', paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-stone-500">{qtd} {qtd === 1 ? 'trabalho' : 'trabalhos'} no extrato</span>
+                  <span className="text-sm font-extrabold" style={{ color: INK }}>
+                    {pagoSel > 0 ? `resta ${formatReais(restaSel)}` : formatReais(totalSel)}
+                  </span>
+                </div>
+                <button onClick={enviarExtratoEscolhido} disabled={qtd === 0}
+                  className="w-full py-3.5 rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2"
+                  style={{ background: qtd === 0 ? '#E7E5E4' : '#25D366', color: qtd === 0 ? '#A8A29E' : '#fff' }}>
+                  <Share2 size={15} /> Enviar extrato (PDF)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       <div className="flex items-center justify-between mb-4">
         <button onClick={onVoltar} className="flex items-center gap-1 text-sm text-stone-500 font-medium">
           <ChevronLeft size={16} /> Voltar
@@ -8269,7 +8429,7 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
                 <div className="text-xs text-stone-400">{dados.trabalhos.length} {dados.trabalhos.length === 1 ? 'trabalho entregue' : 'trabalhos entregues'}</div>
               </div>
               <span className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(dados.total)}</span>
-              <button onClick={() => compartilharExtratoDentista(nomeD, dados)} className="p-2 rounded-lg flex-shrink-0" style={{ background: '#25D366' }} title="Enviar extrato em PDF">
+              <button onClick={() => abrirExtrato(nomeD)} className="p-2 rounded-lg flex-shrink-0" style={{ background: '#25D366' }} title="Enviar extrato em PDF">
                 <Share2 size={14} color="white" />
               </button>
             </div>
