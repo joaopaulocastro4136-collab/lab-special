@@ -38,7 +38,7 @@ FINANCEIRO SEM PLANILHA
 E AINDA
 • Notificações no celular a cada acontecimento importante
 • IA Special: simulação do novo sorriso a partir da foto do paciente
-• Funciona no iPhone, iPad, Android e no navegador
+• Funciona no iPhone, no iPad e no navegador
 
 Feito por quem vive a rotina de laboratório, para laboratórios de todos os tamanhos.`;
 
@@ -61,6 +61,9 @@ Every feature is available to any user. There is no paid content — the app is 
 The companion app for dentists, "Special Clinic", is already live on the App Store; partner dentists follow their cases and send requests through it.
 
 If you prefer to review with a PRE-POPULATED DEMO ACCOUNT instead of creating your own workspace, we will gladly provide one — email joaopaulocastro41@gmail.com and we set it up immediately.
+
+ANSWER TO GUIDELINE 2.3.10 — ACCURATE METADATA:
+The App Store description was revised: every reference to third-party platforms was removed. The description now only mentions iPhone, iPad and the web browser experience.
 
 ANSWER TO GUIDELINE 5.1.1(v) — ACCOUNT DELETION (implemented in this version):
 The app now offers full in-app account deletion, initiated and completed entirely inside the app:
