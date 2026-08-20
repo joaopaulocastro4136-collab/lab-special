@@ -6,7 +6,7 @@
 //  mesmo banco (Firestore), em tempo real. O contrato de dados que os dois
 //  lados seguem está descrito em PONTE.md.
 // ═══════════════════════════════════════════════════════════════════════════
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
@@ -35,11 +35,12 @@ async function ligarFirebase() {
   // autenticação e o banco falha — estes dois ajustes são os recomendados:
   let auth;
   if (window.__entrarNativoGoogle) {
-    // iPhone (WKWebView): inicialização especial recomendada
+    // iPhone (WKWebView): SEM popupRedirectResolver — o login é pela tela de
+    // contas do aparelho; o resolver web carregaria um script do Google que
+    // quebra dentro do aplicativo ("Script error." na largada)
     try {
       auth = modAuth.initializeAuth(app, {
         persistence: [modAuth.indexedDBLocalPersistence, modAuth.browserLocalPersistence],
-        popupRedirectResolver: modAuth.browserPopupRedirectResolver,
       });
     } catch (e) { auth = modAuth.getAuth(app); }
   } else {
@@ -707,18 +708,29 @@ function App() {
 
   const [erroInicial, setErroInicial] = useState('');
 
+  const largou = useRef(false); // depois que o app abriu, erro avulso não pode travar tudo
+
   useEffect(() => {
     if (!CONFIGURADO) return;
     // Qualquer erro na largada vira tela visível (nada de app "que não abre")
-    const pega = (e) => setErroInicial(atual => atual || String(e?.reason?.message || e?.message || e?.type || e));
+    const pega = (e) => {
+      if (largou.current) return;
+      const m = String(e?.reason?.message || e?.message || e?.type || e || '');
+      // "Script error." = barulho de script de fora (Google etc.), sem
+      // informação nenhuma — não é falha nossa, não trava o app por isso
+      if (!m || m === 'error' || m.toLowerCase().includes('script error')) return;
+      setErroInicial(atual => atual || m);
+    };
     window.addEventListener('unhandledrejection', pega);
     window.addEventListener('error', pega);
     let soltarAuth = null, soltarDoc = null;
     ligarFirebase().then(() => {
-      // Completa o login por redirect (plano B do navegador), se houver
-      fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
+      // Completa o login por redirect (plano B só do navegador; no iPhone o
+      // login é nativo e este caminho carregaria script que quebra o app)
+      if (!window.__entrarNativoGoogle) fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
       soltarAuth = fb.fns.onAuthStateChanged(fb.auth, u => {
         soltarDoc?.(); soltarDoc = null;
+        largou.current = true;
         if (!u) { setConta(null); setCadastro(null); setPronto(true); return; }
         setConta({ uid: u.uid, email: u.email, nome: u.displayName || u.email, foto: u.photoURL || '' });
         // O cadastro fica em voluntarios/{uid}: se não existe, o voluntário
