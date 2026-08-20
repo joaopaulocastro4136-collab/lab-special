@@ -73,6 +73,7 @@ The app now offers full in-app account deletion, initiated and completed entirel
 4. Type EXCLUIR (Portuguese for DELETE) in the confirmation box and tap "Excluir de vez".
 5. The server then PERMANENTLY deletes the user's laboratory workspace (all cases, dentists, finances, commissions, settings), the account mappings, and the authentication account itself. The user is signed out and returned to the sign-in screen. This is real deletion, not deactivation. No website visit, phone call or e-mail is required.
 The same flow exists for team members and dentists (their access/profile is deleted; the laboratory's own production records remain with the laboratory, as its business records).
+A screen recording of the COMPLETE deletion flow, captured on a physical iPhone, is available at: https://laboratorio-special.web.app/demo-exclusao-conta.mp4
 
 Answers to the 3.2 review questions:
 1. The app is NOT restricted to users of a single company — any dental laboratory can create its own account.
