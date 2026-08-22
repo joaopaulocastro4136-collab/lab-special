@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
-import { Home, ClipboardList, CalendarDays, ListChecks, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, CalendarDays, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
@@ -55,12 +55,8 @@ async function ligarFirebase() {
 const DEMO = {
   usuario: { uid: 'demo-1', nome: 'Voluntário de Teste', ministerio: 'Acolhimento' },
   avisos: [
-    { id: 'a1', titulo: 'Bem-vindo ao Semeador!', texto: 'Este é o aplicativo do voluntário do Seja Semente. Aqui você recebe avisos da central, vê suas escalas e confirma presença.', criadoEm: new Date(), autor: 'Central' },
+    { id: 'a1', titulo: 'Bem-vindo ao Semeador!', texto: 'Este é o aplicativo do voluntário e do dentista do Seja Semente. Aqui você faz a triagem dos pacientes e vê a agenda do dia que a central marcou para você.', criadoEm: new Date(), autor: 'Central' },
     { id: 'a2', titulo: 'Mutirão de sábado', texto: 'Neste sábado teremos mutirão de arrecadação de alimentos. Quem puder chegar às 8h, a van sai do ponto de encontro às 8h30.', criadoEm: new Date(Date.now() - 864e5), autor: 'Coordenação' },
-  ],
-  escalas: [
-    { id: 'e1', data: proximoDia(6), hora: '08:00', ministerio: 'Acolhimento', local: 'Sede Seja Semente', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: {} },
-    { id: 'e2', data: proximoDia(0), hora: '17:30', ministerio: 'Distribuição', local: 'Praça Central', voluntarios: [{ uid: 'demo-1', nome: 'Voluntário de Teste' }], confirmados: { 'demo-1': true } },
   ],
   agendamentos: [
     { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
@@ -280,29 +276,6 @@ function CartaoAviso({ aviso }) {
   );
 }
 
-function CartaoEscala({ escala, uid, aoConfirmar }) {
-  const confirmado = !!escala.confirmados?.[uid];
-  return (
-    <div className="cartao">
-      <div className="cartao-linha">
-        <Bolha nome={escala.ministerio} Icone={ListChecks} />
-        <div>
-          <div className="cartao-topo">
-            <strong>{escala.ministerio}</strong>
-            <span className="quando">{dataBonita(escala.data)} · {escala.hora}</span>
-          </div>
-          {escala.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{escala.local}</p>}
-          <div className="linha-confirma">
-            {confirmado
-              ? <span className="ok">✓ Presença confirmada</span>
-              : <button className="btn-confirmar" onClick={() => aoConfirmar(escala)}>Confirmar presença</button>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Vazio({ texto }) {
   return <div className="vazio">{texto}</div>;
 }
@@ -369,7 +342,6 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
-  const [escalas, setEscalas] = useState(CONFIGURADO ? [] : lerLocal('sd-escalas', DEMO.escalas));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
   const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : lerLocal('sd-pacientes', DEMO.pacientes));
 
@@ -411,14 +383,29 @@ function TelaPrincipal({ usuario, aoSair }) {
   }
   const semTriagem = todosPacientes.filter(p => !p.triagem);
 
-  // Meus pacientes: os que a central agendou comigo (ou designou na triagem)
-  const meusIds = new Set(agendamentos.map(g => g.pacienteId).filter(Boolean));
-  const pacientes = CONFIGURADO
-    ? todosPacientes.filter(p => meusIds.has(p.id) || p.triagem?.profissionalUid === usuario.uid)
-    : todosPacientes;
+  // Agenda do dia: o que a central mandou para hoje, e o que vem depois
+  const hj = new Date();
+  const hojeISO = `${hj.getFullYear()}-${String(hj.getMonth() + 1).padStart(2, '0')}-${String(hj.getDate()).padStart(2, '0')}`;
+  const agendaHoje = agendamentos.filter(g => g.data === hojeISO);
+  const agendaProximos = agendamentos.filter(g => g.data > hojeISO);
+  const cartaoAgenda = g => (
+    <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
+      <div className="cartao-linha">
+        <Bolha nome={g.area || g.titulo} Icone={CalendarDays} />
+        <div>
+          <div className="cartao-topo">
+            <strong>{g.pacienteNome || g.titulo}</strong>
+            <span className="quando">{dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}</span>
+          </div>
+          {g.pacienteNome && <p>{g.titulo}</p>}
+          {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}
+          <p className="obs">marcado pela central Seja Semente</p>
+        </div>
+      </div>
+    </div>
+  );
 
   // Sem Firebase, o que você faz fica salvo no aparelho
-  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-escalas', escalas); }, [escalas]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-agendamentos', agendamentos); }, [agendamentos]);
 
   // ─── Ficha do paciente (dados + fotos do que foi feito) ───
@@ -460,11 +447,6 @@ function TelaPrincipal({ usuario, aoSair }) {
       query(collection(fb.db, 'avisos'), orderBy('criadoEm', 'desc')),
       snap => setAvisos(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    const paraEscalas = onSnapshot(
-      query(collection(fb.db, 'escalas'), orderBy('data')),
-      snap => setEscalas(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(e => e.voluntarios?.some(v => v.uid === usuario.uid)))
-    );
     // A agenda do voluntário: só o que a central marcou PARA ELE
     const paraAgenda = onSnapshot(
       query(collection(fb.db, 'agendamentos'), orderBy('data')),
@@ -483,17 +465,8 @@ function TelaPrincipal({ usuario, aoSair }) {
       const ultimo = s?.atualizadoEm?.toDate?.();
       setCentralOnline(!!ultimo && Date.now() - ultimo.getTime() < 3 * 60 * 1000);
     });
-    return () => { paraAvisos(); paraEscalas(); paraAgenda(); paraPacientes(); paraCentral(); };
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); };
   }, [usuario.uid]);
-
-  async function confirmar(escala) {
-    if (!CONFIGURADO) {
-      setEscalas(es => es.map(e => e.id === escala.id ? { ...e, confirmados: { ...e.confirmados, [usuario.uid]: true } } : e));
-      return;
-    }
-    const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'escalas', escala.id), { [`confirmados.${usuario.uid}`]: true });
-  }
 
 
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
@@ -611,55 +584,17 @@ function TelaPrincipal({ usuario, aoSair }) {
             </div>
           </>
         )}
-        {aba === 'escalas' && (
-          <>
-            <h2>Minhas escalas</h2>
-            {escalas.length ? escalas.map(e => <CartaoEscala key={e.id} escala={e} uid={usuario.uid} aoConfirmar={confirmar} />) : <Vazio texto="Você ainda não está em nenhuma escala." />}
-          </>
-        )}
-        {aba === 'pacientes' && (
-          <>
-            <h2>Meus pacientes</h2>
-            {pacientes.length ? pacientes.map(p => (
-              <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
-                <div className="cartao-linha">
-                  <Bolha nome={p.nome} foto={p.foto} />
-                  <div>
-                    <div className="cartao-topo">
-                      <strong>{p.nome}</strong>
-                      <span className={'chip ' + (p.status || 'triado').replace(' ', '-')}>{p.status || 'triado'}</span>
-                    </div>
-                    {p.triagem && <p>{p.triagem.area || [p.triagem.especialidade, p.triagem.procedimento].filter(Boolean).join(' · ')}</p>}
-                    <p className="obs">{[p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
-                    {p.triagem && (p.triagem.saude?.length > 0 || p.triagem.outrasCondicoes) && (
-                      <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(p.triagem.saude || []), p.triagem.outrasCondicoes].filter(Boolean).join(', ')}</p>
-                    )}
-                    {p.observacoes && <p className="obs">{p.observacoes}</p>}
-                  </div>
-                </div>
-              </div>
-            )) : <Vazio texto="Nenhum paciente designado para você ainda — quando a central fizer uma triagem no seu nome, ele aparece aqui." />}
-          </>
-        )}
         {aba === 'agenda' && (
           <>
-            <h2>Minha agenda</h2>
-            {agendamentos.length ? agendamentos.map(g => (
-              <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
-                <div className="cartao-linha">
-                  <Bolha nome={g.area || g.titulo} Icone={CalendarDays} />
-                  <div>
-                    <div className="cartao-topo">
-                      <strong>{g.pacienteNome || g.titulo}</strong>
-                      <span className="quando">{dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}</span>
-                    </div>
-                    {g.pacienteNome && <p>{g.titulo}</p>}
-                    {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}
-                    <p className="obs">marcado pela central Seja Semente</p>
-                  </div>
-                </div>
-              </div>
-            )) : <Vazio texto="Nada na sua agenda ainda — quando a central marcar um paciente para você, ele aparece aqui." />}
+            <h2>Agenda do dia</h2>
+            {agendaHoje.length ? agendaHoje.map(cartaoAgenda)
+              : <Vazio texto="Nenhum atendimento marcado para hoje." />}
+            {agendaProximos.length > 0 && (
+              <>
+                <h2 style={{ fontSize: 20, marginTop: 14 }}>Próximos dias</h2>
+                {agendaProximos.map(cartaoAgenda)}
+              </>
+            )}
           </>
         )}
         {aba === 'perfil' && (
@@ -687,9 +622,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <span className="icone-aba"><Stethoscope size={22} />{semTriagem.length > 0 && <i className="bolinha" />}</span>
           <span>Triagem</span>
         </button>
-        <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={22} /><span>Pacientes</span></button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={22} /><span>Agenda</span></button>
-        <button className={aba === 'escalas' ? 'ativo' : ''} onClick={() => setAba('escalas')}><ListChecks size={22} /><span>Escalas</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
     </div>
