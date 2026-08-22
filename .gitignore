@@ -15,3 +15,8 @@ ios/App/build/
 ios/App/Pods/
 ios/DerivedData/
 *.log
+clinic-native/android/.gradle/
+clinic-native/android/build/
+clinic-native/android/app/build/
+clinic-native/android/capacitor-cordova-android-plugins/build/
+dist-clinic/SpecialClinic.apk

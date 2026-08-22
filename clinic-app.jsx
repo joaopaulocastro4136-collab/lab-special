@@ -330,6 +330,45 @@ function FormEntrarLab({ email, carregando, onConectar, onSair, onVoltar, nomeIn
 }
 
 // ─── Tela de entrada premium: preto com brilho dourado, marca centrada e botões Apple + Google ───
+// Atualização do aplicativo DENTRO do app (só no APK Android — no iPhone é pela loja):
+// verifica a versão publicada no site e baixa o APK novo com um toque.
+function AtualizacaoClinicCard() {
+  const [estado, setEstado] = useState('parado'); // parado | verificando | atualizado | nova | erro
+  const [nova, setNova] = useState(null);
+  const [instalada, setInstalada] = useState('');
+  if (typeof window === 'undefined' || !window.atualizadorAndroid) return null;
+  const verificar = async () => {
+    setEstado('verificando');
+    try {
+      const r = await window.atualizadorAndroid.verificar();
+      setInstalada(r.instalada || '');
+      if (r.nova) { setNova(r.nova); setEstado('nova'); }
+      else setEstado('atualizado');
+    } catch (e) { setEstado('erro'); }
+  };
+  return (
+    <div style={{ marginTop: 8, border: '1px solid #E7E5E4', borderRadius: 14, padding: 13, background: '#fff' }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: INK }}>Atualização do aplicativo</div>
+      <div style={{ fontSize: 11.5, color: '#A8A29E', margin: '4px 0 10px' }}>
+        {instalada ? `Versão instalada: ${instalada}` : 'Verifique se há uma versão nova do Special Clinic.'}
+      </div>
+      {estado === 'nova' && nova ? (
+        <button onClick={() => window.atualizadorAndroid.baixar(nova.url)}
+          style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: GOLD, color: INK, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE }}>
+          ⬇ Baixar versão {nova.versionName}
+        </button>
+      ) : (
+        <button onClick={verificar} disabled={estado === 'verificando'}
+          style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: estado === 'verificando' ? '#F0EFEC' : INK, color: estado === 'verificando' ? '#A8A29E' : '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE }}>
+          {estado === 'verificando' ? 'Verificando…' : 'Verificar atualização agora'}
+        </button>
+      )}
+      {estado === 'atualizado' && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#166B3A', marginTop: 8, textAlign: 'center' }}>Você já está na versão mais recente ✓</div>}
+      {estado === 'erro' && <div style={{ fontSize: 11.5, fontWeight: 600, color: '#B42318', marginTop: 8, textAlign: 'center' }}>Não consegui verificar — confira a internet e tente de novo.</div>}
+    </div>
+  );
+}
+
 // Exclusão da própria conta DENTRO do app (exigência da App Store e do Google Play).
 // Fluxo: botão → aviso → digitar EXCLUIR → o servidor apaga perfil, vínculos e conta.
 function ExcluirContaClinic() {
@@ -2069,6 +2108,7 @@ function App({ dentista, email, prazoPagamento, diasPagamento, dataPagamento, la
               style={{ width: '100%', padding: 13, borderRadius: 14, border: '1px solid #E7E5E4', background: '#fff', color: '#B42318', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <LogOut size={16} /> Sair da conta
             </button>
+            <AtualizacaoClinicCard />
             <ExcluirContaClinic />
             <button onClick={() => setMeusDados(false)}
               style={{ width: '100%', marginTop: 8, padding: 13, borderRadius: 14, border: 'none', background: INK, color: GOLD, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: FONTE }}>
@@ -4185,7 +4225,7 @@ function Raiz() {
     return (
       <>{abertura}
       <TelaLogin>
-        <BotaoApple onClick={entrarApple} carregando={entrando} />
+        {(typeof window === 'undefined' || window.__plataformaNativa !== 'android') && <BotaoApple onClick={entrarApple} carregando={entrando} />}
         <BotaoGoogleEscuro onClick={entrar} carregando={entrando} />
         <BotaoEmailSenha onEntrar={entrarEmail} onCriar={criarEmail} onEsqueci={esqueciSenha} carregando={entrando} />
       </TelaLogin>

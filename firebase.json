@@ -77,6 +77,28 @@
           ]
         },
         {
+          "source": "**/*.apk",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "**/versao-apk-clinic.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            }
+          ]
+        },
+        {
           "source": "**/*.@(png|webmanifest)",
           "headers": [
             {

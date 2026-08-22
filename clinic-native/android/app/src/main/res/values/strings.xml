@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Special Clinic</string>
+    <string name="title_activity_main">Special Clinic</string>
+    <string name="package_name">com.laboratorio.specialclinic</string>
+    <string name="custom_url_scheme">com.laboratorio.specialclinic</string>
+</resources>

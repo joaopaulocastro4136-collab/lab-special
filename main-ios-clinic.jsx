@@ -4,8 +4,68 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { GoogleAuthProvider, OAuthProvider, signInWithCredential } from 'firebase/auth';
 
-// ─── Ponte nativa (iPhone): login Google, compartilhar e baixar arquivos ───
+// ─── Auto-atualização (SÓ Android — no iPhone é pela loja/TestFlight): ao abrir,
+// compara a versão instalada com a publicada no site e avisa o dentista ───
+const URL_VERSAO_CLINIC = 'https://special-clinic.web.app/versao-apk-clinic.json';
+async function verificarAtualizacaoClinic() {
+  if (Capacitor.getPlatform() !== 'android') return;
+  try {
+    const { App: CapApp } = await import('@capacitor/app');
+    const info = await CapApp.getInfo();
+    const resp = await fetch(URL_VERSAO_CLINIC + '?nc=' + Date.now());
+    const remoto = await resp.json();
+    if (parseInt(remoto.versionCode, 10) > parseInt(info.build, 10)) mostrarAvisoAtualizacaoClinic(remoto);
+  } catch (e) { /* sem internet ou arquivo indisponível — tenta na próxima abertura */ }
+}
+function mostrarAvisoAtualizacaoClinic(remoto) {
+  if (document.getElementById('aviso-atualizacao-apk')) return; // não empilha avisos
+  const barra = document.createElement('div');
+  barra.id = 'aviso-atualizacao-apk';
+  barra.style.cssText = 'position:fixed;bottom:84px;left:12px;right:12px;z-index:9998;background:#1C1B19;color:#fff;border-radius:16px;padding:14px;font-family:Manrope,-apple-system,sans-serif;box-shadow:0 14px 34px rgba(0,0,0,0.4);display:flex;align-items:center;gap:10px';
+  const texto = document.createElement('div');
+  texto.style.cssText = 'flex:1;min-width:0';
+  texto.innerHTML = '<div style="font-weight:800;font-size:13px;color:#B8935A">✨ Nova atualização disponível</div>'
+    + '<div style="font-size:12px;color:#A8A29E;margin-top:2px">Versão ' + remoto.versionName + (remoto.novidades ? ' — ' + remoto.novidades : '') + '</div>';
+  const botao = document.createElement('button');
+  botao.textContent = 'Baixar';
+  botao.style.cssText = 'background:#B8935A;color:#1C1B19;font-weight:800;border:none;border-radius:10px;padding:10px 16px;font-size:13px;flex-shrink:0';
+  botao.onclick = () => { window.open(remoto.url, '_blank'); };
+  const fechar = document.createElement('button');
+  fechar.textContent = '×';
+  fechar.style.cssText = 'background:none;border:none;color:#78716C;font-size:20px;padding:0 2px;flex-shrink:0';
+  fechar.onclick = () => barra.remove();
+  barra.appendChild(texto);
+  barra.appendChild(botao);
+  barra.appendChild(fechar);
+  document.body.appendChild(barra);
+}
+setTimeout(verificarAtualizacaoClinic, 4000);
+// O app fica dias aberto na memória — rechecar sempre que voltar do segundo plano
+(async () => {
+  try {
+    if (Capacitor.getPlatform() !== 'android') return;
+    const { App: CapApp } = await import('@capacitor/app');
+    CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive) verificarAtualizacaoClinic(); });
+  } catch (e) { /* plugin indisponível — segue só com a checagem da abertura */ }
+})();
+// Ponte pro cartão "Atualização do aplicativo" em Meus dados (SÓ Android)
+if (Capacitor.getPlatform() === 'android') {
+  window.atualizadorAndroid = {
+    async verificar() {
+      const { App: CapApp } = await import('@capacitor/app');
+      const info = await CapApp.getInfo();
+      const resp = await fetch(URL_VERSAO_CLINIC + '?nc=' + Date.now());
+      const remoto = await resp.json();
+      const temNova = parseInt(remoto.versionCode, 10) > parseInt(info.build, 10);
+      return { instalada: info.version || '', nova: temNova ? remoto : null };
+    },
+    baixar(url) { window.open(url || 'https://special-clinic.web.app/SpecialClinic.apk', '_blank'); },
+  };
+}
+
+// ─── Ponte nativa: login Google, compartilhar e baixar arquivos ───
 if (Capacitor.isNativePlatform()) {
+  window.__plataformaNativa = Capacitor.getPlatform();
   // Login Google com a tela de contas do próprio aparelho + repasse ao Firebase web
   window.__entrarNativo = async (auth) => {
     const resultado = await FirebaseAuthentication.signInWithGoogle();
@@ -14,8 +74,8 @@ if (Capacitor.isNativePlatform()) {
     await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
   };
 
-  // Login Apple nativo (Face ID) + repasse ao Firebase web
-  window.__entrarNativoApple = async (auth) => {
+  // Login Apple nativo (Face ID) + repasse ao Firebase web — só existe no iPhone
+  if (Capacitor.getPlatform() === 'ios') window.__entrarNativoApple = async (auth) => {
     // skipNativeAuth: o token da Apple só vale uma vez — quem entra no Firebase é a camada web
     const resultado = await FirebaseAuthentication.signInWithApple({ scopes: ['email', 'name'], skipNativeAuth: true });
     const cred = (resultado && resultado.credential) || {};
