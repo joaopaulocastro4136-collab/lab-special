@@ -5,6 +5,7 @@ import {
   getAuth, initializeAuth, indexedDBLocalPersistence,
   GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
   getRedirectResult, onAuthStateChanged, signOut,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail,
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, collection, doc,
@@ -623,6 +624,59 @@ function BotaoGoogleEscuro({ onClick, carregando }) {
   );
 }
 
+// ─── Entrar com e-mail e senha (igual ao Special Clinic): funciona em qualquer
+// aparelho — Android incluso, onde não existe o login da Apple ───
+function BotaoEmailSenhaLab({ onEntrar, onCriar, onEsqueci, carregando }) {
+  const FONTE_L = "'Manrope', -apple-system, sans-serif";
+  const [aberto, setAberto] = useState(false);
+  const [modo, setModo] = useState('entrar'); // 'entrar' | 'criar'
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const inputStyle = { width: '100%', background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1px solid rgba(255,255,255,0.28)', borderRadius: 12, padding: '13px 14px', fontSize: 15, fontFamily: FONTE_L, outline: 'none', boxSizing: 'border-box' };
+  if (!aberto) {
+    return (
+      <button onClick={() => setAberto(true)} disabled={carregando}
+        style={{ width: '100%', background: 'transparent', color: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 14, padding: 15, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, opacity: carregando ? 0.6 : 1, fontFamily: FONTE_L, marginTop: 11 }}>
+        <svg width="18" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="1" y="1" width="22" height="16" rx="3" /><path d="m2 3 10 8L22 3" /></svg>
+        Entrar com e-mail e senha
+      </button>
+    );
+  }
+  const submeter = () => {
+    const e = email.trim().toLowerCase();
+    if (!e || !senha) { alert('Preencha o e-mail e a senha.'); return; }
+    if (senha.length < 6) { alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
+    if (modo === 'criar') onCriar(e, senha); else onEntrar(e, senha);
+  };
+  return (
+    <div style={{ marginTop: 11, display: 'flex', flexDirection: 'column', gap: 9, textAlign: 'left' }}>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 2 }}>
+        {['entrar', 'criar'].map(m => (
+          <button key={m} onClick={() => setModo(m)}
+            style={{ flex: 1, background: modo === m ? 'rgba(184,147,90,0.22)' : 'rgba(255,255,255,0.05)', color: modo === m ? GOLD : 'rgba(255,255,255,0.6)', border: `1px solid ${modo === m ? GOLD + '77' : 'rgba(255,255,255,0.16)'}`, borderRadius: 10, padding: '9px 0', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: FONTE_L }}>
+            {m === 'entrar' ? 'Já tenho conta' : 'Criar conta'}
+          </button>
+        ))}
+      </div>
+      <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" placeholder="Seu e-mail"
+        value={email} onChange={ev => setEmail(ev.target.value)} style={inputStyle} />
+      <input type="password" placeholder={modo === 'criar' ? 'Crie uma senha (mín. 6)' : 'Sua senha'}
+        value={senha} onChange={ev => setSenha(ev.target.value)}
+        onKeyDown={ev => { if (ev.key === 'Enter') submeter(); }} style={inputStyle} />
+      <button onClick={submeter} disabled={carregando}
+        style={{ width: '100%', background: GOLD, color: '#1C1B19', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', opacity: carregando ? 0.6 : 1, fontFamily: FONTE_L }}>
+        {carregando ? 'Aguarde...' : (modo === 'criar' ? 'Criar conta e entrar' : 'Entrar')}
+      </button>
+      {modo === 'entrar' && (
+        <button onClick={() => { const e = email.trim().toLowerCase(); if (!e) { alert('Digite seu e-mail acima para receber o link de redefinição.'); return; } onEsqueci(e); }}
+          style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE_L, padding: '2px 0' }}>
+          Esqueci minha senha
+        </button>
+      )}
+    </div>
+  );
+}
+
 function BotaoGoogle({ onClick, carregando }) {
   return (
     <button onClick={onClick} disabled={carregando}
@@ -833,6 +887,31 @@ function CloudRoot({ entrarNativo }) {
   // Apple aparece no iPhone (nativo) e na web; no Android não existe login Apple nativo
   const temApple = (typeof window !== 'undefined' && !!window.__entrarNativoApple) || !entrarNativo;
 
+  const traduzErroAuth = (code) => {
+    if (code === 'auth/invalid-email') return 'E-mail inválido.';
+    if (code === 'auth/weak-password') return 'A senha precisa ter pelo menos 6 caracteres.';
+    if (code === 'auth/email-already-in-use') return 'Este e-mail já tem conta. Use "Já tenho conta" para entrar.';
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') return 'E-mail ou senha incorretos. Se ainda não tem conta, toque em "Criar conta".';
+    if (code === 'auth/too-many-requests') return 'Muitas tentativas. Aguarde um instante e tente de novo.';
+    return 'Não foi possível continuar (' + code + ').';
+  };
+  const entrarEmail = async (email, senha) => {
+    setEntrando(true);
+    try { await signInWithEmailAndPassword(auth, email, senha); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+    setEntrando(false);
+  };
+  const criarEmail = async (email, senha) => {
+    setEntrando(true);
+    try { await createUserWithEmailAndPassword(auth, email, senha); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+    setEntrando(false);
+  };
+  const esqueciSenha = async (email) => {
+    try { await sendPasswordResetEmail(auth, email); alert('Enviamos um link para redefinir a senha em ' + email + '. Confira sua caixa de entrada.'); }
+    catch (e) { alert(traduzErroAuth((e && e.code) || String(e))); }
+  };
+
   const abertura = <Abertura visivel={abrindo} />;
 
   if (usuario === undefined) {
@@ -846,6 +925,7 @@ function CloudRoot({ entrarNativo }) {
       <TelaLogin>
         {temApple && <BotaoApple onClick={entrarApple} carregando={entrando} />}
         <BotaoGoogleEscuro onClick={entrar} carregando={entrando} />
+        <BotaoEmailSenhaLab onEntrar={entrarEmail} onCriar={criarEmail} onEsqueci={esqueciSenha} carregando={entrando} />
         {!jaInstalado && (
           <a href="/instalar.html" style={{ display: 'block', marginTop: '18px', color: GOLD, fontSize: '13px', fontWeight: 700, textDecoration: 'none', border: `1.5px solid ${GOLD}66`, borderRadius: '12px', padding: '11px' }}>
             📲 Instalar o app no celular
