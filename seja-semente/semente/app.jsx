@@ -18,7 +18,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -477,6 +477,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [fotoNovo, setFotoNovo] = useState('');
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
+  const [movendo, setMovendo] = useState(null); // paciente sendo movido de procedimento
   const [visaoAgenda, setVisaoAgenda] = useState('dia'); // 'dia' | 'sem'
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('ss-config-proc', { personalizados: [], duracoes: {} }));
   const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : lerLocal('ss-pacientes', DEMO.pacientes));
@@ -626,6 +627,21 @@ function TelaPrincipal({ usuario, aoSair }) {
     const { doc, updateDoc } = fb.fns;
     await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
     setTela(null);
+  }
+
+  // Mover o paciente de um procedimento para outro — só a central manda aqui;
+  // o Semeador vê a mudança na hora e obedece.
+  async function moverPaciente(p, de, para) {
+    const novas = [...new Set(areasDoPaciente(p).map(a => (a === de ? para : a)))];
+    const triagem = { ...(p.triagem || {}), areas: novas };
+    delete triagem.area; delete triagem.procedimento; // formatos antigos viram lista
+    setMovendo(null);
+    if (!CONFIGURADO) {
+      setPacientes(ps => ps.map(x => x.id === p.id ? { ...x, triagem } : x));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem });
   }
 
   async function removerAgendamento(g) {
@@ -781,7 +797,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const daArea = daAreaTodos.filter(p => !filtro || p.nome.toLowerCase().includes(filtro) || String(p.codigo || '').toLowerCase().includes(filtro));
     return (
       <div className="folha">
-        <button className="btn-voltar" onClick={() => { setTela(null); setBuscaArea(''); }}><ChevronLeft size={18} /> Voltar</button>
+        <button className="btn-voltar" onClick={() => { setTela(null); setBuscaArea(''); setMovendo(null); }}><ChevronLeft size={18} /> Voltar</button>
         <div className="cartao-linha" style={{ alignItems: 'center', marginBottom: 4 }}>
           <span className="caixa-area-icone" style={{ background: A.cor + '22', color: A.cor }}><A.Icone size={26} strokeWidth={2.2} /></span>
           <h2 style={{ margin: 0 }}>{A.nome} · {daAreaTodos.length} paciente{daAreaTodos.length === 1 ? '' : 's'}</h2>
@@ -800,6 +816,17 @@ function TelaPrincipal({ usuario, aoSair }) {
                   </span>
                 </div>
                 <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                <button className="chip mover" onClick={e => { e.stopPropagation(); setMovendo(movendo?.id === p.id ? null : p); }}>
+                  <ArrowRightLeft size={13} strokeWidth={2.4} /> Mover de procedimento
+                </button>
+                {movendo?.id === p.id && (
+                  <div className="mover-opcoes" onClick={e => e.stopPropagation()}>
+                    <p className="dica" style={{ margin: '2px 0 4px', width: '100%' }}>Mover {p.nome.split(' ')[0]} de {A.nome} para:</p>
+                    {todasAreas.filter(x => x.nome !== A.nome).map(x => (
+                      <button key={x.nome} className="opcao-mover" style={{ color: x.cor, borderColor: x.cor + '66' }} onClick={() => moverPaciente(p, A.nome, x.nome)}>{x.nome}</button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
