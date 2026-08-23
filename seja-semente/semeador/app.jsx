@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar } from '../logo.jsx';
-import { Home, CalendarDays, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
@@ -59,11 +59,14 @@ const DEMO = {
     { id: 'a2', titulo: 'Mutirão de sábado', texto: 'Neste sábado teremos mutirão de arrecadação de alimentos. Quem puder chegar às 8h, a van sai do ponto de encontro às 8h30.', criadoEm: new Date(Date.now() - 864e5), autor: 'Coordenação' },
   ],
   agendamentos: [
-    { id: 'g0', titulo: 'Avaliação', area: 'Avaliação', pacienteId: 'p7', pacienteNome: 'Ana Paula', data: dataISO(), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
-    { id: 'g0b', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: dataISO(), hora: '09:30', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
-    { id: 'g0c', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: dataISO(), hora: '10:30', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
-    { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
-    { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g0', titulo: 'Avaliação', area: 'Avaliação', pacienteId: 'p7', pacienteNome: 'Ana Paula', data: dataISO(), hora: '09:00', duracaoMin: 30, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g0b', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: dataISO(), hora: '09:30', duracaoMin: 60, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g0c', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: dataISO(), hora: '10:30', duracaoMin: 60, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', duracaoMin: 60, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', duracaoMin: 90, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g3', titulo: 'Profilaxia (limpeza)', area: 'Profilaxia', pacienteId: 'p7', pacienteNome: 'Ana Paula', data: proximoDia(1), hora: '08:30', duracaoMin: 30, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g4', titulo: 'Endodontia (canal)', area: 'Endodontia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(2), hora: '13:00', duracaoMin: 90, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g5', titulo: 'Dentística (restauração)', area: 'Dentística', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: proximoDia(5), hora: '10:00', duracaoMin: 60, profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
   ],
   pacientes: [
     { id: 'p1', nome: 'José da Silva', idade: '52', telefone: '(11) 98888-1111', status: 'triado', observacoes: 'Sente dor no dente há duas semanas.', triagem: { especialidade: 'Odontologia', procedimento: 'Extração', saude: ['Hipertensão / pressão alta'], outrasCondicoes: '', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade' } },
@@ -128,6 +131,131 @@ function horaBonita(v) {
   const mesmoDia = d.toDateString() === hoje.toDateString();
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return mesmoDia ? `hoje às ${hm}` : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} às ${hm}`;
+}
+
+// ─── Agenda da semana: grade de dias × horários, como agenda de clínica ───
+const DIAS_LONGOS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const ALTURA_MEIA_HORA = 28;   // altura em px de cada linha de 30 minutos
+const LARGURA_DIA = 118;       // largura em px da coluna de cada dia
+
+function minutosDe(hora) {
+  const [h, m] = String(hora || '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha }) {
+  const hoje = dataISO();
+  const domingo = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return dataISO(d); };
+  const [inicio, setInicio] = useState(domingo);
+
+  // Linha vermelha do "agora": acompanha o relógio, minuto a minuto
+  const [agora, setAgora] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setAgora(new Date()), 60 * 1000); return () => clearInterval(t); }, []);
+
+  const soma = (iso, n) => { const [a, m, d] = iso.split('-').map(Number); return dataISO(new Date(a, m - 1, d + n)); };
+  const dias = [0, 1, 2, 3, 4, 5, 6].map(i => soma(inicio, i));
+  const daSemana = agendamentos.filter(g => dias.includes(g.data));
+  const dur = g => g.duracaoMin || duracaoDe(g.area || g.titulo);
+
+  // Faixa de horários: das 8h às 18h, esticando se houver atendimento fora dela
+  let min = 8 * 60, max = 18 * 60;
+  for (const g of daSemana) {
+    const i = minutosDe(g.hora);
+    min = Math.min(min, Math.floor(i / 30) * 30);
+    max = Math.max(max, Math.ceil((i + dur(g)) / 30) * 30);
+  }
+  const linhas = [];
+  for (let m = min; m < max; m += 30) linhas.push(m);
+  const topoDe = m => (m - min) / 30 * ALTURA_MEIA_HORA;
+
+  const [, m1, d1] = dias[0].split('-').map(Number);
+  const [a2, m2, d2] = dias[6].split('-').map(Number);
+  const titulo = m1 === m2
+    ? `De ${d1} a ${d2} de ${MESES[m1 - 1]} de ${a2}`
+    : `De ${d1} de ${MESES[m1 - 1]} a ${d2} de ${MESES[m2 - 1]} de ${a2}`;
+
+  // Quando dois atendimentos do mesmo dia se cruzam, ficam lado a lado
+  function blocosDoDia(iso) {
+    const doDia = daSemana.filter(g => g.data === iso).sort((x, y) => minutosDe(x.hora) - minutosDe(y.hora));
+    const fimDasFaixas = [];
+    const blocos = doDia.map(g => {
+      const i = minutosDe(g.hora), f = i + dur(g);
+      let faixa = fimDasFaixas.findIndex(fim => fim <= i);
+      if (faixa === -1) { faixa = fimDasFaixas.length; fimDasFaixas.push(f); } else fimDasFaixas[faixa] = f;
+      return { g, i, f, faixa };
+    });
+    return { blocos, faixas: Math.max(1, fimDasFaixas.length) };
+  }
+
+  // Ao abrir (e ao trocar de semana), deixa o dia de hoje à vista
+  const rolagem = useRef(null);
+  useEffect(() => {
+    const el = rolagem.current;
+    if (!el) return;
+    const idx = dias.indexOf(hoje);
+    el.scrollLeft = idx > 0 ? idx * LARGURA_DIA - 34 : 0;
+  }, [inicio]);
+
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+  const mostraAgora = dias.includes(hoje) && agoraMin >= min && agoraMin <= max;
+
+  return (
+    <>
+      <div className="semana-nav">
+        <button className="seta" onClick={() => setInicio(soma(inicio, -7))} aria-label="Semana anterior"><ChevronLeft size={19} /></button>
+        <button className="btn-hoje" onClick={() => setInicio(domingo())}>Hoje</button>
+        <button className="seta" onClick={() => setInicio(soma(inicio, 7))} aria-label="Próxima semana"><ChevronRight size={19} /></button>
+        <span className="semana-titulo">{titulo}</span>
+      </div>
+      <div className="semana-cartao">
+        <div className="semana-rolagem" ref={rolagem}>
+          <div className="semana-grade">
+            <div className="semana-cabecalho">
+              <div className="sem-canto" />
+              {dias.map((iso, i) => (
+                <div key={iso} className={iso === hoje ? 'sem-dia hoje' : 'sem-dia'}>
+                  <strong>{DIAS_LONGOS[i]}, <b className={iso === hoje ? 'num-hoje' : ''}>{Number(iso.slice(8))}</b></strong>
+                  <span>Pacientes: {daSemana.filter(g => g.data === iso).length}</span>
+                </div>
+              ))}
+            </div>
+            <div className="semana-corpo" style={{ height: linhas.length * ALTURA_MEIA_HORA }}>
+              <div className="sem-horas">
+                {linhas.map(m => <div key={m} className="sem-hora">{Math.floor(m / 60)}:{String(m % 60).padStart(2, '0')}</div>)}
+              </div>
+              {dias.map(iso => {
+                const { blocos, faixas } = blocosDoDia(iso);
+                return (
+                  <div key={iso} className={iso === hoje ? 'sem-col hoje' : 'sem-col'}>
+                    {blocos.map(({ g, i, f, faixa }) => {
+                      const altura = Math.max((f - i) / 30 * ALTURA_MEIA_HORA - 3, 20);
+                      const curto = altura < 40; // atendimento de 30 min: tudo numa linha só
+                      return (
+                        <button key={g.id} className={curto ? 'sem-bloco curto' : 'sem-bloco'} style={{
+                          top: topoDe(i) + 1,
+                          height: altura,
+                          left: `calc(${(faixa / faixas) * 100}% + 2px)`,
+                          width: `calc(${100 / faixas}% - 5px)`,
+                          background: corDaArea(g.area || g.titulo),
+                        }} onClick={() => g.pacienteId && aoAbrirFicha(g.pacienteId)}>
+                          {curto
+                            ? <strong>{g.pacienteNome || g.titulo}, {g.hora}</strong>
+                            : <><strong>{g.pacienteNome || g.titulo}</strong><span>{g.hora} - {horaFim(g.hora, dur(g))}</span></>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {mostraAgora && <div className="agora-linha" style={{ top: topoDe(agoraMin) }} />}
+            </div>
+          </div>
+        </div>
+      </div>
+      <p className="dica" style={{ marginTop: 10 }}>Toque no atendimento para abrir a ficha do paciente. Arraste para os lados para ver a semana inteira.</p>
+    </>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -395,25 +523,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const hojeISO = dataISO();
   const agendaHoje = agendamentos.filter(g => g.data === hojeISO)
     .sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
-  const agendaProximos = agendamentos.filter(g => g.data > hojeISO)
-    .sort((a, b) => (String(a.data || '') + String(a.hora || '')).localeCompare(String(b.data || '') + String(b.hora || '')));
   const corDaArea = nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '');
-  const cartaoAgenda = g => (
-    <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
-      <div className="cartao-linha">
-        <Bolha nome={g.area || g.titulo} Icone={CalendarDays} />
-        <div>
-          <div className="cartao-topo">
-            <strong>{g.pacienteNome || g.titulo}</strong>
-            <span className="quando">{dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}</span>
-          </div>
-          {g.pacienteNome && <p>{g.titulo}</p>}
-          {g.local && <p><MapPin size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />{g.local}</p>}
-          <p className="obs">marcado pela central Seja Semente</p>
-        </div>
-      </div>
-    </div>
-  );
 
   // Sem Firebase, o que você faz fica salvo no aparelho
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-agendamentos', agendamentos); }, [agendamentos]);
@@ -619,15 +729,8 @@ function TelaPrincipal({ usuario, aoSair }) {
         )}
         {aba === 'agenda' && (
           <>
-            <h2>Agenda do dia</h2>
-            {agendaHoje.length ? agendaHoje.map(cartaoAgenda)
-              : <Vazio texto="Nenhum atendimento marcado para hoje." />}
-            {agendaProximos.length > 0 && (
-              <>
-                <h2 style={{ fontSize: 20, marginTop: 14 }}>Próximos dias</h2>
-                {agendaProximos.map(cartaoAgenda)}
-              </>
-            )}
+            <h2>Agenda da semana</h2>
+            <AgendaSemana agendamentos={agendamentos} corDaArea={corDaArea} duracaoDe={duracaoDe} aoAbrirFicha={setFichaId} />
           </>
         )}
         {aba === 'perfil' && (
