@@ -106,6 +106,16 @@ export const CSS = `
   .chip.mover { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: #EAF4EE; color: #226343; border: 1.5px dashed #9DBBA8; }
   .mover-opcoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .opcao-mover { background: #fff; border: 1.5px solid; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 800; cursor: pointer; }
+
+  /* ── Início do Semeador: agenda de horários do dia ── */
+  .lista-horarios { display: flex; flex-direction: column; gap: 10px; }
+  .horario-item { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; background: #fff; border: 1px solid #E2E8E2; border-left: 6px solid #2F7D4E; border-radius: 16px; padding: 12px 13px; cursor: pointer; box-shadow: 0 3px 10px rgba(30,43,34,0.06); }
+  .horario-hora { align-self: flex-start; font-size: 13px; font-weight: 800; padding: 4px 11px; border-radius: 999px; letter-spacing: 0.2px; }
+  .horario-linha { display: flex; align-items: center; gap: 11px; }
+  .horario-nome { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .horario-nome strong { font-size: 16px; color: #1E2B22; }
+  .horario-nome span { font-size: 13px; color: #7B897F; font-weight: 600; }
+  .horario-seta { color: #9DB2A3; flex: none; }
   .codigo-grande { text-align: center; font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 700; letter-spacing: 3px; color: #226343; background: #EAF4EE; border: 1.5px dashed #9DBBA8; border-radius: 14px; padding: 16px; }
 
   .linha-confirma { margin-top: 12px; }

@@ -59,6 +59,9 @@ const DEMO = {
     { id: 'a2', titulo: 'Mutirão de sábado', texto: 'Neste sábado teremos mutirão de arrecadação de alimentos. Quem puder chegar às 8h, a van sai do ponto de encontro às 8h30.', criadoEm: new Date(Date.now() - 864e5), autor: 'Coordenação' },
   ],
   agendamentos: [
+    { id: 'g0', titulo: 'Avaliação', area: 'Avaliação', pacienteId: 'p7', pacienteNome: 'Ana Paula', data: dataISO(), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g0b', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: dataISO(), hora: '09:30', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
+    { id: 'g0c', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: dataISO(), hora: '10:30', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
     { id: 'g1', titulo: 'Cirurgia (extração)', area: 'Cirurgia', pacienteId: 'p1', pacienteNome: 'José da Silva', data: proximoDia(6), hora: '09:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
     { id: 'g2', titulo: 'Prótese', area: 'Prótese', pacienteId: 'p4', pacienteNome: 'Rita Nascimento', data: proximoDia(3), hora: '15:00', profissionalUid: 'demo-google', profissionalNome: 'Lucas Andrade', origem: 'central' },
   ],
@@ -74,6 +77,11 @@ function proximoDia(diaSemana) {
   const d = new Date();
   d.setDate(d.getDate() + ((diaSemana - d.getDay() + 7) % 7 || 7));
   return d.toISOString().slice(0, 10);
+}
+
+// A data de hoje no formato do banco (AAAA-MM-DD), no fuso do aparelho
+function dataISO(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ─── Triagem: as mesmas caixinhas e regras da central (ver PONTE.md) ───
@@ -384,10 +392,12 @@ function TelaPrincipal({ usuario, aoSair }) {
   const semTriagem = todosPacientes.filter(p => !p.triagem);
 
   // Agenda do dia: o que a central mandou para hoje, e o que vem depois
-  const hj = new Date();
-  const hojeISO = `${hj.getFullYear()}-${String(hj.getMonth() + 1).padStart(2, '0')}-${String(hj.getDate()).padStart(2, '0')}`;
-  const agendaHoje = agendamentos.filter(g => g.data === hojeISO);
-  const agendaProximos = agendamentos.filter(g => g.data > hojeISO);
+  const hojeISO = dataISO();
+  const agendaHoje = agendamentos.filter(g => g.data === hojeISO)
+    .sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+  const agendaProximos = agendamentos.filter(g => g.data > hojeISO)
+    .sort((a, b) => (String(a.data || '') + String(a.hora || '')).localeCompare(String(b.data || '') + String(b.hora || '')));
+  const corDaArea = nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '');
   const cartaoAgenda = g => (
     <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
       <div className="cartao-linha">
@@ -544,7 +554,30 @@ function TelaPrincipal({ usuario, aoSair }) {
       <main>
         {aba === 'inicio' && (
           <>
-            <h2>Avisos</h2>
+            <h2>Pacientes de hoje</h2>
+            <p className="dica" style={{ marginBottom: 2 }}>{dataBonita(hojeISO)} · toque no paciente para abrir a ficha</p>
+            {agendaHoje.length ? (
+              <div className="lista-horarios">
+                {agendaHoje.map(g => {
+                  const p = todosPacientes.find(x => x.id === g.pacienteId);
+                  const cor = corDaArea(g.area || g.titulo);
+                  return (
+                    <button key={g.id} className="horario-item" style={{ borderLeftColor: cor }} onClick={() => g.pacienteId && setFichaId(g.pacienteId)}>
+                      <span className="horario-hora" style={{ color: cor, background: cor + '16' }}>{g.hora} – {horaFim(g.hora, g.duracaoMin)}</span>
+                      <span className="horario-linha">
+                        <Bolha nome={g.pacienteNome || g.titulo} foto={p?.foto} />
+                        <span className="horario-nome">
+                          <strong>{g.pacienteNome || g.titulo}</strong>
+                          <span>{g.titulo || g.area || ''}{g.local ? ` · ${g.local}` : ''}</span>
+                        </span>
+                        <ChevronRight size={19} strokeWidth={2.6} className="horario-seta" />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : <Vazio texto="Nenhum paciente agendado para hoje." />}
+            <h2 style={{ fontSize: 20, marginTop: 16 }}>Avisos</h2>
             {avisos.length ? avisos.map(a => <CartaoAviso key={a.id} aviso={a} />) : <Vazio texto="Nenhum aviso por enquanto." />}
           </>
         )}
