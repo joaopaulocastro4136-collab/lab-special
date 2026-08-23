@@ -163,6 +163,34 @@ export const CSS = `
   .btn-remover { border: none; background: #FBEBE7; color: #B3402A; border-radius: 10px; width: 34px; height: 34px; font-size: 15px; font-weight: 800; cursor: pointer; flex: none; }
   .btn-triagem { margin-top: 10px; padding: 10px 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, #E8B457, #C08A2E); color: #fff; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 5px 12px rgba(192,138,46,0.30); }
 
+  /* ── Agenda da semana (grade de dias × horários, como agenda de clínica) ── */
+  .semana-nav { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 16px; padding: 9px 11px; margin-bottom: 13px; box-shadow: 0 5px 14px rgba(30,43,34,0.07); border: 1px solid rgba(30,43,34,0.05); }
+  .semana-nav .seta { border: none; background: #EAF2EC; border-radius: 11px; width: 37px; height: 37px; display: flex; align-items: center; justify-content: center; color: #226343; cursor: pointer; flex: none; }
+  .semana-nav .btn-hoje { border: 1.5px solid #2F7D4E; background: #fff; color: #226343; border-radius: 999px; padding: 8px 15px; font-weight: 800; font-size: 13px; cursor: pointer; flex: none; }
+  .semana-titulo { flex: 1; text-align: center; font-weight: 800; font-size: 13.5px; color: #223528; min-width: 0; }
+  .semana-cartao { background: #fff; border-radius: 18px; border: 1px solid rgba(30,43,34,0.05); box-shadow: 0 6px 18px rgba(30,43,34,0.07); overflow: hidden; }
+  .semana-rolagem { overflow: auto; max-height: max(400px, calc(100vh - 330px)); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .semana-grade { width: max-content; min-width: 100%; }
+  .semana-cabecalho { display: flex; position: sticky; top: 0; z-index: 8; background: #fff; box-shadow: 0 1px 0 #E4EAE0; }
+  .sem-canto { position: sticky; left: 0; z-index: 9; background: #fff; width: 50px; flex: none; border-right: 1px solid #EDF1EA; }
+  .sem-dia { width: 118px; flex: none; padding: 9px 4px 8px; text-align: center; border-right: 1px solid #EDF1EA; }
+  .sem-dia strong { display: block; font-size: 12px; color: #223528; letter-spacing: -0.1px; margin-bottom: 2px; }
+  .sem-dia span { font-size: 10.5px; color: #7B897F; font-weight: 700; }
+  .sem-dia.hoje { background: #F0F8F2; }
+  .num-hoje { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 3px; border-radius: 999px; background: #2F7D4E; color: #fff; }
+  .semana-corpo { display: flex; position: relative; }
+  .sem-horas { position: sticky; left: 0; z-index: 7; background: #fff; width: 50px; flex: none; border-right: 1px solid #EDF1EA; }
+  .sem-hora { height: 28px; display: flex; justify-content: flex-end; padding: 2px 6px 0 0; font-size: 10.5px; font-weight: 800; color: #8A968D; }
+  .sem-col { width: 118px; flex: none; position: relative; border-right: 1px solid #EDF1EA;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 27px, #EFF3EE 27px 28px); }
+  .sem-col.hoje { background-color: #FAFDFB; }
+  .sem-bloco { position: absolute; border: none; border-radius: 9px; padding: 4px 6px 3px; text-align: left; color: #fff; cursor: pointer; overflow: hidden; box-shadow: 0 3px 8px rgba(30,43,34,0.20); z-index: 2; display: flex; flex-direction: column; gap: 1px; }
+  .sem-bloco strong { font-size: 11px; line-height: 1.2; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .sem-bloco span { font-size: 9.5px; font-weight: 700; opacity: 0.92; }
+  .sem-bloco.curto { justify-content: center; padding: 2px 6px; }
+  .agora-linha { position: absolute; left: 0; right: 0; border-top: 2px solid #E0492E; z-index: 5; pointer-events: none; }
+  .agora-linha::before { content: ''; position: absolute; left: 44px; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: #E0492E; }
+
   /* ── Caixas de área do agendamento ── */
   .grade-areas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 13px; margin-bottom: 6px; }
   .caixa-area { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 14px 14px; border: none; border-radius: 24px; background: #fff; cursor: pointer; box-shadow: 0 8px 22px rgba(30,43,34,0.08); text-align: left; min-width: 0; overflow: hidden; }
