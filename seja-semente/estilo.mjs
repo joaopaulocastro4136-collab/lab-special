@@ -107,6 +107,19 @@ export const CSS = `
   .mover-opcoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .opcao-mover { background: #fff; border: 1.5px solid; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 800; cursor: pointer; }
 
+  /* ── Caixinha do procedimento: separação agendados × para agendar ── */
+  .secao-lista { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 15px; font-weight: 800; }
+  .secao-lista b { min-width: 26px; text-align: center; padding: 3px 9px; border-radius: 999px; font-size: 13px; }
+  .secao-lista.nao { color: #B3402A; }
+  .secao-lista.nao b { background: #FBDCD2; color: #B3402A; }
+  .secao-lista.sim { color: #1E6B41; }
+  .secao-lista.sim b { background: #D6F1E0; color: #1E6B41; }
+  .agendado-info { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 6px 11px; border-radius: 999px; background: #D6F1E0; color: #1E6B41; font-size: 13px; font-weight: 800; }
+  .chips-rolagem { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .chip-dia { flex: none; padding: 8px 13px; border-radius: 999px; border: 1.5px solid #DBE3D8; background: #fff; font-size: 13px; font-weight: 800; color: #55645A; cursor: pointer; white-space: nowrap; }
+  .chip-dia.ativo { background: #226343; border-color: #226343; color: #fff; }
+  .resumo-dentista { border: 1.5px solid #BFDCC9; background: #F2FAF5; }
+
   /* ── Início do Semeador: agenda de horários do dia ── */
   .lista-horarios { display: flex; flex-direction: column; gap: 10px; }
   .horario-item { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; background: #fff; border: 1px solid #E2E8E2; border-left: 6px solid #2F7D4E; border-radius: 16px; padding: 12px 13px; cursor: pointer; box-shadow: 0 3px 10px rgba(30,43,34,0.06); }

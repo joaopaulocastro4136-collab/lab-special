@@ -479,6 +479,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [buscaArea, setBuscaArea] = useState('');
   const [movendo, setMovendo] = useState(null); // paciente sendo movido de procedimento
   const [visaoAgenda, setVisaoAgenda] = useState('dia'); // 'dia' | 'sem'
+  const [dentistaVer, setDentistaVer] = useState(''); // '' = todos os dentistas
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('ss-config-proc', { personalizados: [], duracoes: {} }));
   const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : lerLocal('ss-pacientes', DEMO.pacientes));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('ss-agendamentos', DEMO.agendamentos));
@@ -745,7 +746,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
@@ -795,6 +796,47 @@ function TelaPrincipal({ usuario, aoSair }) {
     const filtro = buscaArea.trim().toLowerCase();
     const daAreaTodos = pacientes.filter(p => areasDoPaciente(p).includes(A.nome));
     const daArea = daAreaTodos.filter(p => !filtro || p.nome.toLowerCase().includes(filtro) || String(p.codigo || '').toLowerCase().includes(filtro));
+    // Já tem agendamento DESTE procedimento? (é o que separa as duas listas)
+    const agendamentoDe = p => agendamentos.find(g => g.pacienteId === p.id && (g.area === A.nome || (g.titulo || '').startsWith(A.nome)));
+    const paraAgendar = daArea.filter(p => !agendamentoDe(p))
+      .sort((x, y) => (y.prioridade ? 1 : 0) - (x.prioridade ? 1 : 0)); // prioridade fura a fila
+    const jaAgendados = daArea.filter(p => agendamentoDe(p));
+    const cartaoDoPaciente = (p) => {
+      const g = agendamentoDe(p);
+      return (
+        <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
+          <div className="cartao-linha">
+            <Bolha nome={p.nome} foto={p.foto} />
+            <div>
+              <div className="cartao-topo">
+                <strong>{p.nome}</strong>
+                <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                  <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
+                </span>
+              </div>
+              <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+              {g ? (
+                <p className="agendado-info"><CalendarDays size={14} strokeWidth={2.4} /> {dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}{g.profissionalNome ? ` · com ${g.profissionalNome}` : ''}</p>
+              ) : (
+                <button className="btn-confirmar" style={{ marginTop: 8 }} onClick={e => { e.stopPropagation(); setMovendo(null); setTela({ marcarPaciente: p, marcarArea: A.nome, voltarPara: { area: A } }); }}>Agendar {A.nome}</button>
+              )}
+              <button className="chip mover" onClick={e => { e.stopPropagation(); setMovendo(movendo?.id === p.id ? null : p); }}>
+                <ArrowRightLeft size={13} strokeWidth={2.4} /> Mover de procedimento
+              </button>
+              {movendo?.id === p.id && (
+                <div className="mover-opcoes" onClick={e => e.stopPropagation()}>
+                  <p className="dica" style={{ margin: '2px 0 4px', width: '100%' }}>Mover {p.nome.split(' ')[0]} de {A.nome} para:</p>
+                  {todasAreas.filter(x => x.nome !== A.nome).map(x => (
+                    <button key={x.nome} className="opcao-mover" style={{ color: x.cor, borderColor: x.cor + '66' }} onClick={() => moverPaciente(p, A.nome, x.nome)}>{x.nome}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
     return (
       <div className="folha">
         <button className="btn-voltar" onClick={() => { setTela(null); setBuscaArea(''); setMovendo(null); }}><ChevronLeft size={18} /> Voltar</button>
@@ -803,34 +845,17 @@ function TelaPrincipal({ usuario, aoSair }) {
           <h2 style={{ margin: 0 }}>{A.nome} · {daAreaTodos.length} paciente{daAreaTodos.length === 1 ? '' : 's'}</h2>
         </div>
         <input className="busca" placeholder="Pesquisar por nome ou código…" value={buscaArea} onChange={e => setBuscaArea(e.target.value)} />
-        {daArea.length ? daArea.map(p => (
-          <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
-            <div className="cartao-linha">
-              <Bolha nome={p.nome} foto={p.foto} />
-              <div>
-                <div className="cartao-topo">
-                  <strong>{p.nome}</strong>
-                  <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {p.prioridade && <span className="chip prioridade">prioridade</span>}
-                    <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
-                  </span>
-                </div>
-                <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
-                <button className="chip mover" onClick={e => { e.stopPropagation(); setMovendo(movendo?.id === p.id ? null : p); }}>
-                  <ArrowRightLeft size={13} strokeWidth={2.4} /> Mover de procedimento
-                </button>
-                {movendo?.id === p.id && (
-                  <div className="mover-opcoes" onClick={e => e.stopPropagation()}>
-                    <p className="dica" style={{ margin: '2px 0 4px', width: '100%' }}>Mover {p.nome.split(' ')[0]} de {A.nome} para:</p>
-                    {todasAreas.filter(x => x.nome !== A.nome).map(x => (
-                      <button key={x.nome} className="opcao-mover" style={{ color: x.cor, borderColor: x.cor + '66' }} onClick={() => moverPaciente(p, A.nome, x.nome)}>{x.nome}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )) : <div className="vazio">{filtro ? 'Nenhum paciente encontrado na pesquisa.' : `Nenhum paciente de ${A.nome} ainda.`}</div>}
+        {daArea.length === 0 && <div className="vazio">{filtro ? 'Nenhum paciente encontrado na pesquisa.' : `Nenhum paciente de ${A.nome} ainda.`}</div>}
+        {daArea.length > 0 && (
+          <>
+            <div className="secao-lista nao"><span>Para agendar</span><b>{paraAgendar.length}</b></div>
+            {paraAgendar.length ? paraAgendar.map(cartaoDoPaciente)
+              : <div className="vazio">Ninguém esperando — todo mundo de {A.nome} já está agendado. 🌱</div>}
+            <div className="secao-lista sim"><span>Já agendados</span><b>{jaAgendados.length}</b></div>
+            {jaAgendados.length ? jaAgendados.map(cartaoDoPaciente)
+              : <div className="vazio">Ninguém agendado de {A.nome} ainda.</div>}
+          </>
+        )}
       </div>
     );
   }
@@ -1045,19 +1070,79 @@ function TelaPrincipal({ usuario, aoSair }) {
               </div>
               <button onClick={() => setDia(somaDias(dia, 1))}>›</button>
             </div>
-            {doDia.length ? doDia.map(g => (
-              <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
-                <div className="linha-agenda">
-                  <div className="hora-col">{g.hora}<span className="hora-fim">{horaFim(g.hora, g.duracaoMin)}</span></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <strong>{g.pacienteNome || g.titulo}</strong>
-                    {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo} · {g.duracaoMin || DURACAO_PADRAO} min</p>}
-                    {g.profissionalNome && <p className="obs">com {g.profissionalNome}</p>}
-                  </div>
-                  <button className="btn-remover" onClick={e => { e.stopPropagation(); removerAgendamento(g); }} title="Remover">✕</button>
+            {(() => {
+              // Os dias que TÊM atendimento marcado — um toque pula para o dia
+              const diasMarcados = [...new Set(agendamentos.map(g => g.data).filter(Boolean))].sort();
+              return diasMarcados.length > 0 && (
+                <div className="chips-rolagem">
+                  {diasMarcados.map(d => (
+                    <button key={d} className={d === dia ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDia(d)}>
+                      {dataBonita(d)} · {agendamentos.filter(g => g.data === d).length}
+                    </button>
+                  ))}
                 </div>
+              );
+            })()}
+            {profissionais.length > 0 && (
+              <div className="chips-rolagem">
+                <button className={!dentistaVer ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDentistaVer('')}>Todos</button>
+                {profissionais.map(v => (
+                  <button key={v.id} className={dentistaVer === v.id ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDentistaVer(dentistaVer === v.id ? '' : v.id)}>
+                    {v.nome.split(' ')[0]} · {doDia.filter(g => g.profissionalUid === v.id).length}
+                  </button>
+                ))}
               </div>
-            )) : <div className="vazio">Nada marcado em {dataBonita(dia)}.<br />Toque em "+ Agendar".</div>}
+            )}
+            {dentistaVer && (() => {
+              // Resumo do dentista escolhido: o que ele atende no dia e o
+              // espaço livre entre 08h e 17h
+              const v = profissionais.find(x => x.id === dentistaVer);
+              const dele = doDia.filter(g => g.profissionalUid === dentistaVer);
+              const min = t => { const [h, m] = String(t || '08:00').split(':').map(Number); return h * 60 + m; };
+              const hm = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+              let cursor = min('08:00');
+              const fimDia = min('17:00');
+              const livres = [];
+              for (const g of dele) {
+                const i = min(g.hora), f = i + (g.duracaoMin || DURACAO_PADRAO);
+                if (i > cursor) livres.push([cursor, Math.min(i, fimDia)]);
+                cursor = Math.max(cursor, f);
+              }
+              if (cursor < fimDia) livres.push([cursor, fimDia]);
+              const livresTxt = livres.filter(([a, b]) => b - a >= 15).map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ');
+              return (
+                <div className="cartao resumo-dentista">
+                  <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                    <Bolha nome={v?.nome || '?'} />
+                    <div style={{ flex: 1 }}>
+                      <strong>{v?.nome}</strong>
+                      <p className="obs" style={{ margin: '2px 0 0' }}>
+                        {dele.length ? `${dele.length} atendimento${dele.length === 1 ? '' : 's'} em ${dataBonita(dia)}` : `Nada marcado em ${dataBonita(dia)}`}
+                      </p>
+                      <p className={livresTxt ? 'ok' : 'erro'} style={{ margin: '4px 0 0', fontSize: 13 }}>
+                        {livresTxt ? `✓ Tem espaço: ${livresTxt}` : '✗ Dia cheio — sem espaço entre 08h e 17h'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            {(() => {
+              const doDiaVer = dentistaVer ? doDia.filter(g => g.profissionalUid === dentistaVer) : doDia;
+              return doDiaVer.length ? doDiaVer.map(g => (
+                <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
+                  <div className="linha-agenda">
+                    <div className="hora-col">{g.hora}<span className="hora-fim">{horaFim(g.hora, g.duracaoMin)}</span></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong>{g.pacienteNome || g.titulo}</strong>
+                      {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo} · {g.duracaoMin || DURACAO_PADRAO} min</p>}
+                      {g.profissionalNome && <p className="obs">com {g.profissionalNome}</p>}
+                    </div>
+                    <button className="btn-remover" onClick={e => { e.stopPropagation(); removerAgendamento(g); }} title="Remover">✕</button>
+                  </div>
+                </div>
+              )) : <div className="vazio">Nada marcado em {dataBonita(dia)}{dentistaVer ? ` para ${profissionais.find(x => x.id === dentistaVer)?.nome?.split(' ')[0] || 'este dentista'}` : ''}.<br />Toque em "+ Agendar".</div>;
+            })()}
             </>
             )}
           </>
