@@ -3,7 +3,7 @@ import esbuild from 'esbuild';
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { paginaHTML, manifesto } from '../estilo.mjs';
+import { paginaHTML, manifesto, CSS } from '../estilo.mjs';
 
 const raiz = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -25,4 +25,6 @@ const descricao = 'Central do projeto Seja Semente: triagem inicial, agendamento
 mkdirSync(join(raiz, 'dist-semente'), { recursive: true });
 writeFileSync(join(raiz, 'dist-semente/index.html'), paginaHTML({ titulo, descricao }));
 writeFileSync(join(raiz, 'dist-semente/manifest.webmanifest'), JSON.stringify(manifesto({ nome: titulo, descricao }), null, 2));
+// A casca viva do iPhone busca este arquivo para pegar estilos novos na hora
+writeFileSync(join(raiz, 'dist-semente/app.css'), CSS);
 console.log('dist-semente pronto');

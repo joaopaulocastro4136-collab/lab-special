@@ -5,4 +5,8 @@ dist-semeador/
 nativo-central/www/
 nativo-semeador/www/
 nativo-central/www-bundle.js
+nativo-central/www-ponte.js
+nativo-central/www-plano-b.js
+nativo-semeador/www-ponte.js
+nativo-semeador/www-plano-b.js
 nativo-semeador/www-bundle.js
