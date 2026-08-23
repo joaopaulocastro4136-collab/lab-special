@@ -123,3 +123,28 @@ export function lerLocal(chave, padrao) {
 export function gravarLocal(chave, valor) {
   try { localStorage.setItem(chave, JSON.stringify(valor)); } catch (e) { /* sem espaço */ }
 }
+
+// Gesto de voltar: arrastar o dedo da beirada esquerda para a direita faz o
+// mesmo que o botão "Voltar" da tela aberta (o costume do iPhone). Só age
+// quando existe um botão Voltar na tela — formulários com "Cancelar" ficam
+// de fora, para ninguém perder o que estava digitando sem querer.
+export function ligarGestoVoltar() {
+  let inicioX = null, inicioY = null;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    inicioX = t.clientX;
+    inicioY = t.clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (inicioX === null) return;
+    const t = e.changedTouches[0];
+    const andouX = t.clientX - inicioX;
+    const andouY = Math.abs(t.clientY - inicioY);
+    const começouNaBeirada = inicioX <= 60;
+    if (começouNaBeirada && andouX > 70 && andouY < 80) {
+      const botao = document.querySelector('.btn-voltar');
+      if (botao) botao.click();
+    }
+    inicioX = null;
+  }, { passive: true });
+}

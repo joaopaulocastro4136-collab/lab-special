@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, MapPin, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
@@ -714,4 +714,5 @@ function App() {
   return <>{conteudo}{abertura}</>;
 }
 
+ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
 createRoot(document.getElementById('root')).render(<App />);
