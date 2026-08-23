@@ -39,7 +39,7 @@ async function ligarFirebase() {
   // Dentro do aplicativo do iPhone (WebView), o jeito padrão de iniciar a
   // autenticação e o banco falha — estes dois ajustes são os recomendados:
   let auth;
-  if (window.__entrarNativoGoogle) {
+  if (window.__loginGoogleNativo || window.__entrarNativoGoogle) {
     // iPhone (WKWebView): SEM popupRedirectResolver — o login é pela tela de
     // contas do aparelho; o resolver web carregaria um script do Google que
     // quebra dentro do aplicativo ("Script error." na largada)
@@ -154,7 +154,12 @@ function TelaLogin({ aoEntrarDemo }) {
     }
     setCarregando(true);
     try {
-      if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
+      if (window.__loginGoogleNativo) {
+        // Ponte nova (casca viva): ela devolve os tokens do Google e a
+        // entrada no Firebase é feita aqui, com a biblioteca do próprio app
+        const c = await window.__loginGoogleNativo();
+        await fb.fns.signInWithCredential(fb.auth, fb.fns.GoogleAuthProvider.credential(c.idToken, c.accessToken || undefined));
+      } else if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
       else {
         // No computador/navegador o mais confiável é navegar a própria
         // página para o Google e voltar logado (janelinha é bloqueada no Mac)
@@ -1385,7 +1390,7 @@ function App() {
     ligarFirebase().then(() => {
       // Completa o login por redirect (plano B só do navegador; no iPhone o
       // login é nativo e este caminho carregaria script que quebra o app)
-      if (!window.__entrarNativoGoogle) fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
+      if (!window.__loginGoogleNativo && !window.__entrarNativoGoogle) fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
       soltar = fb.fns.onAuthStateChanged(fb.auth, u => {
         setUsuario(u ? { uid: u.uid, email: u.email, nome: u.displayName || u.email } : null);
         setPronto(true);
@@ -1421,5 +1426,10 @@ function App() {
   return <>{conteudo}{abertura}</>;
 }
 
-ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
-createRoot(document.getElementById('root')).render(<App />);
+// A trava __appJaSubiu impede o app de subir duas vezes na casca viva do
+// iPhone (se o plano B embutido entrar e o código da hospedagem chegar depois)
+if (!window.__appJaSubiu) {
+  window.__appJaSubiu = true;
+  ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
+  createRoot(document.getElementById('root')).render(<App />);
+}

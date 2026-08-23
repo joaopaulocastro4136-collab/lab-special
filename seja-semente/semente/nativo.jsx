@@ -1,7 +1,9 @@
-// Arranque NATIVO (iPhone) do app central Seja Semente: liga o login Google
-// pela tela de contas do próprio aparelho e depois sobe o app normal.
+// Ponte NATIVA (iPhone) do app central Seja Semente: entrega o login Google
+// pela tela de contas do próprio aparelho. Só isso fica gravado dentro do
+// aplicativo — o código do app em si é buscado da hospedagem na hora que
+// abre (com um plano B embutido para quando estiver sem internet), então as
+// novidades publicadas chegam no aplicativo instalado instantaneamente.
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 
 // Detecta quando foi a própria pessoa que fechou a tela de contas
 function foiCancelado(e) {
@@ -9,18 +11,19 @@ function foiCancelado(e) {
   return m.includes('cancel') || m.includes('12501') || m.includes('error -5') || m.includes('popup-closed');
 }
 
-// O app chama isto quando existe (só no aplicativo instalado).
+// O app chama isto quando existe (só no aplicativo instalado) e recebe os
+// tokens do Google — a entrada no Firebase o próprio app faz, com a versão
+// dele da biblioteca (a ponte não carrega Firebase nenhum).
 // Na primeira abertura o plugin às vezes falha à toa (erro com números);
-// por isso o app tenta de novo sozinho, até 3 vezes, antes de desistir.
-window.__entrarNativoGoogle = async (auth) => {
+// por isso tenta de novo sozinho, até 3 vezes, antes de desistir.
+window.__loginGoogleNativo = async () => {
   let ultimo = null;
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
       const resultado = await FirebaseAuthentication.signInWithGoogle();
       const idToken = resultado?.credential?.idToken;
       if (!idToken) throw new Error('cancelado');
-      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken, resultado?.credential?.accessToken || undefined));
-      return;
+      return { idToken, accessToken: resultado?.credential?.accessToken || '' };
     } catch (e) {
       if (foiCancelado(e)) throw new Error('cancelado');
       ultimo = e;
@@ -29,5 +32,3 @@ window.__entrarNativoGoogle = async (auth) => {
   }
   throw ultimo || new Error('sem resposta do Google');
 };
-
-import './app.jsx';
