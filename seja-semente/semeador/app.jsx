@@ -106,6 +106,10 @@ function proximoDia(diaSemana) {
 function dataISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+function somaDias(iso, n) {
+  const [a, m, d] = iso.split('-').map(Number);
+  return dataISO(new Date(a, m - 1, d + n));
+}
 
 // ─── Triagem: as mesmas caixinhas e regras da central (ver PONTE.md) ───
 const AREAS = [
@@ -558,21 +562,53 @@ function TelaPrincipal({ usuario, aoSair }) {
     addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
-  // Aceitar a sugestão do chat: o paciente entra no procedimento sugerido —
-  // conta na caixinha na hora, aqui e na central (mesmo banco)
+  // Primeiro espaço livre na MINHA agenda (08h–17h): emenda no fim do
+  // último atendimento do dia; dia cheio → tenta o dia seguinte
+  function proximoEspaco(duracao) {
+    const min = t => { const [h, mm] = String(t || '08:00').split(':').map(Number); return h * 60 + mm; };
+    const hm = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+    let dia = dataISO();
+    for (let i = 0; i < 90; i++) {
+      let inicio = 8 * 60;
+      for (const g of agendamentos.filter(g => g.data === dia)) {
+        const fim = min(g.hora) + (g.duracaoMin || DURACAO_PADRAO);
+        if (fim > inicio) inicio = fim;
+      }
+      if (inicio + duracao <= 17 * 60) return { data: dia, hora: hm(inicio) };
+      dia = somaDias(dia, 1);
+    }
+    return null;
+  }
+
+  // Aceitar a sugestão do chat: o paciente entra no procedimento sugerido
+  // (conta na caixinha na hora, aqui e na central) E já cai na minha agenda
+  // — hoje se ainda houver espaço, senão no dia seguinte
   async function aceitarSugestao(m) {
     const p = todosPacientes.find(x => x.id === m.pacienteId);
     if (!p || !m.sugestaoArea) return;
     const triagem = { saude: [], outrasCondicoes: '', ...(p.triagem || {}), areas: [...new Set([...areasDoPaciente(p), m.sugestaoArea])] };
     delete triagem.area; delete triagem.procedimento;
-    const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '' };
+    const dur = duracaoDe(m.sugestaoArea);
+    const espaco = proximoEspaco(dur);
+    const aInfo = todasAreas.find(a => a.nome === m.sugestaoArea);
+    const novoAg = espaco ? {
+      area: m.sugestaoArea,
+      titulo: m.sugestaoArea + (aInfo?.detalhe ? ` (${aInfo.detalhe})` : ''),
+      duracaoMin: dur,
+      pacienteId: p.id, pacienteNome: p.nome,
+      profissionalUid: usuario.uid, profissionalNome: usuario.nome || '',
+      data: espaco.data, hora: espaco.hora, origem: 'chat',
+    } : null;
+    const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '', agendaDia: espaco ? dataBonita(espaco.data) : '', agendaHora: espaco?.hora || '' };
     if (!CONFIGURADO) {
       setTodosPacientes(ps => ps.map(x => x.id === p.id ? { ...x, triagem, status: x.triagem ? x.status : 'triado' } : x));
+      if (novoAg) setAgendamentos(gs => [...gs, { id: 'g' + Math.floor(Math.random() * 1e9), ...novoAg, criadoEm: new Date() }]);
       setMensagens(ms => ms.map(x => x.id === m.id ? { ...x, ...aceite } : x));
       return;
     }
-    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
     updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    if (novoAg) addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() }).catch(() => {});
     updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
   }
 
