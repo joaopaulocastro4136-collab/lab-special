@@ -24,11 +24,77 @@ export function iniciais(nome) {
 
 // Bolha colorida: com `foto` mostra o rosto; com `Icone` (lucide) vira bolha
 // de ícone em tom suave; senão, as iniciais do nome
-export function Bolha({ nome, Icone, foto }) {
+export function Bolha({ nome, Icone, foto, avatar }) {
   const cor = corDoNome(nome);
   if (foto) return <div className="bolha" style={{ padding: 0, overflow: 'hidden', background: '#E7EDE7' }}><img src={foto} alt={nome} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
+  if (avatar) return <DenteAvatar tipo={avatar} />;
   if (Icone) return <div className="bolha suave" style={{ background: cor + '22', color: cor }}><Icone size={22} strokeWidth={2.4} /></div>;
   return <div className="bolha" style={{ background: cor }}>{iniciais(nome)}</div>;
+}
+
+// ─── Biblioteca de dentinhos: avatares de dente com carinhas, para usar no
+//     lugar da foto do perfil (feliz, com raiva, apaixonado, estiloso…) ───
+export const AVATARES_DENTE = [
+  { id: 'feliz', nome: 'Dente feliz', bg: '#2F7D4E' },
+  { id: 'sorrisao', nome: 'Dente sorridente', bg: '#29A0CE' },
+  { id: 'raiva', nome: 'Dente com raiva', bg: '#C22326' },
+  { id: 'amor', nome: 'Dente apaixonado', bg: '#E2578A' },
+  { id: 'oculos', nome: 'Dente estiloso', bg: '#223528' },
+  { id: 'estrela', nome: 'Dente brilhante', bg: '#F0A912' },
+  { id: 'surpreso', nome: 'Dente surpreso', bg: '#7E4A9E' },
+  { id: 'sono', nome: 'Dente sonolento', bg: '#3559B8' },
+];
+
+function RostoDoDente({ tipo }) {
+  const olhos = <><circle cx="7" cy="8.6" r="1" fill="#26323B" /><circle cx="13" cy="8.6" r="1" fill="#26323B" /></>;
+  const sorriso = <path d="M7.2 10.9 Q10 13.1 12.8 10.9" stroke="#26323B" strokeWidth="1.2" fill="none" strokeLinecap="round" />;
+  if (tipo === 'sorrisao') return <>
+    <path d="M5.8 8.6 Q7 7.3 8.2 8.6" stroke="#26323B" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+    <path d="M11.8 8.6 Q13 7.3 14.2 8.6" stroke="#26323B" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+    <path d="M6.9 10.6 Q10 13.9 13.1 10.6 Z" fill="#26323B" />
+  </>;
+  if (tipo === 'raiva') return <>
+    <path d="M5.4 6.7 L8.2 7.9" stroke="#26323B" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M14.6 6.7 L11.8 7.9" stroke="#26323B" strokeWidth="1.2" strokeLinecap="round" />
+    {olhos}
+    <path d="M7.4 12.3 Q10 10.5 12.6 12.3" stroke="#26323B" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+  </>;
+  if (tipo === 'amor') return <>
+    <path d="M7 9.7 C5.5 8.4 6.2 6.8 7 7.5 C7.8 6.8 8.5 8.4 7 9.7 Z" fill="#E2578A" />
+    <path d="M13 9.7 C11.5 8.4 12.2 6.8 13 7.5 C13.8 6.8 14.5 8.4 13 9.7 Z" fill="#E2578A" />
+    {sorriso}
+  </>;
+  if (tipo === 'oculos') return <>
+    <rect x="4.4" y="6.9" width="4.6" height="3.1" rx="1.2" fill="#26323B" />
+    <rect x="11" y="6.9" width="4.6" height="3.1" rx="1.2" fill="#26323B" />
+    <path d="M9 8.3 L11 8.3" stroke="#26323B" strokeWidth="1" />
+    {sorriso}
+  </>;
+  if (tipo === 'estrela') return <>
+    <path d="M7 6.9 L7.5 8.3 L8.9 8.8 L7.5 9.3 L7 10.7 L6.5 9.3 L5.1 8.8 L6.5 8.3 Z" fill="#F0A912" />
+    <path d="M13 6.9 L13.5 8.3 L14.9 8.8 L13.5 9.3 L13 10.7 L12.5 9.3 L11.1 8.8 L12.5 8.3 Z" fill="#F0A912" />
+    {sorriso}
+  </>;
+  if (tipo === 'surpreso') return <>{olhos}<circle cx="10" cy="11.7" r="1.4" fill="#26323B" /></>;
+  if (tipo === 'sono') return <>
+    <path d="M5.8 8.6 L8.2 8.6" stroke="#26323B" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M11.8 8.6 L14.2 8.6" stroke="#26323B" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M9.2 11.7 Q10 12.3 10.8 11.7" stroke="#26323B" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+    <text x="14.6" y="5.6" fontSize="4.6" fontWeight="800" fill="#26323B">z</text>
+  </>;
+  return <>{olhos}{sorriso}</>; // feliz (padrão)
+}
+
+export function DenteAvatar({ tipo, tamanho = 46 }) {
+  const av = AVATARES_DENTE.find(a => a.id === tipo) || AVATARES_DENTE[0];
+  return (
+    <div className="bolha" style={{ background: av.bg, width: tamanho, height: tamanho, flex: 'none' }} title={av.nome}>
+      <svg width={tamanho * 0.66} height={tamanho * 0.66} viewBox="0 0 20 22" aria-label={av.nome}>
+        <path d="M6.6 2.8 C3.9 2.8 2.6 5.2 3 8.2 C3.5 11.6 4.8 19.8 6.8 19.8 C8.9 19.8 7.9 13.9 10 13.9 C12.1 13.9 11.1 19.8 13.2 19.8 C15.2 19.8 16.5 11.6 17 8.2 C17.4 5.2 16.1 2.8 13.4 2.8 C12.2 3.6 7.8 3.6 6.6 2.8 Z" fill="#FFFFFF" />
+        <RostoDoDente tipo={av.id} />
+      </svg>
+    </div>
+  );
 }
 
 // Abertura animada — a história da diversidade: um monte de cores diferentes

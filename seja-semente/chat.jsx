@@ -6,7 +6,7 @@
 // SUGESTÃO de procedimento — quem receber toca em "Aceitar" e o paciente já
 // entra contando naquele procedimento no sistema, sem cadastro novo.
 import { useState, useEffect, useRef } from 'react';
-import { Bolha } from './logo.jsx';
+import { Bolha, corDoNome } from './logo.jsx';
 import { comprimirImagem } from './ficha.jsx';
 import { Send, Check, X, ClipboardList, AtSign, Camera, Plus, Smile } from 'lucide-react';
 
@@ -73,10 +73,12 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
         {mensagens.length === 0 && <div className="vazio">Nenhuma mensagem ainda — puxe a conversa! 🌱</div>}
         {mensagens.map(m => (
           <div key={m.id} className={'msg' + (m.autorUid === usuario.uid ? ' minha' : '')}>
-            <Bolha nome={m.autorNome || '?'} />
-            <div className="msg-corpo">
+            <Bolha nome={m.autorNome || '?'} foto={m.autorFotoMini} avatar={m.autorAvatar} />
+            {/* Cada pessoa tem a sua cor (nome e barrinha do balão) — dá para
+                reconhecer quem mandou só de bater o olho */}
+            <div className="msg-corpo" style={{ borderLeft: `4px solid ${corDoNome(m.autorNome)}` }}>
               <div className="msg-topo">
-                <strong>{m.autorUid === usuario.uid ? 'Você' : m.autorNome}</strong>
+                <strong style={{ color: m.autorUid === usuario.uid ? '#1E6B41' : corDoNome(m.autorNome) }}>{m.autorUid === usuario.uid ? 'Você' : m.autorNome}</strong>
                 <span className="quando">{quandoBonito(m.criadoEm)}</span>
               </div>
               {m.paraNome && (
