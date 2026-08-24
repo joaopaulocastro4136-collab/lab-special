@@ -95,7 +95,7 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
                 </button>
               )}
               {m.sugestaoArea && (m.aceitoPorNome ? (
-                <span className="chip-aceito"><Check size={13} strokeWidth={3} /> {m.sugestaoArea} — aceito por {m.aceitoPorNome}</span>
+                <span className="chip-aceito"><Check size={13} strokeWidth={3} /> {m.sugestaoArea} — aceito por {m.aceitoPorNome}{m.agendaDia ? ` · agendado ${m.agendaDia} às ${m.agendaHora}` : ''}</span>
               ) : (
                 <div className="linha-sugestao">
                   <span>Incluir em <b>{m.sugestaoArea}</b>?</span>
