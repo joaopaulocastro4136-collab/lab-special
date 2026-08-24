@@ -310,13 +310,21 @@ function TelaLogin({ aoEntrarDemo }) {
             setCarregando(false);
             return; // a pessoa só fechou a janelinha — não é erro
           }
-          if (window.location.hostname === 'seja-semente-app.firebaseapp.com') {
-            await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
-            return; // a página vai para o Google
+          if (cod === 'auth/popup-blocked') {
+            if (window.location.hostname === 'seja-semente-app.firebaseapp.com') {
+              await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
+              return; // a página vai para o Google
+            }
+            setCarregando(false);
+            setErro('O navegador bloqueou a janelinha do Google. Permita janelas pop-up para este site (no aviso da barra de endereço) e toque de novo em Entrar com Google.');
+            return;
           }
-          setCarregando(false);
-          setErro('O navegador bloqueou a janelinha do Google. Permita janelas pop-up para este site (no aviso da barra de endereço) e toque de novo em Entrar com Google.');
-          return;
+          if (cod === 'auth/network-request-failed') {
+            setCarregando(false);
+            setErro('Sem conexão com a internet agora — confira a rede e tente de novo.');
+            return;
+          }
+          throw e2; // outros erros caem na mensagem geral
         }
       }
     } catch (e) {
