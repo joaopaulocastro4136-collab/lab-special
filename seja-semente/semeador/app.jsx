@@ -182,8 +182,9 @@ function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha }) {
   const daSemana = agendamentos.filter(g => dias.includes(g.data));
   const dur = g => g.duracaoMin || duracaoDe(g.area || g.titulo);
 
-  // Faixa de horários: das 8h às 18h, esticando se houver atendimento fora dela
-  let min = 8 * 60, max = 18 * 60;
+  // Faixa de horários: das 6h da manhã até a meia-noite, para dar para
+  // agendar em qualquer horário do dia (estica se houver atendimento antes)
+  let min = 6 * 60, max = 24 * 60;
   for (const g of daSemana) {
     const i = minutosDe(g.hora);
     min = Math.min(min, Math.floor(i / 30) * 30);
@@ -212,13 +213,17 @@ function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha }) {
     return { blocos, faixas: Math.max(1, fimDasFaixas.length) };
   }
 
-  // Ao abrir (e ao trocar de semana), deixa o dia de hoje à vista
+  // Ao abrir (e ao trocar de semana), deixa o dia de hoje à vista — e desce
+  // até o primeiro atendimento da semana (ou 8h), para a grade não abrir
+  // mostrando só as horas vazias da madrugada
   const rolagem = useRef(null);
   useEffect(() => {
     const el = rolagem.current;
     if (!el) return;
     const idx = dias.indexOf(hoje);
     el.scrollLeft = idx > 0 ? idx * LARGURA_DIA - 34 : 0;
+    const primeiro = Math.min(8 * 60, ...daSemana.map(g => minutosDe(g.hora)));
+    el.scrollTop = Math.max(0, topoDe(primeiro) - 4);
   }, [inicio]);
 
   const agoraMin = agora.getHours() * 60 + agora.getMinutes();
@@ -610,6 +615,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
   const [buscaArea, setBuscaArea] = useState('');
+  const [buscaTriagem, setBuscaTriagem] = useState(''); // pesquisa geral de paciente na aba Triagem
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-pacientes', todosPacientes); }, [todosPacientes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-config-proc', configProc); }, [configProc]);
@@ -832,6 +838,30 @@ function TelaPrincipal({ usuario, aoSair }) {
         {aba === 'triagem' && (
           <>
             <h2>Triagem</h2>
+            <input className="busca" placeholder="Pesquisar paciente por nome ou código…" value={buscaTriagem} onChange={e => setBuscaTriagem(e.target.value)} />
+            {buscaTriagem.trim() ? (() => {
+              // Pesquisando: mostra os pacientes achados no lugar das caixinhas
+              const filtro = buscaTriagem.trim().toLowerCase();
+              const achados = todosPacientes.filter(p => (p.nome || '').toLowerCase().includes(filtro) || String(p.codigo || '').toLowerCase().includes(filtro));
+              return achados.length ? achados.map(p => (
+                <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
+                  <div className="cartao-linha">
+                    <Bolha nome={p.nome} foto={p.foto} />
+                    <div>
+                      <div className="cartao-topo">
+                        <strong>{p.nome}</strong>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                          <span className={'chip ' + (p.status || 'cadastrado').replace(' ', '-')}>{p.status || 'cadastrado'}</span>
+                        </span>
+                      </div>
+                      <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </div>
+                </div>
+              )) : <Vazio texto="Nenhum paciente encontrado com esse nome ou código." />;
+            })() : (
+            <>
             <button className={`caixa-entrada ${semTriagem.length ? 'pendente' : 'vazia'}`} onClick={() => setTelaTriagem('entrada')}>
               <span className="entrada-icone"><Inbox size={23} strokeWidth={2.2} /></span>
               <span className="entrada-texto">
@@ -863,6 +893,8 @@ function TelaPrincipal({ usuario, aoSair }) {
                 );
               })}
             </div>
+            </>
+            )}
           </>
         )}
         {aba === 'agenda' && (
