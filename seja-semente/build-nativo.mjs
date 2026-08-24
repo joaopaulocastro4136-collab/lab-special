@@ -48,28 +48,57 @@ const html = `<!DOCTYPE html>
 <meta name="theme-color" content="#2F7D4E">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>${CSS}</style>
-<link rel="stylesheet" href="${app.site}/app.css">
 </head>
 <body>
 <div id="root"></div>
 <script>${ponte}</script>
 <script type="text/x-plano-b" id="plano-b">${planoB}</script>
 <script>
-// Busca o app mais novo da hospedagem; sem internet, sobe a cópia embutida.
-// (a trava window.__appJaSubiu, dentro do próprio app, impede subir duas vezes)
+// Busca o app mais novo da hospedagem e GUARDA uma cópia no aparelho.
+// Sem internet: usa a última versão guardada; se nunca baixou nenhuma,
+// entra a cópia de fábrica embutida nesta casca. A trava window.__appJaSubiu
+// (dentro do próprio app) garante que ele nunca sobe duas vezes.
 (function () {
-  function planoB() {
-    // Só entra se o app da hospedagem não subiu mesmo: nada de tela dupla
-    if (window.__appJaSubiu || document.getElementById('root').childElementCount) return;
-    var local = document.createElement('script');
-    local.textContent = document.getElementById('plano-b').textContent;
-    document.body.appendChild(local);
+  var SITE = '${app.site}';
+  function roda(js) {
+    var s = document.createElement('script');
+    s.textContent = js;
+    document.body.appendChild(s); // executa na hora
   }
-  var remoto = document.createElement('script');
-  remoto.src = '${app.site}/app.js';
-  remoto.onerror = planoB;
-  setTimeout(planoB, 8000); // internet lenta demais também cai no plano B
-  document.body.appendChild(remoto);
+  function subiu() { return window.__appJaSubiu || document.getElementById('root').childElementCount > 0; }
+  function planoB() {
+    if (subiu()) return;
+    var guardado = null;
+    try { guardado = localStorage.getItem('casca-app'); } catch (e) {}
+    if (guardado) { try { roda(guardado); } catch (e) {} }   // última versão baixada
+    if (subiu()) return;
+    roda(document.getElementById('plano-b').textContent);    // cópia de fábrica
+  }
+  // Estilos: aplica o mais novo que tiver guardado e busca o novo por fora
+  try {
+    var cssGuardado = localStorage.getItem('casca-css');
+    if (cssGuardado) { var e1 = document.createElement('style'); e1.textContent = cssGuardado; document.head.appendChild(e1); }
+  } catch (e) {}
+  var cortaCss = new AbortController();
+  setTimeout(function () { cortaCss.abort(); }, 8000);
+  fetch(SITE + '/app.css', { signal: cortaCss.signal, cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : null; })
+    .then(function (css) {
+      if (!css) return;
+      try { localStorage.setItem('casca-css', css); } catch (e) {}
+      var e2 = document.createElement('style'); e2.textContent = css; document.head.appendChild(e2);
+    }).catch(function () {});
+  // O app: rede → guardado no aparelho → cópia de fábrica
+  var corta = new AbortController();
+  var vigia = setTimeout(function () { corta.abort(); }, 8000);
+  fetch(SITE + '/app.js', { signal: corta.signal, cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('resposta ' + r.status); return r.text(); })
+    .then(function (js) {
+      clearTimeout(vigia);
+      try { localStorage.setItem('casca-app', js); } catch (e) {}
+      if (!subiu()) roda(js);
+    })
+    .catch(function () { clearTimeout(vigia); planoB(); });
 })();
 </script>
 </body>

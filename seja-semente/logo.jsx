@@ -112,6 +112,19 @@ export function BrotoMini({ tamanho = 18, cor = '#9DBBA8' }) {
   );
 }
 
+// Diz se o aparelho está com internet neste momento (atualiza sozinho).
+// Os apps usam para mostrar o aviso "sem internet — salvando no aparelho".
+export function usarTemInternet() {
+  const [tem, setTem] = useState(typeof navigator === 'undefined' || navigator.onLine !== false);
+  useEffect(() => {
+    const liga = () => setTem(true), desliga = () => setTem(false);
+    window.addEventListener('online', liga);
+    window.addEventListener('offline', desliga);
+    return () => { window.removeEventListener('online', liga); window.removeEventListener('offline', desliga); };
+  }, []);
+  return tem;
+}
+
 // Guarda e lê dados no aparelho (modo demonstração vira "app de verdade":
 // o que você cadastra fica salvo mesmo fechando o aplicativo)
 export function lerLocal(chave, padrao) {

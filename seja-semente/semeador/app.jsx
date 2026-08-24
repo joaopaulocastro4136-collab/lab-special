@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
 import icone from '../icones/icone-semeador-1024.png';
@@ -47,7 +47,19 @@ async function ligarFirebase() {
     // Navegador/computador: o padrão já configura o login web (Google) certo
     auth = modAuth.getAuth(app);
   }
-  const db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  // Modo offline: os dados ficam guardados no próprio aparelho — dá para
+  // abrir pacientes, agenda e fotos sem internet, e tudo que for feito
+  // offline entra numa fila que o Firestore envia SOZINHO quando a
+  // conexão voltar (ninguém precisa apertar nada)
+  let db;
+  try {
+    db = modFs.initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: modFs.persistentLocalCache({ tabManager: modFs.persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  }
   fb = { auth, db, fns: { ...modAuth, ...modFs } };
 }
 
@@ -482,6 +494,7 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
 
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('inicio');
+  const temInternet = usarTemInternet();
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
   const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : lerLocal('sd-pacientes', DEMO.pacientes));
@@ -660,7 +673,9 @@ function TelaPrincipal({ usuario, aoSair }) {
           <div>
             <strong>Semeador</strong>
             <div className={centralOnline ? 'status online' : 'status'}>
-              {centralOnline ? '● Central conectada' : '○ Central offline'} · {usuario.nome?.split(' ')[0]}
+              {temInternet
+                ? <>{centralOnline ? '● Central conectada' : '○ Central offline'} · {usuario.nome?.split(' ')[0]}</>
+                : '📴 Sem internet — salvando no aparelho'}
             </div>
           </div>
         </div>

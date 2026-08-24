@@ -17,7 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
@@ -52,7 +52,19 @@ async function ligarFirebase() {
     // Navegador/computador: o padrão já configura o login web (Google) certo
     auth = modAuth.getAuth(app);
   }
-  const db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  // Modo offline: os dados ficam guardados no próprio aparelho — dá para
+  // abrir pacientes, agenda e fotos sem internet, e tudo que for feito
+  // offline entra numa fila que o Firestore envia SOZINHO quando a
+  // conexão voltar (ninguém precisa apertar nada)
+  let db;
+  try {
+    db = modFs.initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: modFs.persistentLocalCache({ tabManager: modFs.persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  }
   fb = { auth, db, fns: { ...modAuth, ...modFs } };
 }
 
@@ -474,6 +486,7 @@ function NovoProcedimento({ aoAdicionar }) {
 
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('cadastro');
+  const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
   const [cadastradoMsg, setCadastradoMsg] = useState('');
@@ -908,7 +921,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <div className="logo-bolha"><LogoApp tamanho={40} /></div>
           <div style={{ flex: 1 }}>
             <strong>Seja Semente</strong>
-            <div className="status">Central · {usuario.nome}</div>
+            <div className="status">{temInternet ? <>Central · {usuario.nome}</> : '📴 Sem internet — salvando no aparelho'}</div>
           </div>
           <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Bell size={20} /></button>
           <button className="btn-header" onClick={() => setTela('novoAviso')} title="Novo aviso"><Megaphone size={20} /></button>
