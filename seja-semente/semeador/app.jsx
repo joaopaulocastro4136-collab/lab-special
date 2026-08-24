@@ -14,6 +14,7 @@ import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, Ey
 import { FichaPaciente } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
+import { SeletorAvatar } from '../avatar.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -284,6 +285,7 @@ function TelaLogin({ aoEntrarDemo }) {
 //     solicitação para a central Seja Semente aprovar ───
 function TelaCadastro({ usuario, aoEnviar }) {
   const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '' });
+  const [av, setAv] = useState({ foto: '', fotoMini: '', avatar: '' });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
   const cpfOk = f.cpf.replace(/\D/g, '').length === 11;
   const pronto = f.nome.trim() && f.telefone.trim() && cpfOk && f.nascimento;
@@ -291,12 +293,15 @@ function TelaCadastro({ usuario, aoEnviar }) {
     <div className="folha">
       <h2>Cadastro de voluntário</h2>
       <p className="dica">Bem-vindo! Preencha seus dados — eles vão para a central Seja Semente, que aprova a sua entrada como voluntário.</p>
+      <div className="campo"><span>Sua foto (ou um dentinho da biblioteca)</span>
+        <SeletorAvatar nome={f.nome || usuario.nome} foto={av.foto} avatar={av.avatar} aoSalvar={x => setAv(a => ({ ...a, ...x }))} />
+      </div>
       <Campo rotulo="Nome completo"><input value={f.nome} onChange={muda('nome')} /></Campo>
       <Campo rotulo="Telefone (WhatsApp)"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" placeholder="(11) 91234-5678" /></Campo>
       <Campo rotulo="CPF"><input value={f.cpf} onChange={muda('cpf')} inputMode="numeric" placeholder="000.000.000-00" /></Campo>
       <Campo rotulo="Data de nascimento"><input type="date" value={f.nascimento} onChange={muda('nascimento')} /></Campo>
       {f.cpf && !cpfOk && <div className="erro">O CPF precisa ter 11 números.</div>}
-      <button className="btn-principal" disabled={!pronto} onClick={() => aoEnviar(f)}>Enviar solicitação</button>
+      <button className="btn-principal" disabled={!pronto} onClick={() => aoEnviar({ ...f, ...av })}>Enviar solicitação</button>
     </div>
   );
 }
@@ -405,7 +410,7 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
   );
 }
 
-function TelaPrincipal({ usuario, aoSair }) {
+function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
   const [aba, setAba] = useState('inicio');
   const temInternet = usarTemInternet();
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
@@ -424,7 +429,11 @@ function TelaPrincipal({ usuario, aoSair }) {
   }, [aba, mensagens.length]);
 
   async function enviarMensagem(m) {
-    const dados = { ...m, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    const dados = {
+      ...m, autorUid: usuario.uid, autorNome: usuario.nome || '',
+      autorAvatar: usuario.avatar || '',
+      autorFotoMini: usuario.fotoMini || (String(usuario.foto || '').startsWith('http') ? usuario.foto : ''),
+    };
     if (!CONFIGURADO) {
       setMensagens(ms => [...ms, { id: 'm' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }]);
       return;
@@ -787,7 +796,7 @@ function TelaPrincipal({ usuario, aoSair }) {
             <h2>Meu perfil</h2>
             <div className="cartao">
               <div className="cartao-linha">
-                <Bolha nome={usuario.nome} />
+                <Bolha nome={usuario.nome} foto={usuario.fotoMini || usuario.foto} avatar={usuario.avatar} />
                 <div>
                   <p style={{ marginTop: 0 }}><strong>{usuario.nome}</strong></p>
                   {usuario.ministerio && <p>Ministério: {usuario.ministerio}</p>}
@@ -795,6 +804,10 @@ function TelaPrincipal({ usuario, aoSair }) {
                   {usuario.telefone && <p>{usuario.telefone}</p>}
                 </div>
               </div>
+            </div>
+            <div className="cartao" style={{ marginBottom: 4 }}>
+              <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
+              <SeletorAvatar nome={usuario.nome} foto={usuario.foto} avatar={usuario.avatar} aoSalvar={aoSalvarPerfil} />
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
           </>
@@ -869,10 +882,18 @@ function App() {
   }, []);
 
   async function enviarCadastro(f) {
-    const dados = { ...f, email: conta.email || '', foto: conta.foto || '', status: 'pendente', ativo: false };
+    // A foto/dentinho escolhidos no formulário valem mais que a foto do Google
+    const dados = { foto: conta.foto || '', ...f, email: conta.email || '', status: 'pendente', ativo: false };
     if (!CONFIGURADO) { setCadastro(dados); return; }
     const { doc, setDoc, serverTimestamp } = fb.fns;
     setDoc(doc(fb.db, 'voluntarios', conta.uid), { ...dados, solicitadoEm: serverTimestamp() }).catch(() => {});
+  }
+
+  // Editar a foto/dentinho depois, pela aba Perfil
+  async function salvarPerfil(campos) {
+    if (!CONFIGURADO) { setCadastro(c => ({ ...c, ...campos })); return; }
+    const { doc, setDoc } = fb.fns;
+    setDoc(doc(fb.db, 'voluntarios', conta.uid), campos, { merge: true }).catch(() => {});
   }
 
   async function sair() {
@@ -899,7 +920,7 @@ function App() {
   else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
   else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
   else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} />;
+  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} aoSalvarPerfil={salvarPerfil} />;
   return <>{conteudo}{abertura}</>;
 }
 

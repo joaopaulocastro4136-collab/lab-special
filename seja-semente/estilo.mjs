@@ -120,6 +120,13 @@ export const CSS = `
   .chip-dia.ativo { background: #226343; border-color: #226343; color: #fff; }
   .resumo-dentista { border: 1.5px solid #BFDCC9; background: #F2FAF5; }
 
+  /* ── Foto/dentinho do perfil ── */
+  .seletor-avatar { display: flex; flex-direction: column; }
+  .avatar-atual { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .grade-dentes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .opcao-dente { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 7px; border: 1.5px solid #DBE3D8; border-radius: 15px; background: #fff; cursor: pointer; font-size: 10.5px; font-weight: 800; color: #55645A; }
+  .opcao-dente.marcada { border-color: #2F7D4E; background: #E9F5EE; box-shadow: 0 0 0 3px rgba(47,125,78,0.14); }
+
   /* ── Chat da equipe ── */
   .chat { display: flex; flex-direction: column; gap: 10px; }
   .chat-mensagens { display: flex; flex-direction: column; gap: 10px; min-height: 120px; padding-bottom: 130px; }
@@ -228,6 +235,8 @@ export const CSS = `
   .sem-bloco strong { font-size: 11px; line-height: 1.2; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .sem-bloco span { font-size: 9.5px; font-weight: 700; opacity: 0.92; }
   .sem-bloco.curto { justify-content: center; padding: 2px 6px; }
+  .sem-bloco.arrastavel { touch-action: none; }
+  .sem-bloco.previa { background: rgba(47,125,78,0.16); border: 2px dashed #2F7D4E; color: #1E6B41; pointer-events: none; box-shadow: none; z-index: 4; }
   .agora-linha { position: absolute; left: 0; right: 0; border-top: 2px solid #E0492E; z-index: 5; pointer-events: none; }
   .agora-linha::before { content: ''; position: absolute; left: 44px; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: #E0492E; }
 

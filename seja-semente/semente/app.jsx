@@ -22,6 +22,7 @@ import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaph
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
+import { SeletorAvatar } from '../avatar.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -354,10 +355,13 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
 // AGENDAMENTO: paciente + voluntário. CADA procedimento marcado vira UM
 // agendamento próprio — os horários se emendam pelo tempo de cada um, e
 // cada linha pode ter a hora ajustada à mão.
-function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, areaInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar }) {
+function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, areaInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar, aoMover }) {
   const triados = pacientes.filter(p => p.triagem)
     .sort((a, b) => (b.prioridade ? 1 : 0) - (a.prioridade ? 1 : 0)); // prioridade primeiro
   const primeiro = pacienteInicial || triados[0];
+  // Vindo da caixinha (ex.: Profilaxia), agenda SÓ aquele procedimento —
+  // os outros procedimentos do paciente ficam nas caixinhas deles
+  const soUma = !!areaInicial;
   const [f, setF] = useState({
     pacienteId: primeiro?.id || '',
     profissionalUid: voluntarios[0]?.id || '',
@@ -368,11 +372,14 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
   const [profsProprios, setProfsProprios] = useState({}); // procedimento → profissional próprio
   const [salvando, setSalvando] = useState(false);
   const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const pularSugestaoRef = useRef(false); // hora tocada no quadradinho vale mais que a sugestão
 
   // Sugere sozinho o horário de início: emenda no fim do último atendimento
   // já marcado do dentista naquele dia (acabou 08:30 → sugere 08:30). Trocou
-  // de dentista ou de dia, a sugestão é refeita — e dá para ajustar à mão.
+  // de dentista ou de dia, a sugestão é refeita — e o toque no quadradinho
+  // do calendário manda mais que ela.
   useEffect(() => {
+    if (pularSugestaoRef.current) { pularSugestaoRef.current = false; return; }
     const doDia = agendamentos.filter(g => g.profissionalUid === f.profissionalUid && g.data === f.data);
     let sugestao = '08:00';
     for (const g of doDia) {
@@ -385,12 +392,15 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
   const mudaPaciente = e => {
     const p = triados.find(x => x.id === e.target.value);
     setF({ ...f, pacienteId: e.target.value });
-    setMarcadas(areasDoPaciente(p));
+    setMarcadas(soUma ? [areaInicial] : areasDoPaciente(p));
     setHorasProprias({});
     setProfsProprios({});
   };
   const alterna = nome => setMarcadas(m => m.includes(nome) ? m.filter(x => x !== nome) : [...m, nome]);
-  const pac = triados.find(p => p.id === f.pacienteId);
+  // Na caixinha de Profilaxia só aparecem pacientes de Profilaxia — mesmo
+  // que o paciente tenha dois procedimentos, cada um fica no seu lugar
+  const listaPacientes = soUma ? triados.filter(p => areasDoPaciente(p).includes(areaInicial)) : triados;
+  const pac = listaPacientes.find(p => p.id === f.pacienteId) || triados.find(p => p.id === f.pacienteId);
   const prof = voluntarios.find(p => p.id === f.profissionalUid);
   const areasPac = areasDoPaciente(pac);
   const ocupadosDe = uid => agendamentos
@@ -431,12 +441,21 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
     <div className="folha">
       <h2>Agendar paciente</h2>
       {triados.length === 0 && <p className="dica">Nenhum paciente com triagem ainda — faça a triagem primeiro.</p>}
-      <Campo rotulo="Paciente">
+      <Campo rotulo={soUma ? `Paciente (só quem é de ${areaInicial})` : 'Paciente'}>
         <select value={f.pacienteId} onChange={mudaPaciente}>
-          {triados.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '★ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
+          {listaPacientes.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '★ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
         </select>
       </Campo>
-      {areasPac.length > 0 && (
+      {soUma ? (() => {
+        const a = todasAreas.find(x => x.nome === areaInicial);
+        return (
+          <div className="caixas">
+            <span className="caixa marcada" style={{ cursor: 'default' }}>
+              {a?.Icone && <a.Icone size={15} style={{ color: a.cor }} />}Agendando só {areaInicial} · {duracaoDe(areaInicial)} min
+            </span>
+          </div>
+        );
+      })() : areasPac.length > 0 && (
         <div className="campo"><span>Procedimentos a agendar (cada um vira um agendamento)</span>
           <div className="caixas">
             {areasPac.map(nome => {
@@ -456,17 +475,18 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
         </select>
       </Campo>
       <div className="campo">
-        <span>Agenda de {prof ? prof.nome.split(' ')[0] : 'quem atende'} — toque no dia para escolher a data</span>
+        <span>Agenda de {prof ? prof.nome.split(' ')[0] : 'quem atende'} — toque no quadradinho do horário para marcar; segure e arraste um paciente para mudá-lo de lugar</span>
         <AgendaSemana
           agendamentos={agendamentos.filter(g => g.profissionalUid === f.profissionalUid)}
           corDaArea={nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '')}
           duracaoDe={duracaoDe}
           diaEscolhido={f.data}
-          aoEscolherDia={iso => setF(atual => ({ ...atual, data: iso }))}
+          aoEscolherHorario={(iso, hora) => { pularSugestaoRef.current = true; setHorasProprias({}); setF(atual => ({ ...atual, data: iso, horaInicio: hora })); }}
+          previa={{ data: f.data, hora: f.horaInicio, duracaoMin: sequencia.reduce((s, x) => s + x.dur, 0) || DURACAO_PADRAO, titulo: pac ? pac.nome.split(' ')[0] : 'Novo' }}
+          aoMoverAgendamento={aoMover}
         />
       </div>
-      <Campo rotulo="Data escolhida"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
-      <Campo rotulo="Hora de início"><input type="time" value={f.horaInicio} onChange={e => { setF({ ...f, horaInicio: e.target.value }); setHorasProprias({}); }} /></Campo>
+      <p className="dica" style={{ margin: 0 }}>📌 Vai ficar: <b>{dataBonita(f.data)} às {f.horaInicio}</b> — toque em outro quadradinho para mudar.</p>
       {sequencia.length > 0 && (
         <div className="campo"><span>Como fica ({sequencia.length} agendamento{sequencia.length === 1 ? '' : 's'})</span>
           {sequencia.map(s => (
@@ -560,6 +580,22 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : lerLocal('ss-voluntarios', DEMO.voluntarios));
   const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('ss-chat', DEMO.chat));
   const [chatVisto, setChatVisto] = useState(lerLocal('ss-chat-visto', 0)); // quantas mensagens já foram vistas
+  // Foto/dentinho do MEU perfil (fica em central-usuarios/{uid})
+  const [meuPerfil, setMeuPerfil] = useState(CONFIGURADO ? {} : lerLocal('ss-perfil', {}));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-perfil', meuPerfil); }, [meuPerfil]);
+  useEffect(() => {
+    if (!CONFIGURADO) return;
+    const { doc, onSnapshot } = fb.fns;
+    return onSnapshot(doc(fb.db, 'central-usuarios', usuario.uid), snap => {
+      const d = snap.data() || {};
+      setMeuPerfil({ foto: d.foto || '', fotoMini: d.fotoMini || '', avatar: d.avatar || '' });
+    });
+  }, [usuario.uid]);
+  async function salvarPerfil(campos) {
+    if (!CONFIGURADO) { setMeuPerfil(p => ({ ...p, ...campos })); return; }
+    const { doc, setDoc } = fb.fns;
+    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', ...campos }, { merge: true });
+  }
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-pacientes', pacientes); }, [pacientes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-agendamentos', agendamentos); }, [agendamentos]);
@@ -620,7 +656,10 @@ function TelaPrincipal({ usuario, aoSair }) {
   }, []);
 
   async function enviarMensagem(m) {
-    const dados = { ...m, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    const dados = {
+      ...m, autorUid: usuario.uid, autorNome: usuario.nome || '',
+      autorAvatar: meuPerfil.avatar || '', autorFotoMini: meuPerfil.fotoMini || '',
+    };
     if (!CONFIGURADO) {
       setMensagens(ms => [...ms, { id: 'm' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }]);
       return;
@@ -800,6 +839,16 @@ function TelaPrincipal({ usuario, aoSair }) {
     updateDoc(doc(fb.db, 'agendamentos', g.id), { profissionalUid: v.id, profissionalNome: v.nome }).catch(() => {});
   }
 
+  // Arrastar e soltar no calendário: muda o dia/hora de um agendamento
+  async function mudarHorarioAgendamento(g, data, hora) {
+    if (!CONFIGURADO) {
+      setAgendamentos(gs => gs.map(x => x.id === g.id ? { ...x, data, hora } : x));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'agendamentos', g.id), { data, hora });
+  }
+
   async function removerAgendamento(g) {
     if (!CONFIGURADO) {
       setAgendamentos(gs => gs.filter(x => x.id !== g.id));
@@ -901,7 +950,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
@@ -1243,13 +1292,17 @@ function TelaPrincipal({ usuario, aoSair }) {
             <h2>Meu perfil</h2>
             <div className="cartao">
               <div className="cartao-linha">
-                <Bolha nome={usuario.nome} />
+                <Bolha nome={usuario.nome} foto={meuPerfil.foto} avatar={meuPerfil.avatar} />
                 <div>
                   <p style={{ marginTop: 0 }}><strong>{usuario.nome}</strong></p>
                   {usuario.email && <p>{usuario.email}</p>}
                   <p className="obs">Central do Seja Semente</p>
                 </div>
               </div>
+            </div>
+            <div className="cartao" style={{ marginBottom: 10 }}>
+              <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
+              <SeletorAvatar nome={usuario.nome} foto={meuPerfil.foto} avatar={meuPerfil.avatar} aoSalvar={salvarPerfil} />
             </div>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('novoVoluntario')}>+ Adicionar novo dentista / usuário</button>
             <p className="dica" style={{ marginBottom: 16 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>

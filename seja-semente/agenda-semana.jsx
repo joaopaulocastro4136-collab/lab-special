@@ -1,7 +1,10 @@
 // Agenda da semana — grade de dias × horários, como agenda de clínica.
-// Compartilhada: o Semeador mostra a agenda do dentista, e a central usa na
-// tela de agendar (com aoEscolherDia, tocar num dia escolhe a DATA — dá para
-// ver os horários de cada dentista e onde encaixa a vaga).
+// Compartilhada: o Semeador mostra a agenda do dentista; a central usa na
+// tela de agendar com três poderes a mais (todos opcionais):
+//   aoEscolherHorario(dia, hora) — tocar num quadradinho escolhe dia E hora
+//   previa                       — bloco tracejado mostrando onde vai cair
+//   aoMoverAgendamento(g, d, h)  — segurar e ARRASTAR um paciente muda ele
+//                                  de horário/dia (só a central move)
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -9,6 +12,7 @@ const DIAS_LONGOS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ALTURA_MEIA_HORA = 28;   // altura em px de cada linha de 30 minutos
 const LARGURA_DIA = 118;       // largura em px da coluna de cada dia
+const LARGURA_HORAS = 50;      // largura da coluna das horas
 
 function dataISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -17,12 +21,14 @@ function minutosDe(hora) {
   const [h, m] = String(hora || '0:0').split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
-function horaFim(hora, dur) {
-  const total = minutosDe(hora) + (dur || 30);
+function hm(total) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
+function horaFim(hora, dur) {
+  return hm(minutosDe(hora) + (dur || 30));
+}
 
-export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido }) {
+export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido, aoEscolherHorario, previa, aoMoverAgendamento }) {
   const hoje = dataISO();
   const domingo = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return dataISO(d); };
   const [inicio, setInicio] = useState(domingo);
@@ -83,11 +89,37 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
   const agoraMin = agora.getHours() * 60 + agora.getMinutes();
   const mostraAgora = dias.includes(hoje) && agoraMin >= min && agoraMin <= max;
 
+  // ─── Arrastar e soltar: segurar um paciente e levar para outro lugar ───
+  const corpoRef = useRef(null);
+  const arrastoRef = useRef(null);
+  const [arrasto, setArrasto] = useState(null); // {id, g, x0, y0, dx, dy, mexeu}
+  const soltouAgoraRef = useRef(false); // engole o clique que vem depois do arrasto
+  const setArr = a => { arrastoRef.current = a; setArrasto(a); };
+  const arrastavel = !!aoMoverAgendamento;
+
+  function pontoParaDiaHora(cx, cy) {
+    const r = corpoRef.current.getBoundingClientRect();
+    const idx = Math.max(0, Math.min(6, Math.floor((cx - r.left - LARGURA_HORAS) / LARGURA_DIA)));
+    const linha = Math.max(0, Math.min(linhas.length - 1, Math.floor((cy - r.top) / ALTURA_MEIA_HORA)));
+    return { iso: dias[idx], hora: hm(min + linha * 30) };
+  }
+
+  const escolherTocando = (iso, e, alvo) => {
+    if (soltouAgoraRef.current) { soltouAgoraRef.current = false; return; }
+    if (aoEscolherHorario) {
+      const r = alvo.getBoundingClientRect();
+      const linha = Math.max(0, Math.min(linhas.length - 1, Math.floor((e.clientY - r.top) / ALTURA_MEIA_HORA)));
+      aoEscolherHorario(iso, hm(min + linha * 30));
+      return;
+    }
+    aoEscolherDia?.(iso);
+  };
+
   const classeDia = (iso, base) => [
     base,
     iso === hoje ? 'hoje' : '',
-    aoEscolherDia && iso === diaEscolhido ? 'escolhido' : '',
-    aoEscolherDia ? 'clicavel' : '',
+    (aoEscolherDia || aoEscolherHorario) && iso === diaEscolhido ? 'escolhido' : '',
+    (aoEscolherDia || aoEscolherHorario) ? 'clicavel' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -104,40 +136,74 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
             <div className="semana-cabecalho">
               <div className="sem-canto" />
               {dias.map((iso, i) => (
-                <div key={iso} className={classeDia(iso, 'sem-dia')} onClick={() => aoEscolherDia?.(iso)}>
+                <div key={iso} className={classeDia(iso, 'sem-dia')} onClick={() => { if (!soltouAgoraRef.current) (aoEscolherDia || aoEscolherHorario) && (aoEscolherDia ? aoEscolherDia(iso) : aoEscolherHorario(iso, previa?.hora || '08:00')); else soltouAgoraRef.current = false; }}>
                   <strong>{DIAS_LONGOS[i]}, <b className={iso === hoje ? 'num-hoje' : ''}>{Number(iso.slice(8))}</b></strong>
                   <span>Pacientes: {daSemana.filter(g => g.data === iso).length}</span>
                 </div>
               ))}
             </div>
-            <div className="semana-corpo" style={{ height: linhas.length * ALTURA_MEIA_HORA }}>
+            <div className="semana-corpo" ref={corpoRef} style={{ height: linhas.length * ALTURA_MEIA_HORA }}>
               <div className="sem-horas">
                 {linhas.map(m => <div key={m} className="sem-hora">{Math.floor(m / 60)}:{String(m % 60).padStart(2, '0')}</div>)}
               </div>
               {dias.map(iso => {
                 const { blocos, faixas } = blocosDoDia(iso);
                 return (
-                  <div key={iso} className={classeDia(iso, 'sem-col')} onClick={() => aoEscolherDia?.(iso)}>
+                  <div key={iso} className={classeDia(iso, 'sem-col')} onClick={e => escolherTocando(iso, e, e.currentTarget)}>
                     {blocos.map(({ g, i, f, faixa }) => {
                       const altura = Math.max((f - i) / 30 * ALTURA_MEIA_HORA - 3, 20);
                       const curto = altura < 40; // atendimento de 30 min: tudo numa linha só
+                      const arrastando = arrasto?.id === g.id && arrasto.mexeu;
                       return (
-                        <button type="button" key={g.id} className={curto ? 'sem-bloco curto' : 'sem-bloco'} style={{
-                          top: topoDe(i) + 1,
-                          height: altura,
-                          left: `calc(${(faixa / faixas) * 100}% + 2px)`,
-                          width: `calc(${100 / faixas}% - 5px)`,
-                          background: corDaArea(g.area || g.titulo),
-                        }} onClick={e => {
-                          if (aoEscolherDia) { e.stopPropagation(); aoEscolherDia(iso); return; }
-                          if (g.pacienteId) aoAbrirFicha?.(g.pacienteId);
-                        }}>
+                        <button type="button" key={g.id}
+                          className={(curto ? 'sem-bloco curto' : 'sem-bloco') + (arrastavel ? ' arrastavel' : '')}
+                          style={{
+                            top: topoDe(i) + 1,
+                            height: altura,
+                            left: `calc(${(faixa / faixas) * 100}% + 2px)`,
+                            width: `calc(${100 / faixas}% - 5px)`,
+                            background: corDaArea(g.area || g.titulo),
+                            ...(arrastando ? { transform: `translate(${arrasto.dx}px, ${arrasto.dy}px)`, zIndex: 30, opacity: 0.88, boxShadow: '0 12px 26px rgba(20,30,24,0.4)' } : {}),
+                          }}
+                          onPointerDown={arrastavel ? (e => { e.currentTarget.setPointerCapture(e.pointerId); setArr({ id: g.id, g, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, mexeu: false }); }) : undefined}
+                          onPointerMove={arrastavel ? (e => {
+                            const a = arrastoRef.current;
+                            if (!a || a.id !== g.id) return;
+                            const dx = e.clientX - a.x0, dy = e.clientY - a.y0;
+                            setArr({ ...a, dx, dy, mexeu: a.mexeu || Math.hypot(dx, dy) > 8 });
+                          }) : undefined}
+                          onPointerUp={arrastavel ? (e => {
+                            const a = arrastoRef.current;
+                            setArr(null);
+                            if (a && a.id === g.id && a.mexeu) {
+                              soltouAgoraRef.current = true;
+                              const destino = pontoParaDiaHora(e.clientX, e.clientY);
+                              aoMoverAgendamento(a.g, destino.iso, destino.hora);
+                            }
+                          }) : undefined}
+                          onPointerCancel={arrastavel ? (() => setArr(null)) : undefined}
+                          onClick={e => {
+                            if (soltouAgoraRef.current) { soltouAgoraRef.current = false; e.stopPropagation(); return; }
+                            if (aoEscolherHorario) { e.stopPropagation(); aoEscolherHorario(iso, g.hora); return; }
+                            if (aoEscolherDia) { e.stopPropagation(); aoEscolherDia(iso); return; }
+                            if (g.pacienteId) aoAbrirFicha?.(g.pacienteId);
+                          }}>
                           {curto
                             ? <strong>{g.pacienteNome || g.titulo}, {g.hora}</strong>
                             : <><strong>{g.pacienteNome || g.titulo}</strong><span>{g.hora} - {horaFim(g.hora, dur(g))}</span></>}
                         </button>
                       );
                     })}
+                    {previa && previa.data === iso && (() => {
+                      const i = minutosDe(previa.hora);
+                      const altura = Math.max((previa.duracaoMin || 30) / 30 * ALTURA_MEIA_HORA - 3, 20);
+                      return (
+                        <div className="sem-bloco previa" style={{ top: topoDe(i) + 1, height: altura, left: 2, right: 3 }}>
+                          <strong>{previa.titulo || 'Novo'}</strong>
+                          <span>{previa.hora}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -146,7 +212,7 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
           </div>
         </div>
       </div>
-      {!aoEscolherDia && <p className="dica" style={{ marginTop: 10 }}>Toque no atendimento para abrir a ficha do paciente. Arraste para os lados para ver a semana inteira.</p>}
+      {!aoEscolherDia && !aoEscolherHorario && <p className="dica" style={{ marginTop: 10 }}>Toque no atendimento para abrir a ficha do paciente. Arraste para os lados para ver a semana inteira.</p>}
     </>
   );
 }
