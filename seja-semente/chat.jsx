@@ -20,7 +20,8 @@ function quandoBonito(v) {
   return d.toDateString() === hoje.toDateString() ? hm : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${hm}`;
 }
 
-export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, aoAceitar, aoAbrirPaciente }) {
+// `cheio`: a tela não tem título em cima do chat — ele pode usar essa altura
+export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, aoAceitar, aoAbrirPaciente, cheio }) {
   const [texto, setTexto] = useState('');
   const [pacienteId, setPacienteId] = useState('');
   const [pessoaId, setPessoaId] = useState('');
@@ -67,7 +68,7 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
   }
 
   return (
-    <div className="chat">
+    <div className={'chat' + (cheio ? ' cheio' : '')}>
       <div className="chat-mensagens">
         {mensagens.length === 0 && <div className="vazio">Nenhuma mensagem ainda — puxe a conversa! 🌱</div>}
         {mensagens.map(m => (

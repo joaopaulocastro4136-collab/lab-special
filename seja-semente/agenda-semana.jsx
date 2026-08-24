@@ -1,10 +1,16 @@
 // Agenda da semana — grade de dias × horários, como agenda de clínica.
+<<<<<<< HEAD
 // Compartilhada: o Semeador mostra a agenda do dentista; a central usa na
 // tela de agendar com três poderes a mais (todos opcionais):
 //   aoEscolherHorario(dia, hora) — tocar num quadradinho escolhe dia E hora
 //   previa                       — bloco tracejado mostrando onde vai cair
 //   aoMoverAgendamento(g, d, h)  — segurar e ARRASTAR um paciente muda ele
 //                                  de horário/dia (só a central move)
+=======
+// Compartilhada: o Semeador mostra a agenda do dentista, e a central usa na
+// tela de agendar (com aoEscolherDia, tocar num dia escolhe a DATA — dá para
+// ver os horários de cada dentista e onde encaixa a vaga).
+>>>>>>> origin/main
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -12,7 +18,10 @@ const DIAS_LONGOS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ALTURA_MEIA_HORA = 28;   // altura em px de cada linha de 30 minutos
 const LARGURA_DIA = 118;       // largura em px da coluna de cada dia
+<<<<<<< HEAD
 const LARGURA_HORAS = 50;      // largura da coluna das horas
+=======
+>>>>>>> origin/main
 
 function dataISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -21,6 +30,7 @@ function minutosDe(hora) {
   const [h, m] = String(hora || '0:0').split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
+<<<<<<< HEAD
 function hm(total) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
@@ -29,6 +39,14 @@ function horaFim(hora, dur) {
 }
 
 export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido, aoEscolherHorario, previa, aoMoverAgendamento }) {
+=======
+function horaFim(hora, dur) {
+  const total = minutosDe(hora) + (dur || 30);
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido }) {
+>>>>>>> origin/main
   const hoje = dataISO();
   const domingo = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return dataISO(d); };
   const [inicio, setInicio] = useState(domingo);
@@ -89,6 +107,7 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
   const agoraMin = agora.getHours() * 60 + agora.getMinutes();
   const mostraAgora = dias.includes(hoje) && agoraMin >= min && agoraMin <= max;
 
+<<<<<<< HEAD
   // ─── Arrastar e soltar: segurar um paciente e levar para outro lugar ───
   const corpoRef = useRef(null);
   const arrastoRef = useRef(null);
@@ -120,6 +139,13 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
     iso === hoje ? 'hoje' : '',
     (aoEscolherDia || aoEscolherHorario) && iso === diaEscolhido ? 'escolhido' : '',
     (aoEscolherDia || aoEscolherHorario) ? 'clicavel' : '',
+=======
+  const classeDia = (iso, base) => [
+    base,
+    iso === hoje ? 'hoje' : '',
+    aoEscolherDia && iso === diaEscolhido ? 'escolhido' : '',
+    aoEscolherDia ? 'clicavel' : '',
+>>>>>>> origin/main
   ].filter(Boolean).join(' ');
 
   return (
@@ -136,19 +162,28 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
             <div className="semana-cabecalho">
               <div className="sem-canto" />
               {dias.map((iso, i) => (
+<<<<<<< HEAD
                 <div key={iso} className={classeDia(iso, 'sem-dia')} onClick={() => { if (!soltouAgoraRef.current) (aoEscolherDia || aoEscolherHorario) && (aoEscolherDia ? aoEscolherDia(iso) : aoEscolherHorario(iso, previa?.hora || '08:00')); else soltouAgoraRef.current = false; }}>
+=======
+                <div key={iso} className={classeDia(iso, 'sem-dia')} onClick={() => aoEscolherDia?.(iso)}>
+>>>>>>> origin/main
                   <strong>{DIAS_LONGOS[i]}, <b className={iso === hoje ? 'num-hoje' : ''}>{Number(iso.slice(8))}</b></strong>
                   <span>Pacientes: {daSemana.filter(g => g.data === iso).length}</span>
                 </div>
               ))}
             </div>
+<<<<<<< HEAD
             <div className="semana-corpo" ref={corpoRef} style={{ height: linhas.length * ALTURA_MEIA_HORA }}>
+=======
+            <div className="semana-corpo" style={{ height: linhas.length * ALTURA_MEIA_HORA }}>
+>>>>>>> origin/main
               <div className="sem-horas">
                 {linhas.map(m => <div key={m} className="sem-hora">{Math.floor(m / 60)}:{String(m % 60).padStart(2, '0')}</div>)}
               </div>
               {dias.map(iso => {
                 const { blocos, faixas } = blocosDoDia(iso);
                 return (
+<<<<<<< HEAD
                   <div key={iso} className={classeDia(iso, 'sem-col')} onClick={e => escolherTocando(iso, e, e.currentTarget)}>
                     {blocos.map(({ g, i, f, faixa }) => {
                       const altura = Math.max((f - i) / 30 * ALTURA_MEIA_HORA - 3, 20);
@@ -188,12 +223,30 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
                             if (aoEscolherDia) { e.stopPropagation(); aoEscolherDia(iso); return; }
                             if (g.pacienteId) aoAbrirFicha?.(g.pacienteId);
                           }}>
+=======
+                  <div key={iso} className={classeDia(iso, 'sem-col')} onClick={() => aoEscolherDia?.(iso)}>
+                    {blocos.map(({ g, i, f, faixa }) => {
+                      const altura = Math.max((f - i) / 30 * ALTURA_MEIA_HORA - 3, 20);
+                      const curto = altura < 40; // atendimento de 30 min: tudo numa linha só
+                      return (
+                        <button type="button" key={g.id} className={curto ? 'sem-bloco curto' : 'sem-bloco'} style={{
+                          top: topoDe(i) + 1,
+                          height: altura,
+                          left: `calc(${(faixa / faixas) * 100}% + 2px)`,
+                          width: `calc(${100 / faixas}% - 5px)`,
+                          background: corDaArea(g.area || g.titulo),
+                        }} onClick={e => {
+                          if (aoEscolherDia) { e.stopPropagation(); aoEscolherDia(iso); return; }
+                          if (g.pacienteId) aoAbrirFicha?.(g.pacienteId);
+                        }}>
+>>>>>>> origin/main
                           {curto
                             ? <strong>{g.pacienteNome || g.titulo}, {g.hora}</strong>
                             : <><strong>{g.pacienteNome || g.titulo}</strong><span>{g.hora} - {horaFim(g.hora, dur(g))}</span></>}
                         </button>
                       );
                     })}
+<<<<<<< HEAD
                     {previa && previa.data === iso && (() => {
                       const i = minutosDe(previa.hora);
                       const altura = Math.max((previa.duracaoMin || 30) / 30 * ALTURA_MEIA_HORA - 3, 20);
@@ -204,6 +257,8 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
                         </div>
                       );
                     })()}
+=======
+>>>>>>> origin/main
                   </div>
                 );
               })}
@@ -212,7 +267,11 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
           </div>
         </div>
       </div>
+<<<<<<< HEAD
       {!aoEscolherDia && !aoEscolherHorario && <p className="dica" style={{ marginTop: 10 }}>Toque no atendimento para abrir a ficha do paciente. Arraste para os lados para ver a semana inteira.</p>}
+=======
+      {!aoEscolherDia && <p className="dica" style={{ marginTop: 10 }}>Toque no atendimento para abrir a ficha do paciente. Arraste para os lados para ver a semana inteira.</p>}
+>>>>>>> origin/main
     </>
   );
 }

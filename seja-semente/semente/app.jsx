@@ -443,9 +443,14 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
       {triados.length === 0 && <p className="dica">Nenhum paciente com triagem ainda — faça a triagem primeiro.</p>}
       <Campo rotulo={soUma ? `Paciente (só quem é de ${areaInicial})` : 'Paciente'}>
         <select value={f.pacienteId} onChange={mudaPaciente}>
-          {listaPacientes.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '★ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
+          {listaPacientes.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '⚠ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
         </select>
       </Campo>
+      {pac?.prioridade && (
+        <div className="erro" style={{ background: '#FBE3DA', border: '1.5px solid #E8A08C', borderRadius: 14, padding: '11px 14px' }}>
+          ⚠ {pac.nome.split(' ')[0]} tem PRIORIDADE — fura a fila, agende primeiro.
+        </div>
+      )}
       {soUma ? (() => {
         const a = todasAreas.find(x => x.nome === areaInicial);
         return (
@@ -1237,12 +1242,8 @@ function TelaPrincipal({ usuario, aoSair }) {
         })()}
 
         {aba === 'chat' && (
-          <>
-            <h2>Chat da equipe</h2>
-            <p className="dica" style={{ margin: '-8px 0 10px' }}>Todo mundo da central e do Semeador conversa aqui. Dá para anexar um paciente, marcar alguém e sugerir um procedimento — quem aceitar já inclui o paciente na caixinha certa.</p>
-            <Chat usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
-              areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
-          </>
+          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
+            areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
 
         {aba === 'voluntarios' && (() => {
