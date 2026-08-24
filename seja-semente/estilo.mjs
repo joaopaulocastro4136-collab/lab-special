@@ -103,6 +103,8 @@ export const CSS = `
   .chip.em-atendimento { background: #D8E9FF; color: #245A9E; }
   .chip.concluída, .chip.concluído { background: #D6F1E0; color: #1E6B41; }
   .chip.prioridade { background: #FBDCD2; color: #B3402A; }
+  .faixa-prioridade { display: flex; align-items: center; gap: 9px; background: #FBDCD2; border: 1.5px solid #E8A794; color: #B3402A; border-radius: 12px; padding: 11px 14px; font-size: 14px; font-weight: 800; }
+  .faixa-prioridade svg { flex: none; }
   .chip.mover { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; background: #EAF4EE; color: #226343; border: 1.5px dashed #9DBBA8; }
   .mover-opcoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .opcao-mover { background: #fff; border: 1.5px solid; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 800; cursor: pointer; }
