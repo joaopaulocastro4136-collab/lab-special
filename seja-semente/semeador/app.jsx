@@ -178,8 +178,9 @@ function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha }) {
   const daSemana = agendamentos.filter(g => dias.includes(g.data));
   const dur = g => g.duracaoMin || duracaoDe(g.area || g.titulo);
 
-  // Faixa de horários: das 8h às 18h, esticando se houver atendimento fora dela
-  let min = 8 * 60, max = 18 * 60;
+  // Faixa de horários: das 6h da manhã até a meia-noite, para dar para
+  // agendar em qualquer horário do dia (estica se houver atendimento antes)
+  let min = 6 * 60, max = 24 * 60;
   for (const g of daSemana) {
     const i = minutosDe(g.hora);
     min = Math.min(min, Math.floor(i / 30) * 30);
@@ -208,13 +209,17 @@ function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha }) {
     return { blocos, faixas: Math.max(1, fimDasFaixas.length) };
   }
 
-  // Ao abrir (e ao trocar de semana), deixa o dia de hoje à vista
+  // Ao abrir (e ao trocar de semana), deixa o dia de hoje à vista — e desce
+  // até o primeiro atendimento da semana (ou 8h), para a grade não abrir
+  // mostrando só as horas vazias da madrugada
   const rolagem = useRef(null);
   useEffect(() => {
     const el = rolagem.current;
     if (!el) return;
     const idx = dias.indexOf(hoje);
     el.scrollLeft = idx > 0 ? idx * LARGURA_DIA - 34 : 0;
+    const primeiro = Math.min(8 * 60, ...daSemana.map(g => minutosDe(g.hora)));
+    el.scrollTop = Math.max(0, topoDe(primeiro) - 4);
   }, [inicio]);
 
   const agoraMin = agora.getHours() * 60 + agora.getMinutes();
