@@ -523,7 +523,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     setConfigProc(nova);
     if (!CONFIGURADO) return;
     const { doc, setDoc } = fb.fns;
-    await setDoc(doc(fb.db, 'config', 'procedimentos'), nova);
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
   }
 
   // Todas as áreas: as fixas + as adicionadas pela central (ex.: Pediatria)
@@ -569,7 +569,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // Autoriza um e-mail: quem entrar com essa conta Google já cai na central
@@ -578,7 +578,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     if (!e || !e.includes('@')) return 'Digite um e-mail válido.';
     if (CONFIGURADO) {
       const { doc, setDoc, serverTimestamp } = fb.fns;
-      await setDoc(doc(fb.db, 'central-autorizados', e), { email: e, autorizadoPor: usuario.nome || '', criadoEm: serverTimestamp() });
+      setDoc(doc(fb.db, 'central-autorizados', e), { email: e, autorizadoPor: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
     }
     return '';
   }
@@ -589,7 +589,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const cod = 'SS-' + Array.from({ length: 6 }, () => letras[Math.floor(Math.random() * letras.length)]).join('');
     if (CONFIGURADO) {
       const { doc, setDoc, serverTimestamp } = fb.fns;
-      await setDoc(doc(fb.db, 'codigos-acesso', cod), { criadoPor: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() });
+      setDoc(doc(fb.db, 'codigos-acesso', cod), { criadoPor: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
     }
     setCodigoGerado(cod);
   }
@@ -623,7 +623,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', fichaId), dados);
+    updateDoc(doc(fb.db, 'pacientes', fichaId), dados).catch(() => {});
   }
 
   async function apagarPaciente() {
@@ -634,7 +634,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, deleteDoc } = fb.fns;
-    await deleteDoc(doc(fb.db, 'pacientes', id));
+    deleteDoc(doc(fb.db, 'pacientes', id)).catch(() => {});
   }
 
   async function salvarTriagem(paciente, triagem) {
@@ -644,7 +644,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
+    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
     setTela(null);
   }
 
@@ -660,7 +660,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem }).catch(() => {});
   }
 
   async function removerAgendamento(g) {
@@ -669,7 +669,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, deleteDoc } = fb.fns;
-    await deleteDoc(doc(fb.db, 'agendamentos', g.id));
+    deleteDoc(doc(fb.db, 'agendamentos', g.id)).catch(() => {});
   }
 
   async function responderSolicitacao(v, aprovar) {
@@ -679,7 +679,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca);
+    updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca).catch(() => {});
   }
 
   async function mudarStatus(p) {
@@ -690,7 +690,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { status });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { status }).catch(() => {});
   }
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
@@ -721,7 +721,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // ─── Telas por cima das abas ───
@@ -1339,33 +1339,39 @@ function App() {
     if (!CONFIGURADO) { setAcesso('liberado'); return; }
     if (!usuario) { setAcesso('checando'); return; }
     let cancelado = false;
+    // Quem já entrou na central NESTE aparelho fica lembrado: sem internet a
+    // conferência no banco falha, mas a pessoa entra direto mesmo assim — a
+    // conferência de verdade acontece de novo quando a conexão voltar.
+    const lembrete = 'ss-ja-entrou-' + usuario.uid;
+    const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
+    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
         const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
-        if (meu.exists()) { if (!cancelado) setAcesso('liberado'); return; }
+        if (meu.exists()) { libera(); return; }
         // Fase de teste ABERTA: qualquer conta Google entra direto
         try {
           const cfg = await getDoc(doc(fb.db, 'config', 'acesso'));
-          if (cfg.exists() && cfg.data().abertoParaTeste) { if (!cancelado) setAcesso('liberado'); return; }
+          if (cfg.exists() && cfg.data().abertoParaTeste) { libera(); return; }
         } catch (e) { /* segue o fluxo normal */ }
         // E-mail pré-autorizado pela coordenação? entra direto, sem código
         if (usuario.email) {
           const conv = await getDoc(doc(fb.db, 'central-autorizados', usuario.email.toLowerCase()));
           if (conv.exists()) {
-            await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
-            if (!cancelado) setAcesso('liberado');
+            setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
+            libera();
             return;
           }
         }
         const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
         if (algum.empty) {
-          await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() });
-          if (!cancelado) setAcesso('liberado');
+          setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
+          libera();
           return;
         }
-        if (!cancelado) setAcesso('pedir');
-      } catch (e) { if (!cancelado) setAcesso('pedir'); }
+        nega();
+      } catch (e) { nega(); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -1377,8 +1383,9 @@ function App() {
     const snap = await getDoc(ref);
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
-    await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
+    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    gravarLocal('ss-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
   }
