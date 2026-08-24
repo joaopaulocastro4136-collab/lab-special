@@ -579,6 +579,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
   const [buscaArea, setBuscaArea] = useState('');
+  const [buscaTriagem, setBuscaTriagem] = useState(''); // pesquisa geral de paciente na aba Triagem
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-pacientes', todosPacientes); }, [todosPacientes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-config-proc', configProc); }, [configProc]);
@@ -801,6 +802,30 @@ function TelaPrincipal({ usuario, aoSair }) {
         {aba === 'triagem' && (
           <>
             <h2>Triagem</h2>
+            <input className="busca" placeholder="Pesquisar paciente por nome ou código…" value={buscaTriagem} onChange={e => setBuscaTriagem(e.target.value)} />
+            {buscaTriagem.trim() ? (() => {
+              // Pesquisando: mostra os pacientes achados no lugar das caixinhas
+              const filtro = buscaTriagem.trim().toLowerCase();
+              const achados = todosPacientes.filter(p => (p.nome || '').toLowerCase().includes(filtro) || String(p.codigo || '').toLowerCase().includes(filtro));
+              return achados.length ? achados.map(p => (
+                <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
+                  <div className="cartao-linha">
+                    <Bolha nome={p.nome} foto={p.foto} />
+                    <div>
+                      <div className="cartao-topo">
+                        <strong>{p.nome}</strong>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {p.prioridade && <span className="chip prioridade">prioridade</span>}
+                          <span className={'chip ' + (p.status || 'cadastrado').replace(' ', '-')}>{p.status || 'cadastrado'}</span>
+                        </span>
+                      </div>
+                      <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </div>
+                </div>
+              )) : <Vazio texto="Nenhum paciente encontrado com esse nome ou código." />;
+            })() : (
+            <>
             <button className={`caixa-entrada ${semTriagem.length ? 'pendente' : 'vazia'}`} onClick={() => setTelaTriagem('entrada')}>
               <span className="entrada-icone"><Inbox size={23} strokeWidth={2.2} /></span>
               <span className="entrada-texto">
@@ -832,6 +857,8 @@ function TelaPrincipal({ usuario, aoSair }) {
                 );
               })}
             </div>
+            </>
+            )}
           </>
         )}
         {aba === 'agenda' && (
