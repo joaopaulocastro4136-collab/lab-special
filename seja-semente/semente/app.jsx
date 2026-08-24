@@ -777,6 +777,18 @@ function TelaPrincipal({ usuario, aoSair }) {
     updateDoc(doc(fb.db, 'pacientes', p.id), { triagem }).catch(() => {});
   }
 
+  // Mover o paciente de dentista: troca o profissional do agendamento deste
+  // procedimento — o Semeador do novo dentista passa a ver o paciente na hora
+  function moverDentista(g, v) {
+    setMovendo(null);
+    if (!CONFIGURADO) {
+      setAgendamentos(gs => gs.map(x => x.id === g.id ? { ...x, profissionalUid: v.id, profissionalNome: v.nome } : x));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    updateDoc(doc(fb.db, 'agendamentos', g.id), { profissionalUid: v.id, profissionalNome: v.nome }).catch(() => {});
+  }
+
   async function removerAgendamento(g) {
     if (!CONFIGURADO) {
       setAgendamentos(gs => gs.filter(x => x.id !== g.id));
@@ -957,14 +969,22 @@ function TelaPrincipal({ usuario, aoSair }) {
                 <button className="btn-confirmar" style={{ marginTop: 8 }} onClick={e => { e.stopPropagation(); setMovendo(null); setTela({ marcarPaciente: p, marcarArea: A.nome, voltarPara: { area: A } }); }}>Agendar {A.nome}</button>
               )}
               <button className="chip mover" onClick={e => { e.stopPropagation(); setMovendo(movendo?.id === p.id ? null : p); }}>
-                <ArrowRightLeft size={13} strokeWidth={2.4} /> Mover de procedimento
+                <ArrowRightLeft size={13} strokeWidth={2.4} /> Mover procedimento{g ? ' ou dentista' : ''}
               </button>
               {movendo?.id === p.id && (
                 <div className="mover-opcoes" onClick={e => e.stopPropagation()}>
-                  <p className="dica" style={{ margin: '2px 0 4px', width: '100%' }}>Mover {p.nome.split(' ')[0]} de {A.nome} para:</p>
+                  <p className="dica" style={{ margin: '2px 0 4px', width: '100%' }}>Mover {p.nome.split(' ')[0]} de {A.nome} para outro procedimento:</p>
                   {todasAreas.filter(x => x.nome !== A.nome).map(x => (
                     <button key={x.nome} className="opcao-mover" style={{ color: x.cor, borderColor: x.cor + '66' }} onClick={() => moverPaciente(p, A.nome, x.nome)}>{x.nome}</button>
                   ))}
+                  {g && profissionais.filter(v => v.id !== g.profissionalUid).length > 0 && (
+                    <>
+                      <p className="dica" style={{ margin: '8px 0 4px', width: '100%' }}>Ou mudar o dentista{g.profissionalNome ? ` (hoje é ${g.profissionalNome})` : ''}:</p>
+                      {profissionais.filter(v => v.id !== g.profissionalUid).map(v => (
+                        <button key={v.id} className="opcao-mover" style={{ color: corDoNome(v.nome), borderColor: corDoNome(v.nome) + '66' }} onClick={() => moverDentista(g, v)}>{v.nome}</button>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
