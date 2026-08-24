@@ -120,6 +120,31 @@ export const CSS = `
   .chip-dia.ativo { background: #226343; border-color: #226343; color: #fff; }
   .resumo-dentista { border: 1.5px solid #BFDCC9; background: #F2FAF5; }
 
+  /* ── Chat da equipe ── */
+  .chat { display: flex; flex-direction: column; gap: 10px; }
+  .chat-mensagens { display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+  .msg { display: flex; gap: 10px; align-items: flex-start; }
+  .msg-corpo { flex: 1; min-width: 0; background: #fff; border-radius: 4px 16px 16px 16px; padding: 10px 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .msg.minha .msg-corpo { background: #E4F3E9; border-radius: 16px 4px 16px 16px; }
+  .msg-topo { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .msg-topo strong { font-size: 14px; }
+  .msg-corpo p { margin: 0; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+  .chip-mencao { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; background: #EFE4F7; color: #6B3FA0; font-size: 12.5px; font-weight: 800; }
+  .chip-mencao.pra-mim { background: #6B3FA0; color: #fff; }
+  .chip-paciente { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border: 1.5px solid #BFDCC9; border-radius: 999px; background: #F2FAF5; color: #1E6B41; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .chip-aceito { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: #D6F1E0; color: #1E6B41; font-size: 12.5px; font-weight: 800; }
+  .linha-sugestao { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #FFF6E3; border: 1.5px dashed #E4CD96; border-radius: 12px; padding: 8px 11px; font-size: 13.5px; }
+  .btn-aceitar-chat { display: inline-flex; align-items: center; gap: 5px; border: none; border-radius: 999px; padding: 8px 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .chat-caixa { position: sticky; bottom: 96px; display: flex; flex-direction: column; gap: 8px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 18px; padding: 10px; box-shadow: 0 8px 22px rgba(30,43,34,0.10); }
+  .chat-selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chat-selecionados svg { cursor: pointer; }
+  .chat-extras { display: flex; gap: 6px; }
+  .chat-extras select { flex: 1; min-width: 0; padding: 8px 6px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 12.5px; background: #fff; font-weight: 700; color: #55645A; }
+  .chat-envio { display: flex; gap: 8px; }
+  .chat-envio input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; }
+  .btn-enviar { width: 48px; border: none; border-radius: 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 12px rgba(47,125,78,0.28); }
+  .btn-enviar:disabled { opacity: 0.45; box-shadow: none; }
+
   /* ── Início do Semeador: agenda de horários do dia ── */
   .lista-horarios { display: flex; flex-direction: column; gap: 10px; }
   .horario-item { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; background: #fff; border: 1px solid #E2E8E2; border-left: 6px solid #2F7D4E; border-radius: 16px; padding: 12px 13px; cursor: pointer; box-shadow: 0 3px 10px rgba(30,43,34,0.06); }
