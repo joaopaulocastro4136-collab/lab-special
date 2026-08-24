@@ -10,8 +10,9 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
-import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare } from 'lucide-react';
 import { FichaPaciente } from '../ficha.jsx';
+import { Chat } from '../chat.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -86,6 +87,13 @@ const DEMO = {
     { id: 'p7', codigo: 'SS-0007', nome: 'Ana Paula', idade: '34', telefone: '(11) 94444-2222', status: 'cadastrado', observacoes: 'Chegou pela campanha do agasalho.', triagem: null },
   ],
   centralOnline: false,
+  equipe: [
+    { id: 'central-demo', nome: 'Coordenação (central)' },
+    { id: 'demo-google', nome: 'Lucas Andrade' },
+  ],
+  chat: [
+    { id: 'm1', texto: 'Bem-vindos ao chat da equipe! Recados sobre pacientes podem ser mandados por aqui.', autorUid: 'central-demo', autorNome: 'Coordenação (central)', criadoEm: new Date() },
+  ],
 };
 
 function proximoDia(diaSemana) {
@@ -524,6 +532,45 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
   const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : lerLocal('sd-pacientes', DEMO.pacientes));
 
+  // ─── Chat da equipe (mesma conversa da central, em tempo real) ───
+  const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('sd-chat', DEMO.chat));
+  const [equipe, setEquipe] = useState(CONFIGURADO ? [] : DEMO.equipe);
+  const [chatVisto, setChatVisto] = useState(lerLocal('sd-chat-visto', 0));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-chat', mensagens); }, [mensagens]);
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    setChatVisto(mensagens.length);
+    gravarLocal('sd-chat-visto', mensagens.length);
+  }, [aba, mensagens.length]);
+
+  async function enviarMensagem(m) {
+    const dados = { ...m, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setMensagens(ms => [...ms, { id: 'm' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }]);
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+
+  // Aceitar a sugestão do chat: o paciente entra no procedimento sugerido —
+  // conta na caixinha na hora, aqui e na central (mesmo banco)
+  async function aceitarSugestao(m) {
+    const p = todosPacientes.find(x => x.id === m.pacienteId);
+    if (!p || !m.sugestaoArea) return;
+    const triagem = { saude: [], outrasCondicoes: '', ...(p.triagem || {}), areas: [...new Set([...areasDoPaciente(p), m.sugestaoArea])] };
+    delete triagem.area; delete triagem.procedimento;
+    const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setTodosPacientes(ps => ps.map(x => x.id === p.id ? { ...x, triagem, status: x.triagem ? x.status : 'triado' } : x));
+      setMensagens(ms => ms.map(x => x.id === m.id ? { ...x, ...aceite } : x));
+      return;
+    }
+    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
+  }
+
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
   const [buscaArea, setBuscaArea] = useState('');
@@ -628,7 +675,17 @@ function TelaPrincipal({ usuario, aoSair }) {
       const ultimo = s?.atualizadoEm?.toDate?.();
       setCentralOnline(!!ultimo && Date.now() - ultimo.getTime() < 3 * 60 * 1000);
     });
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); };
+    // O chat da equipe e a lista de quem pode ser marcado (@)
+    const paraChat = onSnapshot(
+      query(collection(fb.db, 'chat'), orderBy('criadoEm')),
+      snap => setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    const paraEquipe = onSnapshot(
+      query(collection(fb.db, 'voluntarios'), orderBy('nome')),
+      snap => setEquipe(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(v => v.status === 'ativo' || v.ativo === true))
+    );
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); };
   }, [usuario.uid]);
 
 
@@ -778,6 +835,14 @@ function TelaPrincipal({ usuario, aoSair }) {
             <AgendaSemana agendamentos={agendamentos} corDaArea={corDaArea} duracaoDe={duracaoDe} aoAbrirFicha={setFichaId} />
           </>
         )}
+        {aba === 'chat' && (
+          <>
+            <h2>Chat da equipe</h2>
+            <p className="dica" style={{ margin: '-8px 0 10px' }}>Conversa com a central e com toda a equipe. Dá para anexar um paciente e, quando marcarem você com uma sugestão, é só tocar em Aceitar.</p>
+            <Chat usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
+              areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
+          </>
+        )}
         {aba === 'perfil' && (
           <>
             <h2>Meu perfil</h2>
@@ -804,6 +869,10 @@ function TelaPrincipal({ usuario, aoSair }) {
           <span>Triagem</span>
         </button>
         <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={22} /><span>Agenda</span></button>
+        <button className={aba === 'chat' ? 'ativo' : ''} onClick={() => setAba('chat')}>
+          <span className="icone-aba"><MessagesSquare size={22} />{mensagens.length > chatVisto && <i className="bolinha" />}</span>
+          <span>Chat</span>
+        </button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
     </div>

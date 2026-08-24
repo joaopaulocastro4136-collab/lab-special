@@ -18,8 +18,9 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
+import { Chat } from '../chat.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -124,6 +125,9 @@ const DEMO = {
     { id: 'v1', nome: 'Maria Souza', ministerio: 'Dentista', telefone: '(11) 91234-5678', status: 'ativo', ativo: true },
     { id: 'v2', nome: 'Pedro Lima', ministerio: 'Dentista', telefone: '(11) 99876-5432', status: 'ativo', ativo: true },
     { id: 'v3', nome: 'Lucas Andrade', email: 'lucas.andrade@gmail.com', telefone: '(11) 95555-4444', cpf: '123.456.789-00', nascimento: '1995-03-14', status: 'pendente', ativo: false },
+  ],
+  chat: [
+    { id: 'm1', texto: 'Bem-vindos ao chat da equipe! Recados sobre pacientes podem ser mandados por aqui.', autorUid: 'central-demo', autorNome: 'Coordenação (teste)', criadoEm: new Date() },
   ],
 };
 
@@ -363,6 +367,20 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
   const [profsProprios, setProfsProprios] = useState({}); // procedimento → profissional próprio
   const [salvando, setSalvando] = useState(false);
   const muda = k => e => setF({ ...f, [k]: e.target.value });
+
+  // Sugere sozinho o horário de início: emenda no fim do último atendimento
+  // já marcado do dentista naquele dia (acabou 08:30 → sugere 08:30). Trocou
+  // de dentista ou de dia, a sugestão é refeita — e dá para ajustar à mão.
+  useEffect(() => {
+    const doDia = agendamentos.filter(g => g.profissionalUid === f.profissionalUid && g.data === f.data);
+    let sugestao = '08:00';
+    for (const g of doDia) {
+      const fim = horaFim(g.hora, g.duracaoMin);
+      if (fim > sugestao) sugestao = fim;
+    }
+    setF(atual => ({ ...atual, horaInicio: sugestao }));
+    setHorasProprias({});
+  }, [f.profissionalUid, f.data]);
   const mudaPaciente = e => {
     const p = triados.find(x => x.id === e.target.value);
     setF({ ...f, pacienteId: e.target.value });
@@ -523,19 +541,27 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
   const [movendo, setMovendo] = useState(null); // paciente sendo movido de procedimento
-  const [visaoAgenda, setVisaoAgenda] = useState('dia'); // 'dia' | 'sem'
-  const [dentistaVer, setDentistaVer] = useState(''); // '' = todos os dentistas
+  const [visaoArea, setVisaoArea] = useState('nao'); // caixinha do procedimento: 'nao' (para agendar) | 'sim' (agendados)
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('ss-config-proc', { personalizados: [], duracoes: {} }));
   const [pacientes, setPacientes] = useState(CONFIGURADO ? [] : lerLocal('ss-pacientes', DEMO.pacientes));
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('ss-agendamentos', DEMO.agendamentos));
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : lerLocal('ss-avisos', DEMO.avisos));
   const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : lerLocal('ss-voluntarios', DEMO.voluntarios));
+  const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('ss-chat', DEMO.chat));
+  const [chatVisto, setChatVisto] = useState(lerLocal('ss-chat-visto', 0)); // quantas mensagens já foram vistas
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-pacientes', pacientes); }, [pacientes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-agendamentos', agendamentos); }, [agendamentos]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-avisos', avisos); }, [avisos]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-voluntarios', voluntarios); }, [voluntarios]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-config-proc', configProc); }, [configProc]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-chat', mensagens); }, [mensagens]);
+  // Com o chat aberto, tudo conta como visto (apaga a bolinha do aviso)
+  useEffect(() => {
+    if (aba !== 'chat') return;
+    setChatVisto(mensagens.length);
+    gravarLocal('ss-chat-visto', mensagens.length);
+  }, [aba, mensagens.length]);
 
   // Configuração dos procedimentos (tipos personalizados + tempos)
   useEffect(() => {
@@ -577,9 +603,38 @@ function TelaPrincipal({ usuario, aoSair }) {
       escuta('agendamentos', ['hora'], setAgendamentos),
       escuta('avisos', ['criadoEm', 'desc'], setAvisos),
       escuta('voluntarios', ['nome'], setVoluntarios),
+      escuta('chat', ['criadoEm'], setMensagens),
     ];
     return () => soltar.forEach(s => s());
   }, []);
+
+  async function enviarMensagem(m) {
+    const dados = { ...m, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setMensagens(ms => [...ms, { id: 'm' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }]);
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() });
+  }
+
+  // Aceitar a sugestão do chat: o paciente entra no procedimento sugerido —
+  // conta na caixinha na hora, aqui e no Semeador (mesmo banco)
+  async function aceitarSugestao(m) {
+    const p = pacientes.find(x => x.id === m.pacienteId);
+    if (!p || !m.sugestaoArea) return;
+    const triagem = { saude: [], outrasCondicoes: '', ...(p.triagem || {}), areas: [...new Set([...areasDoPaciente(p), m.sugestaoArea])] };
+    delete triagem.area; delete triagem.procedimento;
+    const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setPacientes(ps => ps.map(x => x.id === p.id ? { ...x, triagem, status: x.triagem ? x.status : 'triado' } : x));
+      setMensagens(ms => ms.map(x => x.id === m.id ? { ...x, ...aceite } : x));
+      return;
+    }
+    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) });
+    await updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() });
+  }
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -862,7 +917,10 @@ function TelaPrincipal({ usuario, aoSair }) {
               </div>
               <p className="obs">{[p.codigo, p.idade ? `${p.idade} anos` : '', p.telefone].filter(Boolean).join(' · ')}</p>
               {g ? (
-                <p className="agendado-info"><CalendarDays size={14} strokeWidth={2.4} /> {dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}{g.profissionalNome ? ` · com ${g.profissionalNome}` : ''}</p>
+                <p className="agendado-info" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CalendarDays size={14} strokeWidth={2.4} /> {dataBonita(g.data)} · {g.hora}–{horaFim(g.hora, g.duracaoMin)}{g.profissionalNome ? ` · com ${g.profissionalNome}` : ''}
+                  <button className="btn-remover" style={{ marginLeft: 4 }} title="Desmarcar" onClick={e => { e.stopPropagation(); if (window.confirm(`Desmarcar ${A.nome} de ${p.nome}?`)) removerAgendamento(g); }}>✕</button>
+                </p>
               ) : (
                 <button className="btn-confirmar" style={{ marginTop: 8 }} onClick={e => { e.stopPropagation(); setMovendo(null); setTela({ marcarPaciente: p, marcarArea: A.nome, voltarPara: { area: A } }); }}>Agendar {A.nome}</button>
               )}
@@ -884,7 +942,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     };
     return (
       <div className="folha">
-        <button className="btn-voltar" onClick={() => { setTela(null); setBuscaArea(''); setMovendo(null); }}><ChevronLeft size={18} /> Voltar</button>
+        <button className="btn-voltar" onClick={() => { setTela(null); setBuscaArea(''); setMovendo(null); setVisaoArea('nao'); }}><ChevronLeft size={18} /> Voltar</button>
         <div className="cartao-linha" style={{ alignItems: 'center', marginBottom: 4 }}>
           <span className="caixa-area-icone" style={{ background: A.cor + '22', color: A.cor }}><A.Icone size={26} strokeWidth={2.2} /></span>
           <h2 style={{ margin: 0 }}>{A.nome} · {daAreaTodos.length} paciente{daAreaTodos.length === 1 ? '' : 's'}</h2>
@@ -893,12 +951,15 @@ function TelaPrincipal({ usuario, aoSair }) {
         {daArea.length === 0 && <div className="vazio">{filtro ? 'Nenhum paciente encontrado na pesquisa.' : `Nenhum paciente de ${A.nome} ainda.`}</div>}
         {daArea.length > 0 && (
           <>
-            <div className="secao-lista nao"><span>Para agendar</span><b>{paraAgendar.length}</b></div>
-            {paraAgendar.length ? paraAgendar.map(cartaoDoPaciente)
-              : <div className="vazio">Ninguém esperando — todo mundo de {A.nome} já está agendado. 🌱</div>}
-            <div className="secao-lista sim"><span>Já agendados</span><b>{jaAgendados.length}</b></div>
-            {jaAgendados.length ? jaAgendados.map(cartaoDoPaciente)
-              : <div className="vazio">Ninguém agendado de {A.nome} ainda.</div>}
+            <div className="seletor">
+              <button className={visaoArea === 'nao' ? 'ativo' : ''} onClick={() => setVisaoArea('nao')}>Não agendados · {paraAgendar.length}</button>
+              <button className={visaoArea === 'sim' ? 'ativo' : ''} onClick={() => setVisaoArea('sim')}>Agendados · {jaAgendados.length}</button>
+            </div>
+            {visaoArea === 'nao'
+              ? (paraAgendar.length ? paraAgendar.map(cartaoDoPaciente)
+                : <div className="vazio">Ninguém esperando — todo mundo de {A.nome} já está agendado. 🌱</div>)
+              : (jaAgendados.length ? jaAgendados.map(cartaoDoPaciente)
+                : <div className="vazio">Ninguém agendado de {A.nome} ainda.</div>)}
           </>
         )}
       </div>
@@ -1063,133 +1124,12 @@ function TelaPrincipal({ usuario, aoSair }) {
           );
         })()}
 
-        {aba === 'agenda' && (
+        {aba === 'chat' && (
           <>
-            <div className="titulo-com-botao"><h2>Agendamento</h2><button className="btn-mais" onClick={() => setTela('marcar')}>+ Agendar</button></div>
-            <div className="seletor">
-              <button className={visaoAgenda === 'dia' ? 'ativo' : ''} onClick={() => setVisaoAgenda('dia')}>Agendados</button>
-              <button className={visaoAgenda === 'sem' ? 'ativo' : ''} onClick={() => setVisaoAgenda('sem')}>Não agendados</button>
-            </div>
-            {visaoAgenda === 'sem' ? (() => {
-              // Cada PROCEDIMENTO da triagem que ainda não tem agendamento
-              // fica pendente aqui (não a pessoa — o procedimento dela)
-              const pendentes = [];
-              for (const p of pacientes.filter(x => x.triagem)) {
-                for (const area of areasDoPaciente(p)) {
-                  const ja = agendamentos.some(g => g.pacienteId === p.id && (g.area === area || (g.titulo || '').startsWith(area)));
-                  if (!ja) pendentes.push({ p, area });
-                }
-              }
-              // Prioridade fura a fila
-              pendentes.sort((x, y) => (y.p.prioridade ? 1 : 0) - (x.p.prioridade ? 1 : 0));
-              return pendentes.length ? pendentes.map(({ p, area }) => {
-                const a = todasAreas.find(x => x.nome === area);
-                return (
-                  <div className="cartao" key={p.id + area}>
-                    <div className="cartao-linha">
-                      <span className="caixa-area-icone" style={{ background: (a?.cor || '#2F7D4E') + '22', color: a?.cor || '#2F7D4E', width: 46, height: 46, borderRadius: 15 }}>
-                        {a?.Icone ? <a.Icone size={22} strokeWidth={2.2} /> : <Tag size={22} />}
-                      </span>
-                      <div>
-                        <div className="cartao-topo">
-                          <strong>{area}</strong>
-                          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            {p.prioridade && <span className="chip prioridade">prioridade</span>}
-                            <span className="quando">{duracaoDe(area)} min</span>
-                          </span>
-                        </div>
-                        <p className="obs">{p.codigo ? `${p.codigo} · ` : ''}{p.nome}</p>
-                        <button className="btn-confirmar" style={{ marginTop: 8 }} onClick={() => setTela({ marcarPaciente: p, marcarArea: area })}>Agendar</button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }) : <div className="vazio">Nenhum procedimento pendente — tudo agendado. 🌱</div>;
-            })() : (
-            <>
-            <div className="dia-nav">
-              <button onClick={() => setDia(somaDias(dia, -1))}>‹</button>
-              <div className="dia-titulo">
-                <strong>{dataBonita(dia)}</strong>
-                {dia !== hojeISO() ? <span onClick={() => setDia(hojeISO())} style={{ cursor: 'pointer' }}>voltar para hoje</span> : <span>hoje</span>}
-              </div>
-              <button onClick={() => setDia(somaDias(dia, 1))}>›</button>
-            </div>
-            {(() => {
-              // Os dias que TÊM atendimento marcado — um toque pula para o dia
-              const diasMarcados = [...new Set(agendamentos.map(g => g.data).filter(Boolean))].sort();
-              return diasMarcados.length > 0 && (
-                <div className="chips-rolagem">
-                  {diasMarcados.map(d => (
-                    <button key={d} className={d === dia ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDia(d)}>
-                      {dataBonita(d)} · {agendamentos.filter(g => g.data === d).length}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-            {profissionais.length > 0 && (
-              <div className="chips-rolagem">
-                <button className={!dentistaVer ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDentistaVer('')}>Todos</button>
-                {profissionais.map(v => (
-                  <button key={v.id} className={dentistaVer === v.id ? 'chip-dia ativo' : 'chip-dia'} onClick={() => setDentistaVer(dentistaVer === v.id ? '' : v.id)}>
-                    {v.nome.split(' ')[0]} · {doDia.filter(g => g.profissionalUid === v.id).length}
-                  </button>
-                ))}
-              </div>
-            )}
-            {dentistaVer && (() => {
-              // Resumo do dentista escolhido: o que ele atende no dia e o
-              // espaço livre entre 08h e 17h
-              const v = profissionais.find(x => x.id === dentistaVer);
-              const dele = doDia.filter(g => g.profissionalUid === dentistaVer);
-              const min = t => { const [h, m] = String(t || '08:00').split(':').map(Number); return h * 60 + m; };
-              const hm = n => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
-              let cursor = min('08:00');
-              const fimDia = min('17:00');
-              const livres = [];
-              for (const g of dele) {
-                const i = min(g.hora), f = i + (g.duracaoMin || DURACAO_PADRAO);
-                if (i > cursor) livres.push([cursor, Math.min(i, fimDia)]);
-                cursor = Math.max(cursor, f);
-              }
-              if (cursor < fimDia) livres.push([cursor, fimDia]);
-              const livresTxt = livres.filter(([a, b]) => b - a >= 15).map(([a, b]) => `${hm(a)}–${hm(b)}`).join(', ');
-              return (
-                <div className="cartao resumo-dentista">
-                  <div className="cartao-linha" style={{ alignItems: 'center' }}>
-                    <Bolha nome={v?.nome || '?'} />
-                    <div style={{ flex: 1 }}>
-                      <strong>{v?.nome}</strong>
-                      <p className="obs" style={{ margin: '2px 0 0' }}>
-                        {dele.length ? `${dele.length} atendimento${dele.length === 1 ? '' : 's'} em ${dataBonita(dia)}` : `Nada marcado em ${dataBonita(dia)}`}
-                      </p>
-                      <p className={livresTxt ? 'ok' : 'erro'} style={{ margin: '4px 0 0', fontSize: 13 }}>
-                        {livresTxt ? `✓ Tem espaço: ${livresTxt}` : '✗ Dia cheio — sem espaço entre 08h e 17h'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            {(() => {
-              const doDiaVer = dentistaVer ? doDia.filter(g => g.profissionalUid === dentistaVer) : doDia;
-              return doDiaVer.length ? doDiaVer.map(g => (
-                <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
-                  <div className="linha-agenda">
-                    <div className="hora-col">{g.hora}<span className="hora-fim">{horaFim(g.hora, g.duracaoMin)}</span></div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <strong>{g.pacienteNome || g.titulo}</strong>
-                      {g.pacienteNome && g.titulo && <p style={{ marginTop: 3 }}>{g.titulo} · {g.duracaoMin || DURACAO_PADRAO} min</p>}
-                      {g.profissionalNome && <p className="obs">com {g.profissionalNome}</p>}
-                    </div>
-                    <button className="btn-remover" onClick={e => { e.stopPropagation(); removerAgendamento(g); }} title="Remover">✕</button>
-                  </div>
-                </div>
-              )) : <div className="vazio">Nada marcado em {dataBonita(dia)}{dentistaVer ? ` para ${profissionais.find(x => x.id === dentistaVer)?.nome?.split(' ')[0] || 'este dentista'}` : ''}.<br />Toque em "+ Agendar".</div>;
-            })()}
-            </>
-            )}
+            <h2>Chat da equipe</h2>
+            <p className="dica" style={{ margin: '-8px 0 10px' }}>Todo mundo da central e do Semeador conversa aqui. Dá para anexar um paciente, marcar alguém e sugerir um procedimento — quem aceitar já inclui o paciente na caixinha certa.</p>
+            <Chat usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
+              areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
           </>
         )}
 
@@ -1282,7 +1222,10 @@ function TelaPrincipal({ usuario, aoSair }) {
           <span>Triagem</span>
         </button>
         <button className={aba === 'pacientes' ? 'ativo' : ''} onClick={() => setAba('pacientes')}><ClipboardList size={22} /><span>Pacientes</span></button>
-        <button className={aba === 'agenda' ? 'ativo' : ''} onClick={() => setAba('agenda')}><CalendarDays size={22} /><span>Agenda</span></button>
+        <button className={aba === 'chat' ? 'ativo' : ''} onClick={() => setAba('chat')}>
+          <span className="icone-aba"><MessagesSquare size={22} />{mensagens.length > chatVisto && <i className="bolinha" />}</span>
+          <span>Chat</span>
+        </button>
         <button className={aba === 'voluntarios' ? 'ativo' : ''} onClick={() => setAba('voluntarios')}>
           <span className="icone-aba"><Users size={22} />{voluntarios.some(v => v.status === 'pendente') && <i className="bolinha" />}</span>
           <span>Voluntár.</span>
