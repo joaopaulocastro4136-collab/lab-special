@@ -21,6 +21,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
+import { AgendaSemana } from '../agenda-semana.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -454,7 +455,17 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
           {voluntarios.map(p => <option key={p.id} value={p.id}>{p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
         </select>
       </Campo>
-      <Campo rotulo="Data"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
+      <div className="campo">
+        <span>Agenda de {prof ? prof.nome.split(' ')[0] : 'quem atende'} — toque no dia para escolher a data</span>
+        <AgendaSemana
+          agendamentos={agendamentos.filter(g => g.profissionalUid === f.profissionalUid)}
+          corDaArea={nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '')}
+          duracaoDe={duracaoDe}
+          diaEscolhido={f.data}
+          aoEscolherDia={iso => setF(atual => ({ ...atual, data: iso }))}
+        />
+      </div>
+      <Campo rotulo="Data escolhida"><input type="date" value={f.data} onChange={muda('data')} /></Campo>
       <Campo rotulo="Hora de início"><input type="time" value={f.horaInicio} onChange={e => { setF({ ...f, horaInicio: e.target.value }); setHorasProprias({}); }} /></Campo>
       {sequencia.length > 0 && (
         <div className="campo"><span>Como fica ({sequencia.length} agendamento{sequencia.length === 1 ? '' : 's'})</span>

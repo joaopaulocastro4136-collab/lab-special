@@ -212,6 +212,11 @@ export const CSS = `
   .sem-dia strong { display: block; font-size: 12px; color: #223528; letter-spacing: -0.1px; margin-bottom: 2px; }
   .sem-dia span { font-size: 10.5px; color: #7B897F; font-weight: 700; }
   .sem-dia.hoje { background: #F0F8F2; }
+  .sem-dia.clicavel, .sem-col.clicavel { cursor: pointer; }
+  .sem-dia.escolhido { background: #226343; }
+  .sem-dia.escolhido strong, .sem-dia.escolhido span { color: #fff; }
+  .sem-dia.escolhido .num-hoje { background: #fff; color: #226343; }
+  .sem-col.escolhido { background-color: #E9F5EE; }
   .num-hoje { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 3px; border-radius: 999px; background: #2F7D4E; color: #fff; }
   .semana-corpo { display: flex; position: relative; }
   .sem-horas { position: sticky; left: 0; z-index: 7; background: #fff; width: 50px; flex: none; border-right: 1px solid #EDF1EA; }
