@@ -140,8 +140,16 @@ export const CSS = `
   .chat-selecionados svg { cursor: pointer; }
   .chat-extras { display: flex; gap: 6px; }
   .chat-extras select { flex: 1; min-width: 0; padding: 8px 6px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 12.5px; background: #fff; font-weight: 700; color: #55645A; }
-  .chat-envio { display: flex; gap: 8px; }
+  .chat-envio { display: flex; gap: 7px; align-items: center; }
   .chat-envio input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; }
+  .btn-redondo { width: 42px; height: 42px; flex: none; border: 1.5px solid #DBE3D8; border-radius: 50%; background: #fff; color: #55645A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .btn-redondo.ligado { background: #226343; border-color: #226343; color: #fff; }
+  .btn-foto-chat { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 1.5px dashed #9DBBA8; border-radius: 11px; background: #EAF4EE; color: #226343; font-size: 13px; font-weight: 800; cursor: pointer; flex: none; }
+  .chat-emojis { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chat-emojis button { border: none; background: #fff; border-radius: 10px; font-size: 22px; padding: 5px 7px; cursor: pointer; box-shadow: 0 1px 4px rgba(30,43,34,0.08); }
+  .msg-foto { border: none; background: none; padding: 0; cursor: pointer; max-width: 100%; }
+  .msg-foto img { max-width: 100%; max-height: 260px; border-radius: 12px; display: block; }
+  .foto-presa img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; }
   .btn-enviar { width: 48px; border: none; border-radius: 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 12px rgba(47,125,78,0.28); }
   .btn-enviar:disabled { opacity: 0.45; box-shadow: none; }
 
