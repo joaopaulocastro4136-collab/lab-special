@@ -523,7 +523,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     setConfigProc(nova);
     if (!CONFIGURADO) return;
     const { doc, setDoc } = fb.fns;
-    await setDoc(doc(fb.db, 'config', 'procedimentos'), nova);
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
   }
   async function salvarTriagem(paciente, triagem) {
     if (!CONFIGURADO) {
@@ -532,7 +532,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
+    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
     setTelaTriagem(null);
   }
   const semTriagem = todosPacientes.filter(p => !p.triagem);
@@ -572,7 +572,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() }).catch(() => {});
   }
   const [centralOnline, setCentralOnline] = useState(DEMO.centralOnline);
 
@@ -839,7 +839,7 @@ function App() {
     const dados = { ...f, email: conta.email || '', foto: conta.foto || '', status: 'pendente', ativo: false };
     if (!CONFIGURADO) { setCadastro(dados); return; }
     const { doc, setDoc, serverTimestamp } = fb.fns;
-    await setDoc(doc(fb.db, 'voluntarios', conta.uid), { ...dados, solicitadoEm: serverTimestamp() });
+    setDoc(doc(fb.db, 'voluntarios', conta.uid), { ...dados, solicitadoEm: serverTimestamp() }).catch(() => {});
   }
 
   async function sair() {
