@@ -69,8 +69,10 @@ async function publicar(siteId, pasta) {
   }
   const ver = await api('POST', `/sites/${siteId}/versions`, { config: {
     rewrites: [{ glob: '**', path: '/index.html' }],
-    // Sem cache: garante que o navegador sempre pegue a versão mais nova
-    headers: [{ glob: '**', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' } }],
+    // Sem cache: garante que o navegador sempre pegue a versão mais nova.
+    // O Access-Control-Allow-Origin deixa a casca viva do iPhone (que roda
+    // em capacitor://localhost) baixar o app.js/app.css e guardar no aparelho.
+    headers: [{ glob: '**', headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Access-Control-Allow-Origin': '*' } }],
   } });
   if (!ver.json.name) { console.log(`✗ versão: ${ver.status} ${JSON.stringify(ver.json).slice(0, 200)}`); return false; }
   const pop = await api('POST', `/${ver.json.name}:populateFiles`, { files: arquivos });
