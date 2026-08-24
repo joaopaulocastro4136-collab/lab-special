@@ -1212,12 +1212,8 @@ function TelaPrincipal({ usuario, aoSair }) {
         })()}
 
         {aba === 'chat' && (
-          <>
-            <h2>Chat da equipe</h2>
-            <p className="dica" style={{ margin: '-8px 0 10px' }}>Todo mundo da central e do Semeador conversa aqui. Dá para anexar um paciente, marcar alguém e sugerir um procedimento — quem aceitar já inclui o paciente na caixinha certa.</p>
-            <Chat usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
-              areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
-          </>
+          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
+            areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
 
         {aba === 'voluntarios' && (() => {

@@ -127,6 +127,7 @@ export const CSS = `
      caixa de escrever fica presa embaixo, sempre visível — inclusive com o
      teclado do celular aberto (nada de caixa flutuante sumindo). */
   .chat { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 340px); height: calc(100dvh - 340px); min-height: 300px; }
+  .chat.cheio { height: calc(100vh - 250px); height: calc(100dvh - 250px); }
   .chat-mensagens { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .msg { display: flex; gap: 10px; align-items: flex-start; }
   .msg-corpo { flex: 1; min-width: 0; background: #fff; border-radius: 4px 16px 16px 16px; padding: 10px 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -320,6 +321,7 @@ export const CSS = `
     .grade-areas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grade-fotos { grid-template-columns: repeat(5, 1fr); }
     .chat { height: calc(100vh - 280px); height: calc(100dvh - 280px); }
+    .chat.cheio { height: calc(100vh - 220px); height: calc(100dvh - 220px); }
     .folha { max-width: 700px; margin: 0 auto; }
     .foto-cheia img { max-height: 82vh; }
   }
