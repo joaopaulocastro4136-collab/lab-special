@@ -122,9 +122,12 @@ export const CSS = `
   .chip-dia.ativo { background: #226343; border-color: #226343; color: #fff; }
   .resumo-dentista { border: 1.5px solid #BFDCC9; background: #F2FAF5; }
 
-  /* ── Chat da equipe ── */
-  .chat { display: flex; flex-direction: column; gap: 10px; }
-  .chat-mensagens { display: flex; flex-direction: column; gap: 10px; min-height: 120px; padding-bottom: 130px; }
+  /* ── Chat da equipe ──
+     O chat vive numa área de altura fixa: as mensagens rolam POR DENTRO e a
+     caixa de escrever fica presa embaixo, sempre visível — inclusive com o
+     teclado do celular aberto (nada de caixa flutuante sumindo). */
+  .chat { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 340px); height: calc(100dvh - 340px); min-height: 300px; }
+  .chat-mensagens { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .msg { display: flex; gap: 10px; align-items: flex-start; }
   .msg-corpo { flex: 1; min-width: 0; background: #fff; border-radius: 4px 16px 16px 16px; padding: 10px 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .msg.minha .msg-corpo { background: #E4F3E9; border-radius: 16px 4px 16px 16px; }
@@ -137,9 +140,7 @@ export const CSS = `
   .chip-aceito { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: #D6F1E0; color: #1E6B41; font-size: 12.5px; font-weight: 800; }
   .linha-sugestao { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #FFF6E3; border: 1.5px dashed #E4CD96; border-radius: 12px; padding: 8px 11px; font-size: 13.5px; }
   .btn-aceitar-chat { display: inline-flex; align-items: center; gap: 5px; border: none; border-radius: 999px; padding: 8px 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; }
-  .chat-caixa { position: fixed; left: 50%; transform: translateX(-50%); width: calc(100% - 28px); max-width: 532px;
-    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 82px); z-index: 40;
-    display: flex; flex-direction: column; gap: 8px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 18px; padding: 10px; box-shadow: 0 10px 28px rgba(30,43,34,0.18); }
+  .chat-caixa { display: flex; flex-direction: column; gap: 8px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 18px; padding: 10px; box-shadow: 0 10px 28px rgba(30,43,34,0.18); }
   .chat-selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
   .chat-selecionados svg { cursor: pointer; }
   .chat-extras { display: flex; gap: 6px; }
@@ -318,7 +319,7 @@ export const CSS = `
     main { margin-left: 140px; margin-right: auto; }
     .grade-areas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grade-fotos { grid-template-columns: repeat(5, 1fr); }
-    .chat-caixa { left: calc(140px + (100% - 140px) / 2); max-width: 700px; width: calc(100% - 200px); bottom: 18px; }
+    .chat { height: calc(100vh - 280px); height: calc(100dvh - 280px); }
     .folha { max-width: 700px; margin: 0 auto; }
     .foto-cheia img { max-height: 82vh; }
   }
