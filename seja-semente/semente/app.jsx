@@ -17,7 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import icone from '../icones/icone-central-1024.png';
@@ -39,7 +39,7 @@ async function ligarFirebase() {
   // Dentro do aplicativo do iPhone (WebView), o jeito padrão de iniciar a
   // autenticação e o banco falha — estes dois ajustes são os recomendados:
   let auth;
-  if (window.__entrarNativoGoogle) {
+  if (window.__loginGoogleNativo || window.__entrarNativoGoogle) {
     // iPhone (WKWebView): SEM popupRedirectResolver — o login é pela tela de
     // contas do aparelho; o resolver web carregaria um script do Google que
     // quebra dentro do aplicativo ("Script error." na largada)
@@ -52,7 +52,19 @@ async function ligarFirebase() {
     // Navegador/computador: o padrão já configura o login web (Google) certo
     auth = modAuth.getAuth(app);
   }
-  const db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  // Modo offline: os dados ficam guardados no próprio aparelho — dá para
+  // abrir pacientes, agenda e fotos sem internet, e tudo que for feito
+  // offline entra numa fila que o Firestore envia SOZINHO quando a
+  // conexão voltar (ninguém precisa apertar nada)
+  let db;
+  try {
+    db = modFs.initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: modFs.persistentLocalCache({ tabManager: modFs.persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  }
   fb = { auth, db, fns: { ...modAuth, ...modFs } };
 }
 
@@ -154,7 +166,12 @@ function TelaLogin({ aoEntrarDemo }) {
     }
     setCarregando(true);
     try {
-      if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
+      if (window.__loginGoogleNativo) {
+        // Ponte nova (casca viva): ela devolve os tokens do Google e a
+        // entrada no Firebase é feita aqui, com a biblioteca do próprio app
+        const c = await window.__loginGoogleNativo();
+        await fb.fns.signInWithCredential(fb.auth, fb.fns.GoogleAuthProvider.credential(c.idToken, c.accessToken || undefined));
+      } else if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
       else {
         // No computador/navegador o mais confiável é navegar a própria
         // página para o Google e voltar logado (janelinha é bloqueada no Mac)
@@ -469,6 +486,7 @@ function NovoProcedimento({ aoAdicionar }) {
 
 function TelaPrincipal({ usuario, aoSair }) {
   const [aba, setAba] = useState('cadastro');
+  const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
   const [cadastradoMsg, setCadastradoMsg] = useState('');
@@ -505,7 +523,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     setConfigProc(nova);
     if (!CONFIGURADO) return;
     const { doc, setDoc } = fb.fns;
-    await setDoc(doc(fb.db, 'config', 'procedimentos'), nova);
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
   }
 
   // Todas as áreas: as fixas + as adicionadas pela central (ex.: Pediatria)
@@ -551,7 +569,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, col), { ...dados, ...local, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // Autoriza um e-mail: quem entrar com essa conta Google já cai na central
@@ -560,7 +578,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     if (!e || !e.includes('@')) return 'Digite um e-mail válido.';
     if (CONFIGURADO) {
       const { doc, setDoc, serverTimestamp } = fb.fns;
-      await setDoc(doc(fb.db, 'central-autorizados', e), { email: e, autorizadoPor: usuario.nome || '', criadoEm: serverTimestamp() });
+      setDoc(doc(fb.db, 'central-autorizados', e), { email: e, autorizadoPor: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
     }
     return '';
   }
@@ -571,7 +589,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const cod = 'SS-' + Array.from({ length: 6 }, () => letras[Math.floor(Math.random() * letras.length)]).join('');
     if (CONFIGURADO) {
       const { doc, setDoc, serverTimestamp } = fb.fns;
-      await setDoc(doc(fb.db, 'codigos-acesso', cod), { criadoPor: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() });
+      setDoc(doc(fb.db, 'codigos-acesso', cod), { criadoPor: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
     }
     setCodigoGerado(cod);
   }
@@ -605,7 +623,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', fichaId), dados);
+    updateDoc(doc(fb.db, 'pacientes', fichaId), dados).catch(() => {});
   }
 
   async function apagarPaciente() {
@@ -616,7 +634,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, deleteDoc } = fb.fns;
-    await deleteDoc(doc(fb.db, 'pacientes', id));
+    deleteDoc(doc(fb.db, 'pacientes', id)).catch(() => {});
   }
 
   async function salvarTriagem(paciente, triagem) {
@@ -626,7 +644,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' });
+    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
     setTela(null);
   }
 
@@ -642,7 +660,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem }).catch(() => {});
   }
 
   async function removerAgendamento(g) {
@@ -651,7 +669,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, deleteDoc } = fb.fns;
-    await deleteDoc(doc(fb.db, 'agendamentos', g.id));
+    deleteDoc(doc(fb.db, 'agendamentos', g.id)).catch(() => {});
   }
 
   async function responderSolicitacao(v, aprovar) {
@@ -661,7 +679,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca);
+    updateDoc(doc(fb.db, 'voluntarios', v.id), mudanca).catch(() => {});
   }
 
   async function mudarStatus(p) {
@@ -672,7 +690,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { status });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { status }).catch(() => {});
   }
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
@@ -703,7 +721,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, 'pacientes', fichaId, 'arquivos'), { ...registro, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // ─── Telas por cima das abas ───
@@ -903,7 +921,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <div className="logo-bolha"><LogoApp tamanho={40} /></div>
           <div style={{ flex: 1 }}>
             <strong>Seja Semente</strong>
-            <div className="status">Central · {usuario.nome}</div>
+            <div className="status">{temInternet ? <>Central · {usuario.nome}</> : '📴 Sem internet — salvando no aparelho'}</div>
           </div>
           <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Bell size={20} /></button>
           <button className="btn-header" onClick={() => setTela('novoAviso')} title="Novo aviso"><Megaphone size={20} /></button>
@@ -1321,33 +1339,39 @@ function App() {
     if (!CONFIGURADO) { setAcesso('liberado'); return; }
     if (!usuario) { setAcesso('checando'); return; }
     let cancelado = false;
+    // Quem já entrou na central NESTE aparelho fica lembrado: sem internet a
+    // conferência no banco falha, mas a pessoa entra direto mesmo assim — a
+    // conferência de verdade acontece de novo quando a conexão voltar.
+    const lembrete = 'ss-ja-entrou-' + usuario.uid;
+    const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
+    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
         const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
-        if (meu.exists()) { if (!cancelado) setAcesso('liberado'); return; }
+        if (meu.exists()) { libera(); return; }
         // Fase de teste ABERTA: qualquer conta Google entra direto
         try {
           const cfg = await getDoc(doc(fb.db, 'config', 'acesso'));
-          if (cfg.exists() && cfg.data().abertoParaTeste) { if (!cancelado) setAcesso('liberado'); return; }
+          if (cfg.exists() && cfg.data().abertoParaTeste) { libera(); return; }
         } catch (e) { /* segue o fluxo normal */ }
         // E-mail pré-autorizado pela coordenação? entra direto, sem código
         if (usuario.email) {
           const conv = await getDoc(doc(fb.db, 'central-autorizados', usuario.email.toLowerCase()));
           if (conv.exists()) {
-            await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
-            if (!cancelado) setAcesso('liberado');
+            setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
+            libera();
             return;
           }
         }
         const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
         if (algum.empty) {
-          await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() });
-          if (!cancelado) setAcesso('liberado');
+          setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
+          libera();
           return;
         }
-        if (!cancelado) setAcesso('pedir');
-      } catch (e) { if (!cancelado) setAcesso('pedir'); }
+        nega();
+      } catch (e) { nega(); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -1359,8 +1383,9 @@ function App() {
     const snap = await getDoc(ref);
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() });
-    await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
+    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    gravarLocal('ss-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
   }
@@ -1385,7 +1410,7 @@ function App() {
     ligarFirebase().then(() => {
       // Completa o login por redirect (plano B só do navegador; no iPhone o
       // login é nativo e este caminho carregaria script que quebra o app)
-      if (!window.__entrarNativoGoogle) fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
+      if (!window.__loginGoogleNativo && !window.__entrarNativoGoogle) fb.fns.getRedirectResult?.(fb.auth).catch(() => {});
       soltar = fb.fns.onAuthStateChanged(fb.auth, u => {
         setUsuario(u ? { uid: u.uid, email: u.email, nome: u.displayName || u.email } : null);
         setPronto(true);
@@ -1421,5 +1446,10 @@ function App() {
   return <>{conteudo}{abertura}</>;
 }
 
-ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
-createRoot(document.getElementById('root')).render(<App />);
+// A trava __appJaSubiu impede o app de subir duas vezes na casca viva do
+// iPhone (se o plano B embutido entrar e o código da hospedagem chegar depois)
+if (!window.__appJaSubiu) {
+  window.__appJaSubiu = true;
+  ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
+  createRoot(document.getElementById('root')).render(<App />);
+}
