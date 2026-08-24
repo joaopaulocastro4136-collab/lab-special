@@ -431,11 +431,35 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
     <div className="folha">
       <h2>Agendar paciente</h2>
       {triados.length === 0 && <p className="dica">Nenhum paciente com triagem ainda — faça a triagem primeiro.</p>}
-      <Campo rotulo="Paciente">
-        <select value={f.pacienteId} onChange={mudaPaciente}>
-          {triados.map(p => <option key={p.id} value={p.id}>{p.prioridade ? '★ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>)}
-        </select>
-      </Campo>
+      {(() => {
+        // Prioridade fura a fila: separados no topo da lista, para serem
+        // agendados primeiro
+        const prioritarios = triados.filter(p => p.prioridade);
+        const demais = triados.filter(p => !p.prioridade);
+        const opcao = p => <option key={p.id} value={p.id}>{p.prioridade ? '⚠ ' : ''}{p.codigo ? `${p.codigo} · ` : ''}{p.nome}{p.prioridade ? ' — PRIORIDADE' : ''}</option>;
+        return (
+          <>
+            <Campo rotulo="Paciente">
+              <select value={f.pacienteId} onChange={mudaPaciente}>
+                {prioritarios.length > 0 && <optgroup label="⚠ PRIORIDADE — agendar primeiro">{prioritarios.map(opcao)}</optgroup>}
+                {demais.length > 0 && <optgroup label={prioritarios.length ? 'Demais pacientes' : 'Pacientes'}>{demais.map(opcao)}</optgroup>}
+              </select>
+            </Campo>
+            {pac?.prioridade ? (
+              <div className="faixa-prioridade">
+                <TriangleAlert size={17} strokeWidth={2.4} /> {pac.nome} tem PRIORIDADE — fura a fila, agende primeiro.
+              </div>
+            ) : prioritarios.length > 0 && (
+              <div className="faixa-prioridade">
+                <TriangleAlert size={17} strokeWidth={2.4} />
+                {prioritarios.length === 1
+                  ? `${prioritarios[0].nome} está com PRIORIDADE na fila — agende antes.`
+                  : `${prioritarios.length} pacientes com PRIORIDADE na fila — agende eles antes.`}
+              </div>
+            )}
+          </>
+        );
+      })()}
       {areasPac.length > 0 && (
         <div className="campo"><span>Procedimentos a agendar (cada um vira um agendamento)</span>
           <div className="caixas">
