@@ -173,10 +173,29 @@ function TelaLogin({ aoEntrarDemo }) {
         await fb.fns.signInWithCredential(fb.auth, fb.fns.GoogleAuthProvider.credential(c.idToken, c.accessToken || undefined));
       } else if (window.__entrarNativoGoogle) await window.__entrarNativoGoogle(fb.auth);
       else {
-        // No computador/navegador o mais confiável é navegar a própria
-        // página para o Google e voltar logado (janelinha é bloqueada no Mac)
-        await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
-        return; // a página vai para o Google
+        // Navegador/computador: janelinha do Google. O caminho antigo
+        // (navegar a página inteira até o Google) só volta logado no
+        // endereço firebaseapp.com — nos outros (web.app), os navegadores
+        // novos bloqueiam a volta e a pessoa ficava presa na tela do
+        // Firebase sem entrar. A janelinha funciona em qualquer endereço.
+        try {
+          await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') {
+            setCarregando(false);
+            return; // a pessoa só fechou a janelinha — não é erro
+          }
+          if (window.location.hostname === 'seja-semente-app.firebaseapp.com') {
+            // Aqui o caminho de página inteira funciona — usa de plano B
+            await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
+            return; // a página vai para o Google
+          }
+          // Janelinha bloqueada fora do firebaseapp.com: leva a pessoa para
+          // o endereço onde o login de página inteira funciona
+          window.location.href = 'https://seja-semente-app.firebaseapp.com';
+          return;
+        }
       }
     } catch (e) {
       if (!String(e?.message || '').includes('cancelado')) {
