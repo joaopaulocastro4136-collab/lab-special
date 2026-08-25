@@ -487,11 +487,18 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
           duracaoDe={duracaoDe}
           diaEscolhido={f.data}
           aoEscolherHorario={(iso, hora) => { pularSugestaoRef.current = true; setHorasProprias({}); setF(atual => ({ ...atual, data: iso, horaInicio: hora })); }}
-          previa={{ data: f.data, hora: f.horaInicio, duracaoMin: sequencia.reduce((s, x) => s + x.dur, 0) || DURACAO_PADRAO, titulo: pac ? pac.nome.split(' ')[0] : 'Novo' }}
+          previa={(() => {
+            // A prévia acompanha a SEQUÊNCIA de verdade: mudar o horário ali
+            // embaixo (no "Como fica") move o tracejado aqui em cima também
+            const minutos = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+            const inicio = sequencia[0]?.hora || f.horaInicio;
+            const fim = sequencia.length ? sequencia[sequencia.length - 1].fim : horaFim(inicio, DURACAO_PADRAO);
+            return { data: f.data, hora: inicio, duracaoMin: Math.max(30, minutos(fim) - minutos(inicio)), titulo: pac ? pac.nome.split(' ')[0] : 'Novo' };
+          })()}
           aoMoverAgendamento={aoMover}
         />
       </div>
-      <p className="dica" style={{ margin: 0 }}>📌 Vai ficar: <b>{dataBonita(f.data)} às {f.horaInicio}</b> — toque em outro quadradinho para mudar.</p>
+      <p className="dica" style={{ margin: 0 }}>📌 Vai ficar: <b>{dataBonita(f.data)} às {sequencia[0]?.hora || f.horaInicio}</b> — toque em outro quadradinho para mudar (ou ajuste a hora ali embaixo).</p>
       {sequencia.length > 0 && (
         <div className="campo"><span>Como fica ({sequencia.length} agendamento{sequencia.length === 1 ? '' : 's'})</span>
           {sequencia.map(s => (
