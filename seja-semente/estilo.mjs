@@ -559,6 +559,59 @@ export const CSS = `
   .mov-sinal.entrada { background: #E5F3EA; color: #226343; }
   .mov-texto { flex: 1; min-width: 0; color: #2C3830; }
   .mov-quando { flex: none; color: #8A968D; font-size: 12px; }
+
+  /* ─── Depoimentos: a voz de quem foi atendido ─── */
+  .depoimento { position: relative; display: block; background: #fff; border-radius: 20px; padding: 30px 18px 16px;
+    box-shadow: 0 6px 20px rgba(30,43,34,0.08); border: 1.5px solid #EAEFE8; margin-bottom: 12px; }
+  .depo-aspas { position: absolute; top: 14px; left: 16px; color: #BFDCC9; }
+  .depo-texto { margin: 0 0 12px; font-family: 'Fraunces', Georgia, serif; font-size: 17px; line-height: 1.5; color: #223027; }
+  .depo-quem { display: flex; align-items: center; gap: 10px; }
+  .depo-quem .bolha { width: 38px !important; height: 38px !important; border-radius: 13px; font-size: 14px; }
+  .depo-quem span { display: flex; flex-direction: column; min-width: 0; }
+  .depo-quem strong { font-size: 15px; color: #1E2B22; }
+  .depo-quem i { font-style: normal; font-size: 12px; color: #8A968D; }
+  .depoimento.destaque { background: linear-gradient(150deg, #2C7248 0%, #1B5335 100%); border: none; box-shadow: 0 14px 34px rgba(17,58,36,0.28); padding: 34px 20px 18px; }
+  .depoimento.destaque .depo-aspas { color: rgba(255,255,255,0.42); }
+  .depoimento.destaque .depo-texto { color: #fff; font-size: 19px; }
+  .depoimento.destaque .depo-quem strong { color: #fff; }
+  .depoimento.destaque .depo-quem i { color: rgba(255,255,255,0.7); }
+  .depo-faixa { display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px 4px; scroll-snap-type: x mandatory; }
+  .depo-faixa > * { flex: 0 0 86%; scroll-snap-align: center; margin-bottom: 0; }
+
+  /* ─── Plante Sorriso (Colheita): a experiência de ver o que nasceu ─── */
+  .plante-capa { position: relative; overflow: hidden; border-radius: 26px; padding: 26px 20px 20px; margin-bottom: 14px;
+    background: linear-gradient(150deg, #2C7248 0%, #1B5335 55%, #113A24 100%); color: #fff;
+    box-shadow: 0 16px 40px rgba(17,58,36,0.30); }
+  .plante-selo { font-size: 11.5px; font-weight: 800; letter-spacing: 3.4px; color: #B9F0CD; }
+  .plante-capa h1 { margin: 8px 0 16px; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 32px; line-height: 1.15; letter-spacing: -0.5px; }
+  .plante-capa h1 em { color: #F0C978; font-style: italic; }
+  .plante-marcas { display: flex; align-items: center; gap: 14px; }
+  .plante-marcas span { display: flex; flex-direction: column; font-size: 12px; color: rgba(255,255,255,0.78); font-weight: 600; }
+  .plante-marcas b { font-size: 24px; color: #fff; font-weight: 800; line-height: 1.1; }
+  .plante-marcas i { width: 1px; height: 30px; background: rgba(255,255,255,0.22); }
+  .plante-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .plante-cartao { display: flex; flex-direction: column; padding: 0; border: none; background: #fff; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 6px 20px rgba(30,43,34,0.10); cursor: pointer; font: inherit; text-align: left; }
+  .plante-cartao:active { transform: scale(0.98); }
+  .plante-fotos { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #EAEFE8; }
+  .plante-fotos img { width: 100%; height: 108px; object-fit: cover; display: block; }
+  .plante-sem { height: 108px; display: flex; align-items: center; justify-content: center; font-size: 30px; background: #F2F5EF; }
+  .plante-seta { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(255,255,255,0.94); color: #226343; font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+  .plante-pe { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 12px; }
+  .plante-pe strong { font-size: 15px; color: #1E2B22; }
+  .plante-area { align-self: flex-start; font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+  .plante-antesdepois { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+  .plante-antesdepois figure { flex: 1; margin: 0; min-width: 0; }
+  .plante-antesdepois img { width: 100%; height: 190px; object-fit: cover; border-radius: 16px; display: block; box-shadow: 0 6px 18px rgba(30,43,34,0.14); }
+  .plante-antesdepois .plante-sem { height: 190px; border-radius: 16px; }
+  .plante-antesdepois figcaption { text-align: center; font-size: 11px; font-weight: 800; letter-spacing: 1.6px; color: #6E7D72; margin-top: 6px; }
+  .plante-flecha { flex: none; font-size: 22px; color: #4F8C5C; font-weight: 800; }
+  .linha-conta { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; font: inherit;
+    border: 1.5px solid #EAEFE8; cursor: pointer; }
+  .linha-conta > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .linha-conta-valor { flex: none; display: flex; align-items: center; gap: 6px; font-size: 17px; font-weight: 800; color: #226343; }
 `;
 
 export function paginaHTML({ titulo, descricao }) {
