@@ -444,6 +444,9 @@ function EspecialidadesVoluntario({ voluntario, todasAreas, aoSalvar }) {
     <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <strong>O que {voluntario.nome.split(' ')[0]} faz</strong>
       <p className="dica" style={{ margin: 0 }}>Marque os procedimentos deste voluntário. Na hora de agendar, só aparecem os dentistas marcados no procedimento escolhido.</p>
+      {marcadas.length === 0 && (
+        <p className="erro" style={{ margin: 0 }}>⚠ Nenhum procedimento marcado ainda — este voluntário não aparece nas listas de agendamento certas.</p>
+      )}
       <div className="caixas">
         {todasAreas.map(a => (
           <label key={a.nome} className={marcadas.includes(a.nome) ? 'caixa marcada' : 'caixa'} onClick={() => alterna(a.nome)}>
@@ -1476,12 +1479,25 @@ function TelaPrincipal({ usuario, aoSair }) {
                 </>
               )}
               <div className="titulo-com-botao"><h2>Voluntários</h2><button className="btn-mais" onClick={() => setTela('novoVoluntario')}>+ Adicionar</button></div>
+              {(() => {
+                const semProc = equipe.filter(v => !(v.procedimentos || []).length).length;
+                return semProc > 0 && (
+                  <div className="erro" style={{ background: '#FBE3DA', border: '1.5px solid #E8A08C', borderRadius: 14, padding: '11px 14px', marginBottom: 10 }}>
+                    ⚠ {semProc} voluntário{semProc === 1 ? '' : 's'} ainda sem procedimentos marcados — toque no cartão para marcar o que cada um faz.
+                  </div>
+                );
+              })()}
               {equipe.length ? equipe.map(v => (
                 <div className="cartao" key={v.id} onClick={() => setTela({ voluntario: v })} style={{ cursor: 'pointer' }}>
                   <div className="cartao-linha">
                     <Bolha nome={v.nome} />
                     <div>
-                      <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
+                      <div className="cartao-topo"><strong>{v.nome}</strong>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {!(v.procedimentos || []).length && <span className="chip aguardando">⚠ falta marcar procedimentos</span>}
+                          {v.ativo === false && <span className="chip aguardando">inativo</span>}
+                        </span>
+                      </div>
                       <p>{[v.ministerio, v.telefone].filter(Boolean).join(' · ')}</p>
                       {(v.procedimentos || []).length > 0 && <p className="obs">🦷 {v.procedimentos.join(' · ')}</p>}
                       <p className="obs">{agendamentos.filter(g => g.profissionalUid === v.id).length} agendamento(s) — toque para ver a agenda</p>
@@ -1552,7 +1568,7 @@ function TelaPrincipal({ usuario, aoSair }) {
           <span>Chat</span>
         </button>
         <button className={aba === 'voluntarios' ? 'ativo' : ''} onClick={() => setAba('voluntarios')}>
-          <span className="icone-aba"><Users size={22} />{voluntarios.some(v => v.status === 'pendente') && <i className="bolinha" />}</span>
+          <span className="icone-aba"><Users size={22} />{voluntarios.some(v => v.status === 'pendente' || (v.status !== 'recusado' && !(v.procedimentos || []).length)) && <i className="bolinha" />}</span>
           <span>Voluntár.</span>
         </button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
