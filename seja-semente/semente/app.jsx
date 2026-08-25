@@ -1806,6 +1806,26 @@ function App() {
     const { collection, addDoc, serverTimestamp } = fb.fns;
     addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
   }
+  // ─── Push: no aplicativo instalado, registra este iPhone para receber a
+  // chamada mesmo com o app fechado (a casca expõe __registrarPush; o token
+  // vai para aparelhos/{token} e o carteiro na nuvem faz o resto) ───
+  useEffect(() => {
+    if (!CONFIGURADO || !usuario || !window.__registrarPush) return;
+    const grava = (token) => {
+      if (!token) return;
+      const { doc, setDoc, serverTimestamp } = fb.fns;
+      setDoc(doc(fb.db, 'aparelhos', token), {
+        uid: usuario.uid, nome: usuario.nome || '', app: 'central',
+        aparelho: idAparelho(), atualizadoEm: serverTimestamp(),
+      }, { merge: true }).catch(() => {});
+    };
+    grava(window.__tokenPush);
+    const ouve = (e) => grava(e.detail);
+    window.addEventListener('token-push', ouve);
+    window.__registrarPush();
+    return () => window.removeEventListener('token-push', ouve);
+  }, [usuario?.uid]);
+
   // Chamar alguém da equipe: mesma tela de ligação, mas só nos aparelhos da
   // pessoa escolhida (paraUid)
   function chamarStaff(pessoa) {
