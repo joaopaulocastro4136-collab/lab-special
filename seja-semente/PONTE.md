@@ -301,3 +301,38 @@ um tipo novo pelo formulário de triagem). Documento único de configuração.
 
 Os `agendamentos` gravam também `duracaoMin` (minutos do procedimento no
 momento em que foi marcado) — a agenda mostra início–fim e avisa conflito.
+
+## Palmar (aplicativo dos gestores)
+
+O Palmar (https://seja-semente-palmar.web.app) lê tudo dos outros apps e
+coordena o projeto. Coleções próprias:
+
+### `palmar-usuarios/{uid}` / `palmar-codigos/{codigo}` / `palmar-autorizados/{email}`
+Mesmo esquema de acesso da central: o primeiro a entrar vira `fundador`;
+os demais entram com código gerado no Perfil do Palmar (prefixo `PM-`)
+ou e-mail pré-autorizado.
+
+### `acoes/{id}` — as ações (mutirões)
+| Campo | Tipo | Exemplo |
+|---|---|---|
+| `titulo` | string | `"Mutirão da Comunidade"` |
+| `data` | string | `"2026-08-30"` (AAAA-MM-DD) |
+| `local` | string | `"Igreja Central"` |
+| `status` | string | `planejada` · `iniciada` · `encerrada` |
+| `voluntariosUids` | lista | uids escalados |
+| `registros` | lista | atendimentos manuais `{pacienteNome, area, dentes, valor, em}` |
+| `criadaPorUid/Nome`, `criadaEm`, `iniciadaEm`, `encerradaEm` | — | |
+O relatório em tempo real cruza `atendimentos` (pela data) e
+`estoque-movimentos` (pelo `acaoId`).
+
+### `estoque/{id}` e `estoque-movimentos/{id}`
+Materiais: `{nome, quantidade, unidade, valor, minimo}` — quando
+`quantidade <= minimo` o Palmar alerta "em falta". Cada entrada/saída gera
+um movimento `{itemId, itemNome, delta, motivo, acaoId, acaoTitulo,
+valorUnit, em}` (histórico e custo por ação).
+
+### `config/procedimentos` (campos novos do Palmar)
+`valores: {nome: número}` — valor de cada procedimento em R$;
+`porDente: {nome: bool}` — quando true, o valor multiplica pelos dentes
+marcados na triagem do paciente. O financeiro soma os `atendimentos`
+concluídos por esses valores.

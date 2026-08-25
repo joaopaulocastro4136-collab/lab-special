@@ -1,5 +1,4 @@
-// Visual compartilhado dos aplicativos do Seja Semente (usado pelos build.mjs)
-export const CSS = `
+
   html, body { margin: 0; padding: 0; background: #F2F5EF; font-family: 'Manrope', sans-serif; color: #1E2B22; -webkit-text-size-adjust: 100%; overflow-x: hidden; }
   #root { min-height: 100vh; }
   * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; touch-action: manipulation; }
@@ -357,7 +356,7 @@ export const CSS = `
     box-shadow: 0 12px 34px rgba(30,43,34,0.20); max-width: 560px; margin: 0 auto; }
   nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; border: none; background: none; color: #8A968D; cursor: pointer; border-radius: 14px; }
   nav button svg { display: block; width: 20px; height: 20px; }
-  nav button span:last-child { font-size: 10px; font-weight: 800; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav button span:last-child { font-size: 10px; font-weight: 800; }
   nav button.ativo { color: #226343; background: #E5F3EA; }
   .icone-aba svg { display: block; }
 
@@ -481,75 +480,3 @@ export const CSS = `
   @keyframes ludo-confete { to { transform: translateY(108vh) rotate(720deg); } }
   .ludo-fogo { position: absolute; font-size: 46px; opacity: 0; animation: ludo-estouro 2.1s ease-out infinite; }
   @keyframes ludo-estouro { 0% { opacity: 0; transform: scale(0.3); } 18% { opacity: 1; transform: scale(1.25); } 55% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
-
-  /* ─── Registro do atendimento (a pasta do que foi feito) ─── */
-  .registro-feito { border-top: 1px solid #EAEFE8; padding: 9px 0 4px; }
-  .registro-feito:first-of-type { border-top: none; padding-top: 2px; }
-  .registro-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-
-  /* ─── Pasta da Prótese ─── */
-  .protese-trava { text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 22px 18px; }
-  .protese-cadeado { font-size: 44px; }
-
-  /* ─── Estoque ─── */
-  .estoque-repor { border: 1.5px solid #EEDCAC; background: #FFF6E3; display: flex; flex-direction: column; gap: 5px; }
-  .estoque-repor > strong { color: #7A5F1E; }
-  .estoque-repor-linha { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; color: #5C6B60; }
-  .estoque-repor-linha b { color: #B3402A; font-size: 13px; }
-  .estoque-item { padding: 12px 14px; }
-  .estoque-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .estoque-qtd { font-size: 17px; color: #226343; }
-  .estoque-qtd.baixo { color: #B3402A; }
-  .estoque-botoes { display: flex; gap: 6px; align-items: center; }
-  .estoque-botoes .btn-secundario { padding: 8px 11px; font-size: 13.5px; white-space: nowrap; }
-  .estoque-mexe { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #EAEFE8; flex-wrap: wrap; }
-  .estoque-mexe > span { font-size: 13.5px; font-weight: 700; color: #55645A; }
-  .estoque-mexe input { width: 52px; text-align: center; padding: 9px 4px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 16px; font-weight: 800; }
-  .estoque-passo { width: 36px; height: 38px; border: 1.5px solid #DBE3D8; border-radius: 11px; background: #fff; font-size: 19px; font-weight: 800; color: #226343; cursor: pointer; }
-  .estoque-mov { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid #F0F3EE; font-size: 13.5px; }
-  .estoque-mov:first-of-type { border-top: none; }
-  .mov-sinal { flex: none; min-width: 34px; text-align: center; border-radius: 9px; padding: 2px 5px; font-weight: 800; font-size: 12.5px; }
-  .mov-sinal.saida { background: #FBE3DA; color: #B3402A; }
-  .mov-sinal.entrada { background: #E5F3EA; color: #226343; }
-  .mov-texto { flex: 1; min-width: 0; color: #2C3830; }
-  .mov-quando { flex: none; color: #8A968D; font-size: 12px; }
-`;
-
-export function paginaHTML({ titulo, descricao }) {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="description" content="${descricao}">
-<title>${titulo}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="${titulo}">
-<meta name="theme-color" content="#2F7D4E">
-<link rel="manifest" href="manifest.webmanifest">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<style>${CSS}</style>
-</head>
-<body>
-<div id="root"></div>
-<script src="app.js"></script>
-</body>
-</html>
-`;
-}
-
-export function manifesto({ nome, descricao }) {
-  return {
-    name: nome,
-    short_name: nome,
-    description: descricao,
-    start_url: '.',
-    display: 'standalone',
-    background_color: '#2F7D4E',
-    theme_color: '#2F7D4E',
-    lang: 'pt-BR',
-    icons: [],
-  };
-}
