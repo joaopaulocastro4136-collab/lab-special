@@ -8,7 +8,8 @@
     "servir:semente": "node semente/serve.mjs",
     "build:semeador": "node semeador/build.mjs",
     "servir:semeador": "node semeador/serve.mjs",
-    "build:palmar": "node palmar/build.mjs"
+    "build:palmar": "node palmar/build.mjs",
+    "build:colheita": "node colheita/build.mjs"
   },
   "license": "ISC",
   "dependencies": {
