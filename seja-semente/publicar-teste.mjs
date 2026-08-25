@@ -31,7 +31,7 @@ async function api(metodo, caminho, corpo) {
 
 let deuErro = false;
 
-for (const BUNDLE of ['com.sejasemente.central', 'com.sejasemente.semeador']) {
+for (const BUNDLE of ['com.sejasemente.central', 'com.sejasemente.semeador', 'com.sejasemente.palmar']) {
   console.log(`\n══ ${BUNDLE} ══`);
 
   const apps = await api('GET', `/v1/apps?filter[bundleId]=${BUNDLE}`);

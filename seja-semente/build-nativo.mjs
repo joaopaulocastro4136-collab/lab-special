@@ -16,6 +16,7 @@ const qual = process.argv[2];
 const APPS = {
   semente: { pasta: 'nativo-central', titulo: 'Seja Semente', site: 'https://seja-semente-app.web.app' },
   semeador: { pasta: 'nativo-semeador', titulo: 'Semeador', site: 'https://seja-semente-semeador.web.app' },
+  palmar: { pasta: 'nativo-palmar', titulo: 'Palmar', site: 'https://seja-semente-palmar.web.app' },
 };
 const app = APPS[qual];
 if (!app) { console.error('Uso: node build-nativo.mjs semente|semeador'); process.exit(1); }

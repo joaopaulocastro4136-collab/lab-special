@@ -1,0 +1,13 @@
+{
+  "appId": "com.sejasemente.palmar",
+  "appName": "Palmar",
+  "webDir": "www",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    }
+  }
+}

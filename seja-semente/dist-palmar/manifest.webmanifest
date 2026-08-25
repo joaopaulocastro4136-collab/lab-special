@@ -1,0 +1,11 @@
+{
+  "name": "Palmar",
+  "short_name": "Palmar",
+  "description": "Gestão do projeto Seja Semente: ações, equipe, estoque, valores e chamadas.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#2F7D4E",
+  "theme_color": "#2F7D4E",
+  "lang": "pt-BR",
+  "icons": []
+}
