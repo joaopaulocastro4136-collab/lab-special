@@ -18,7 +18,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
@@ -26,6 +26,8 @@ import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
 import { TelaJogos } from '../ludo.jsx';
+import { TelaProtese } from '../protese.jsx';
+import { Estoque } from '../estoque.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -1066,10 +1068,11 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   const [fichaId, setFichaId] = useState(null);
   const [fichaPaciente, setFichaPaciente] = useState(null);
   const [fichaArquivos, setFichaArquivos] = useState([]);
+  const [fichaProcedimentos, setFichaProcedimentos] = useState([]);
   const [demoArquivos, setDemoArquivos] = useState({});
 
   useEffect(() => {
-    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); return; }
+    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); setFichaProcedimentos([]); return; }
     if (!CONFIGURADO) {
       setFichaPaciente(pacientes.find(p => p.id === fichaId) || null);
       setFichaArquivos(demoArquivos[fichaId] || []);
@@ -1078,7 +1081,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
     const { doc, onSnapshot, collection, query, orderBy } = fb.fns;
     const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
     const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { s1(); s2(); };
+    const s3 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'procedimentos'), orderBy('criadoEm', 'desc')), snap => setFichaProcedimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { s1(); s2(); s3(); };
   }, [fichaId, pacientes, demoArquivos]);
 
   async function salvarArquivo(dataUrl, legenda) {
@@ -1094,6 +1098,10 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   // ─── Telas por cima das abas ───
   if (tela?.triagem) return <FormTriagem paciente={tela.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTela(null)} aoSalvar={(t, fts) => salvarTriagem(tela.triagem, t, fts)} />;
   if (tela === 'jogos') return <TelaJogos usuario={{ uid: usuario.uid, nome: usuario.nome, avatar: meuPerfil.avatar || '', fotoMini: meuPerfil.fotoMini || meuPerfil.foto || '' }} fb={CONFIGURADO ? fb : null} aoVoltar={() => setTela(null)} />;
+  if (tela === 'protese') return <TelaProtese usuario={usuario} central pacientes={pacientes} agendamentos={agendamentos}
+    voluntarios={voluntarios.filter(v => v.status === 'ativo' || v.ativo === true)}
+    duracao={duracaoDe('Prótese')} corDaArea={nome => todasAreas.find(a => a.nome === nome)?.cor || '#F0A912'} duracaoDe={duracaoDe}
+    aoVoltar={() => setTela(null)} aoAbrirFicha={id => { setTela(null); setFichaId(id); }} />;
   if (tela === 'procedimentos') return (
     <div className="folha">
       <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
@@ -1131,7 +1139,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
     </div>
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
-    podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
+    podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })}
+    procedimentosFeitos={fichaProcedimentos} />;
   if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   // ─── Chamadas de grupo (convocações) ───
   async function criarConvocacao(titulo) {
@@ -1472,6 +1481,14 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
                 <ChevronRight size={20} className="tracejada-seta" strokeWidth={2.6} />
               </button>
             </div>
+            <button className="caixa-entrada" style={{ marginTop: 10 }} onClick={() => setTela('protese')}>
+              <span className="entrada-icone" style={{ background: '#FCEFD2', color: '#C4880C' }}><Crown size={23} strokeWidth={2.2} /></span>
+              <span className="entrada-texto">
+                <strong>Pasta da Prótese</strong>
+                <span>Pacientes, agenda e o time liberado para prótese</span>
+              </span>
+              <ChevronRight size={20} strokeWidth={2.6} className="entrada-seta" />
+            </button>
           </>
         )}
 
@@ -1587,6 +1604,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
           );
         })()}
 
+        {aba === 'estoque' && (
+          <Estoque central usuario={usuario} fb={CONFIGURADO ? fb : null} />
+        )}
         {aba === 'perfil' && (
           <>
             <h2>Meu perfil</h2>
@@ -1652,6 +1672,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
           <span className="icone-aba"><Users size={22} />{voluntarios.some(v => v.status === 'pendente' || (v.status !== 'recusado' && !(v.procedimentos || []).length)) && <i className="bolinha" />}</span>
           <span>Voluntár.</span>
         </button>
+        <button className={aba === 'estoque' ? 'ativo' : ''} onClick={() => setAba('estoque')}><Package size={22} /><span>Estoque</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
     </div>

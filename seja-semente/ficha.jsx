@@ -126,7 +126,7 @@ async function gerarFolhaA4(paciente, arquivos) {
   return c.toDataURL('image/png');
 }
 
-export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem, aoChamar, avisoChamar, atendimentoAberto, aoEncerrar }) {
+export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem, aoChamar, avisoChamar, atendimentoAberto, aoEncerrar, procedimentosFeitos = [], aoRegistrar }) {
   const [novaFoto, setNovaFoto] = useState(null);
   const [legenda, setLegenda] = useState('');
   const [vendo, setVendo] = useState(null);
@@ -266,6 +266,31 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
           <Arcada marcados={t.dentes || []} gengiva={t.gengiva || []} compacta />
           {t.dentes?.length > 0 && <p className="obs" style={{ marginTop: 8 }}>Dentes: {t.dentes.join(', ')}</p>}
           {t.gengiva?.length > 0 && <p className="obs" style={{ marginTop: 4 }}>Gengiva (capinha rosa): {t.gengiva.join(', ')}</p>}
+        </div>
+      )}
+
+      {(procedimentosFeitos.length > 0 || aoRegistrar) && (
+        <div className="cartao">
+          <div className="cartao-topo" style={{ marginBottom: procedimentosFeitos.length ? 8 : 0 }}>
+            <strong>🦷 O que já foi feito ({procedimentosFeitos.length})</strong>
+            {aoRegistrar && <button className="btn-triagem" onClick={aoRegistrar}>+ Registrar</button>}
+          </div>
+          {procedimentosFeitos.map(r => (
+            <div key={r.id} className="registro-feito">
+              <div className="registro-topo">
+                {r.area && <span className="chip concluído">{r.area}</span>}
+                <span className="obs">por <b>{(r.autorNome || '').split(' ')[0]}</b>{quandoCurto(r.criadoEm)}</span>
+              </div>
+              {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
+              {r.dentes?.length > 0 && (
+                <>
+                  <Arcada marcados={r.dentes} compacta />
+                  <p className="obs" style={{ margin: '2px 0 0' }}>Dentes: {r.dentes.join(', ')}</p>
+                </>
+              )}
+            </div>
+          ))}
+          {!procedimentosFeitos.length && <p className="dica" style={{ margin: '6px 0 0' }}>Depois do atendimento, registre aqui o que foi feito — vira o histórico do paciente.</p>}
         </div>
       )}
 
