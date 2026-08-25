@@ -50,7 +50,10 @@ if (!team) process.exit(1);
 
 // ─── 3. .env da função (a chave APNs pode ainda não existir) ───
 const P8 = process.env.APNS_KEY_P8 || '';
-const KEY_ID = process.env.APNS_KEY_ID || '';
+// Se o segredo APNS_KEY_ID vier vazio ou torto, usa o Key ID confirmado no
+// teste da porta da Apple (chave "Empurre Especial", equipe toda)
+const idBruto = (process.env.APNS_KEY_ID || '').trim();
+const KEY_ID = /^[A-Z0-9]{10}$/.test(idBruto) ? idBruto : 'J54S2X2779';
 const env = [
   `APPLE_TEAM_ID=${team}`,
   `APNS_KEY_ID=${KEY_ID}`,
