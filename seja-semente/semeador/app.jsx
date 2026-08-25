@@ -358,7 +358,7 @@ function Campo({ rotulo, children }) {
 
 // TRIAGEM: o formulário de diagnóstico do paciente (o mesmo da central —
 // o que o dentista salvar aqui aparece lá na hora, e vice-versa)
-function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar }) {
+function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarCondicao, aoSalvar, aoCancelar }) {
   const inicial = paciente.triagem;
   const [f, setF] = useState({
     areas: inicial ? (Array.isArray(inicial.areas) ? inicial.areas : (inicial.area ? [inicial.area] : [])) : [],
@@ -381,6 +381,14 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
     setF(atual => ({ ...atual, areas: [...atual.areas, nome] }));
     setNovoTipo('');
   }
+  const [novaCondicao, setNovaCondicao] = useState('');
+  async function adicionarCondicao() {
+    const nome = novaCondicao.trim();
+    if (!nome) return;
+    await aoAdicionarCondicao(nome);
+    setF(atual => ({ ...atual, saude: atual.saude.includes(nome) ? atual.saude : [...atual.saude, nome] }));
+    setNovaCondicao('');
+  }
   return (
     <div className="folha">
       <h2>Triagem — {paciente.nome}</h2>
@@ -399,12 +407,16 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
       </div>
       <div className="campo"><span>Saúde do paciente (marque o que tiver)</span>
         <div className="caixas">
-          {CONDICOES_SAUDE.map(c => (
+          {condicoes.map(c => (
             <label key={c} className={f.saude.includes(c) ? 'caixa marcada' : 'caixa'}>
               <input type="checkbox" checked={f.saude.includes(c)} onChange={() => alternaSaude(c)} />
               {c}
             </label>
           ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <input style={{ flex: 1 }} value={novaCondicao} onChange={e => setNovaCondicao(e.target.value)} placeholder="Outra condição? Digite (ex.: Asma)" onKeyDown={e => e.key === 'Enter' && adicionarCondicao()} />
+          <button className="btn-mais" onClick={adicionarCondicao} disabled={!novaCondicao.trim()}>+ Add</button>
         </div>
       </div>
       <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
@@ -521,6 +533,17 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
     ...(configProc.personalizados || []).map(p => ({ nome: p.nome, detalhe: p.detalhe || '', Icone: Tag, cor: corDoNome(p.nome), personalizado: true })),
   ];
   const duracaoDe = nome => configProc.duracoes?.[nome] || DURACAO_PADRAO;
+
+  // Condições de saúde: as fixas + as adicionadas pela equipe (ex.: Asma)
+  const todasCondicoes = [...CONDICOES_SAUDE, ...(configProc.condicoesSaude || [])];
+  async function adicionarCondicao(nome) {
+    if (todasCondicoes.some(c => c.toLowerCase() === nome.toLowerCase())) return;
+    const nova = { ...configProc, condicoesSaude: [...(configProc.condicoesSaude || []), nome] };
+    setConfigProc(nova);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc } = fb.fns;
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
+  }
   async function adicionarTipo(nome) {
     if (todasAreas.some(a => a.nome.toLowerCase() === nome.toLowerCase())) return;
     const nova = { ...configProc, personalizados: [...(configProc.personalizados || []), { nome, detalhe: '' }] };
@@ -623,7 +646,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
 
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
 
-  if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} aoAdicionarTipo={adicionarTipo} aoCancelar={() => setTelaTriagem(null)} aoSalvar={t => salvarTriagem(telaTriagem.triagem, t)} />;
+  if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTelaTriagem(null)} aoSalvar={t => salvarTriagem(telaTriagem.triagem, t)} />;
 
   if (telaTriagem === 'entrada') return (
     <div className="folha">
