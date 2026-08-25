@@ -579,7 +579,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [dia, setDia] = useState(hojeISO());
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
-  const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', observacoes: '', prioridade: false });
+  const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
   const [fotoNovo, setFotoNovo] = useState('');
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
@@ -777,7 +777,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     const maior = Math.max(0, ...pacientes.map(p => parseInt(String(p.codigo || '').replace(/\D/g, ''), 10) || 0));
     const codigo = 'SS-' + String(maior + 1).padStart(4, '0');
     await salvar('pacientes', { ...novo, nome, codigo, foto: fotoNovo || '' }, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes);
-    setNovo({ nome: '', idade: '', telefone: '', observacoes: '', prioridade: false });
+    setNovo({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
     setFotoNovo('');
     setCadastradoMsg(`${nome} cadastrado com o código ${codigo}! Agora é só fazer a triagem.`);
     setTimeout(() => setCadastradoMsg(''), 6000);
@@ -1145,26 +1145,48 @@ function TelaPrincipal({ usuario, aoSair }) {
           <>
             <h2>Cadastro</h2>
             {cadastradoMsg && <div className="banner-ok">✓ {cadastradoMsg}</div>}
+            {(() => {
+              // Tudo obrigatório (menos as observações): sem foto, nome,
+              // idade, telefone, CPF e endereço, o cadastro NÃO salva
+              const cpfOk = novo.cpf.replace(/\D/g, '').length === 11;
+              const faltando = [
+                !fotoNovo && 'foto do rosto',
+                !novo.nome.trim() && 'nome',
+                !novo.idade.trim() && 'idade',
+                !novo.telefone.trim() && 'telefone',
+                !cpfOk && (novo.cpf.trim() ? 'CPF completo (11 números)' : 'CPF'),
+                !novo.endereco.trim() && 'endereço',
+              ].filter(Boolean);
+              return (
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 {fotoNovo
                   ? <img src={fotoNovo} alt="rosto" style={{ width: 74, height: 74, borderRadius: 22, objectFit: 'cover' }} />
-                  : <div style={{ width: 74, height: 74, borderRadius: 22, background: '#EAF2EC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7B897F' }}><Camera size={26} /></div>}
+                  : <div style={{ width: 74, height: 74, borderRadius: 22, background: '#FCEEE9', border: '1.5px dashed #E8A08C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C23A1E' }}><Camera size={26} /></div>}
                 <label className="btn-acao" style={{ cursor: 'pointer' }}>
-                  <Camera size={16} /> {fotoNovo ? 'Trocar foto' : 'Foto do rosto (opcional)'}
+                  <Camera size={16} /> {fotoNovo ? 'Trocar foto' : 'Foto do rosto (obrigatória)'}
                   <input type="file" accept="image/*" onChange={fotoDoCadastro} style={{ display: 'none' }} />
                 </label>
                 {fotoNovo && <button className="btn-acao vermelho" onClick={() => setFotoNovo('')}>✕</button>}
               </div>
               <Campo rotulo="Nome do paciente"><input value={novo.nome} onChange={e => setNovo({ ...novo, nome: e.target.value })} /></Campo>
               <Campo rotulo="Idade"><input value={novo.idade} onChange={e => setNovo({ ...novo, idade: e.target.value })} inputMode="numeric" /></Campo>
-              <Campo rotulo="Telefone"><input value={novo.telefone} onChange={e => setNovo({ ...novo, telefone: e.target.value })} inputMode="tel" /></Campo>
-              <Campo rotulo="Observações"><textarea rows={3} value={novo.observacoes} onChange={e => setNovo({ ...novo, observacoes: e.target.value })} /></Campo>
+              <Campo rotulo="Telefone"><input value={novo.telefone} onChange={e => setNovo({ ...novo, telefone: e.target.value })} inputMode="tel" placeholder="(11) 91234-5678" /></Campo>
+              <Campo rotulo="CPF"><input value={novo.cpf} onChange={e => setNovo({ ...novo, cpf: e.target.value })} inputMode="numeric" placeholder="000.000.000-00" /></Campo>
+              <Campo rotulo="Endereço"><input value={novo.endereco} onChange={e => setNovo({ ...novo, endereco: e.target.value })} placeholder="Rua, número, bairro e cidade" /></Campo>
+              <Campo rotulo="Observações (opcional)"><textarea rows={3} value={novo.observacoes} onChange={e => setNovo({ ...novo, observacoes: e.target.value })} /></Campo>
               <label className={novo.prioridade ? 'caixa marcada' : 'caixa'} onClick={() => setNovo({ ...novo, prioridade: !novo.prioridade })} style={{ alignSelf: 'flex-start' }}>
                 <Flag size={15} style={{ color: '#C23A1E' }} /> Prioridade — fura a fila do agendamento
               </label>
-              <button className="btn-principal" style={{ maxWidth: 'none' }} disabled={!novo.nome.trim()} onClick={cadastrarPaciente}>Cadastrar paciente</button>
+              {faltando.length > 0 && (
+                <div className="erro" style={{ background: '#FBE3DA', border: '1.5px solid #E8A08C', borderRadius: 14, padding: '11px 14px' }}>
+                  Falta preencher: {faltando.join(', ')}.
+                </div>
+              )}
+              <button className="btn-principal" style={{ maxWidth: 'none' }} disabled={faltando.length > 0} onClick={cadastrarPaciente}>Cadastrar paciente</button>
             </div>
+              );
+            })()}
             <p className="dica" style={{ marginTop: 10 }}>Depois do cadastro, o próximo passo é a aba Triagem.</p>
           </>
         )}

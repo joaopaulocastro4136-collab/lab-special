@@ -101,6 +101,8 @@ async function gerarFolhaA4(paciente, arquivos) {
   linha('Nome', paciente.nome);
   linha('Idade', paciente.idade ? `${paciente.idade} anos` : '');
   linha('Telefone', paciente.telefone);
+  linha('CPF', paciente.cpf);
+  linha('Endereço', paciente.endereco);
   linha('Situação', paciente.status);
   linha('Procedimentos', areasDaTriagem(t).join(', '));
   linha('Saúde', t ? [...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ') : '');
@@ -194,6 +196,8 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       <label className="campo"><span>Nome</span><input value={editando.nome} onChange={e => setEditando({ ...editando, nome: e.target.value })} /></label>
       <label className="campo"><span>Idade</span><input value={editando.idade} onChange={e => setEditando({ ...editando, idade: e.target.value })} inputMode="numeric" /></label>
       <label className="campo"><span>Telefone</span><input value={editando.telefone} onChange={e => setEditando({ ...editando, telefone: e.target.value })} inputMode="tel" /></label>
+      <label className="campo"><span>CPF</span><input value={editando.cpf} onChange={e => setEditando({ ...editando, cpf: e.target.value })} inputMode="numeric" placeholder="000.000.000-00" /></label>
+      <label className="campo"><span>Endereço</span><input value={editando.endereco} onChange={e => setEditando({ ...editando, endereco: e.target.value })} placeholder="Rua, número, bairro e cidade" /></label>
       <label className="campo"><span>Observações</span><textarea rows={3} value={editando.observacoes} onChange={e => setEditando({ ...editando, observacoes: e.target.value })} /></label>
       <label className={editando.prioridade ? 'caixa marcada' : 'caixa'} onClick={() => setEditando({ ...editando, prioridade: !editando.prioridade })} style={{ alignSelf: 'flex-start' }}>
         ⚑ Prioridade — fura a fila do agendamento
@@ -226,7 +230,8 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
                 {paciente.codigo && <span className="chip concluído">{paciente.codigo}</span>}
               </span>
             </div>
-            <p className="obs">{[paciente.idade ? `${paciente.idade} anos` : '', paciente.telefone].filter(Boolean).join(' · ')}</p>
+            <p className="obs">{[paciente.idade ? `${paciente.idade} anos` : '', paciente.telefone, paciente.cpf ? `CPF ${paciente.cpf}` : ''].filter(Boolean).join(' · ')}</p>
+            {paciente.endereco && <p className="obs">📍 {paciente.endereco}</p>}
             {areas.length > 0 && <p>{areas.join(' · ')}{t?.profissionalNome ? ` · com ${t.profissionalNome}` : ''}</p>}
             {t && (t.saude?.length > 0 || t.outrasCondicoes) && (
               <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ')}</p>
@@ -238,7 +243,7 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       </div>
 
       <div className="linha-acoes">
-        {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', observacoes: paciente.observacoes || '', prioridade: !!paciente.prioridade })}><Pencil size={16} /> Editar</button>}
+        {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', cpf: paciente.cpf || '', endereco: paciente.endereco || '', observacoes: paciente.observacoes || '', prioridade: !!paciente.prioridade })}><Pencil size={16} /> Editar</button>}
         {podeEditar && aoEditarTriagem && <button className="btn-acao" onClick={aoEditarTriagem}><Pencil size={16} /> Triagem</button>}
         <button className="btn-acao" onClick={compartilharA4}><Printer size={16} /> Ficha A4</button>
         {podeEditar && <button className="btn-acao vermelho" onClick={apagar}><Trash2 size={16} /> Apagar</button>}
