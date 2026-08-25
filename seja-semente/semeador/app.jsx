@@ -17,6 +17,7 @@ import { TelaChamada } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
+import { TelaJogos } from '../ludo.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -620,6 +621,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
 
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
+  const [telaJogos, setTelaJogos] = useState(false);    // caixinha de Jogos do Perfil
   const [buscaArea, setBuscaArea] = useState('');
   const [buscaTriagem, setBuscaTriagem] = useState(''); // pesquisa geral de paciente na aba Triagem
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
@@ -758,6 +760,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
     return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); };
   }, [usuario.uid]);
 
+
+  if (telaJogos) return <TelaJogos usuario={{ uid: usuario.uid, nome: usuario.nome, avatar: usuario.avatar || '', fotoMini: usuario.fotoMini || usuario.foto || '' }} fb={CONFIGURADO ? fb : null} aoVoltar={() => setTelaJogos(false)} />;
 
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     aoChamar={() => chamarPaciente(fichaPaciente)}
@@ -956,6 +960,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
               <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
               <SeletorAvatar nome={usuario.nome} foto={usuario.foto} avatar={usuario.avatar} aoSalvar={aoSalvarPerfil} />
             </div>
+            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaJogos(true)}>🎮 Jogos</button>
+            <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
           </>
         )}
