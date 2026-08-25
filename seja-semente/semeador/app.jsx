@@ -177,6 +177,9 @@ function TelaLogin({ aoEntrarDemo }) {
       return;
     }
     setCarregando(true);
+    // O Google deve sempre PERGUNTAR qual conta usar — sem isso, depois de
+    // sair ele entra de novo direto na última conta
+    const provedor = () => { const p = provedor(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
     try {
       // No aplicativo instalado, usa a tela de contas do próprio iPhone;
       // no navegador, a janelinha do Google (com plano B de redirect)
@@ -193,7 +196,7 @@ function TelaLogin({ aoEntrarDemo }) {
         // novos bloqueiam a volta e a pessoa ficava presa na tela do
         // Firebase sem entrar. A janelinha funciona em qualquer endereço.
         try {
-          await fb.fns.signInWithPopup(fb.auth, new fb.fns.GoogleAuthProvider());
+          await fb.fns.signInWithPopup(fb.auth, provedor());
         } catch (e2) {
           const cod = e2?.code || '';
           if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') {
@@ -202,7 +205,7 @@ function TelaLogin({ aoEntrarDemo }) {
           }
           if (cod === 'auth/popup-blocked') {
             if (window.location.hostname === 'seja-semente-app.firebaseapp.com') {
-              await fb.fns.signInWithRedirect(fb.auth, new fb.fns.GoogleAuthProvider());
+              await fb.fns.signInWithRedirect(fb.auth, provedor());
               return; // a página vai para o Google
             }
             setCarregando(false);
@@ -1040,6 +1043,7 @@ function App() {
   }
 
   async function sair() {
+    try { await window.__sairNativoGoogle?.(); } catch (e) { /* ponte antiga sem sair */ }
     if (CONFIGURADO) await fb.fns.signOut(fb.auth);
     setConta(null);
     setCadastro(null);
