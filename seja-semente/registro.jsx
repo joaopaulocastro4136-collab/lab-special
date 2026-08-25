@@ -11,11 +11,24 @@
 //  Guardado em pacientes/{id}/procedimentos (fotos entram nos arquivos).
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { ChevronLeft, Camera } from 'lucide-react';
+import { ChevronLeft, Camera, Images } from 'lucide-react';
 import { Arcada } from './dentes.jsx';
 import { comprimirImagem } from './ficha.jsx';
 
 function FotoAntesDepois({ rotulo, foto, aoTrocar, aoLimpar }) {
+  // Dois caminhos para a mesma foto: TIRAR na hora (abre a câmera direto) ou
+  // BUSCAR uma que já está no celular — vai que na hora do atendimento não
+  // deu para tirar pelo aplicativo e a foto ficou só na galeria.
+  const pegar = async e => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let dataUrl = await comprimirImagem(file);
+      if (dataUrl.length > 900000) dataUrl = await comprimirImagem(file, 0.5, 800);
+      aoTrocar(dataUrl);
+    } catch (err) { /* imagem ilegível: ignora */ }
+  };
   return (
     <div className="foto-ad">
       <span className="foto-ad-rotulo">{rotulo}</span>
@@ -25,21 +38,18 @@ function FotoAntesDepois({ rotulo, foto, aoTrocar, aoLimpar }) {
           <button type="button" className="btn-remover" onClick={aoLimpar}>✕</button>
         </div>
       ) : (
-        <label className="foto-ad-botao">
-          <Camera size={20} />
-          <span>Tirar / escolher</span>
-          <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-            onChange={async e => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              try {
-                let dataUrl = await comprimirImagem(file);
-                if (dataUrl.length > 900000) dataUrl = await comprimirImagem(file, 0.5, 800);
-                aoTrocar(dataUrl);
-              } catch (err) { /* imagem ilegível: ignora */ }
-            }} />
-        </label>
+        <div className="foto-ad-vazia">
+          <label className="foto-ad-botao">
+            <Camera size={19} />
+            <span>Tirar foto</span>
+            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pegar} />
+          </label>
+          <label className="foto-ad-botao secundario">
+            <Images size={19} />
+            <span>Da galeria</span>
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pegar} />
+          </label>
+        </div>
       )}
     </div>
   );
