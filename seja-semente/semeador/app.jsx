@@ -503,6 +503,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
       pacienteId: p.id, pacienteNome: p.nome,
       profissionalUid: usuario.uid, profissionalNome: usuario.nome || '',
       data: espaco.data, hora: espaco.hora, origem: 'chat',
+      marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '',
     } : null;
     const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '', agendaDia: espaco ? dataBonita(espaco.data) : '', agendaHora: espaco?.hora || '' };
     if (!CONFIGURADO) {
@@ -556,6 +557,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
     setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
   }
   async function salvarTriagem(paciente, triagem) {
+    // Fica registrado quem fez a triagem (e quando), vinculado à conta
+    triagem = { ...triagem, feitaPorUid: usuario.uid, feitaPorNome: usuario.nome || '', feitaEm: new Date() };
     if (!CONFIGURADO) {
       setTodosPacientes(ps => ps.map(p => p.id === paciente.id ? { ...p, triagem, status: 'triado' } : p));
       setTelaTriagem(null);

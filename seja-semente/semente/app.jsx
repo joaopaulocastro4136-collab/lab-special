@@ -752,6 +752,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       pacienteId: p.id, pacienteNome: p.nome,
       profissionalUid: usuario.uid, profissionalNome: usuario.nome || '',
       data: espaco.data, hora: espaco.hora, origem: 'chat',
+      marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '',
     } : null;
     const aceite = { aceitoPorUid: usuario.uid, aceitoPorNome: usuario.nome || '', agendaDia: espaco ? dataBonita(espaco.data) : '', agendaHora: espaco?.hora || '' };
     if (!CONFIGURADO) {
@@ -812,7 +813,7 @@ function TelaPrincipal({ usuario, aoSair }) {
     // Código do paciente: SS-0001, SS-0002… (continua do maior já usado)
     const maior = Math.max(0, ...pacientes.map(p => parseInt(String(p.codigo || '').replace(/\D/g, ''), 10) || 0));
     const codigo = 'SS-' + String(maior + 1).padStart(4, '0');
-    await salvar('pacientes', { ...novo, nome, codigo, foto: fotoNovo || '' }, { status: 'cadastrado', triagem: null, criadoEm: new Date() }, setPacientes);
+    await salvar('pacientes', { ...novo, nome, codigo, foto: fotoNovo || '' }, { status: 'cadastrado', triagem: null, criadoEm: new Date(), cadastradoPorUid: usuario.uid, cadastradoPorNome: usuario.nome || '' }, setPacientes);
     setNovo({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
     setFotoNovo('');
     setCadastradoMsg(`${nome} cadastrado com o código ${codigo}! Agora é só fazer a triagem.`);
@@ -850,6 +851,8 @@ function TelaPrincipal({ usuario, aoSair }) {
   }
 
   async function salvarTriagem(paciente, triagem) {
+    // Fica registrado quem fez a triagem (e quando), vinculado à conta
+    triagem = { ...triagem, feitaPorUid: usuario.uid, feitaPorNome: usuario.nome || '', feitaEm: new Date() };
     if (!CONFIGURADO) {
       setPacientes(ps => ps.map(p => p.id === paciente.id ? { ...p, triagem, status: 'triado' } : p));
       setTela(null);
@@ -998,7 +1001,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date() }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 

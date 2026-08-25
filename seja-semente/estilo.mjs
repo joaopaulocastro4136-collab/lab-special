@@ -138,6 +138,11 @@ export const CSS = `
   .opcao-dente { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 7px; border: 1.5px solid #DBE3D8; border-radius: 15px; background: #fff; cursor: pointer; font-size: 10.5px; font-weight: 800; color: #55645A; }
   .opcao-dente.marcada { border-color: #2F7D4E; background: #E9F5EE; box-shadow: 0 0 0 3px rgba(47,125,78,0.14); }
 
+  /* ── Autoria: quem fez o quê ── */
+  .autoria { margin-top: 8px !important; background: #F2F5EF; border-radius: 10px; padding: 7px 10px; line-height: 1.6; }
+  .foto-mini { position: relative; }
+  .foto-autor { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(20,30,24,0.55); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+
   /* ── Odontograma (arcada de dentes da triagem/ficha) ── */
   .arcada-caixa { background: #fff; border-radius: 18px; border: 1px solid rgba(30,43,34,0.06); box-shadow: 0 5px 16px rgba(30,43,34,0.06); padding: 12px 6px; }
   .arcada { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }

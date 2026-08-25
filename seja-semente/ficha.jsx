@@ -29,6 +29,11 @@ export function comprimirImagem(file, qualidade = 0.72, max = 1000) {
   });
 }
 
+function quandoCurto(v) {
+  const d = v?.toDate ? v.toDate() : v instanceof Date ? v : null;
+  return d ? ` em ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}` : '';
+}
+
 function areasDaTriagem(t) {
   if (!t) return [];
   if (Array.isArray(t.areas)) return t.areas;
@@ -109,6 +114,8 @@ async function gerarFolhaA4(paciente, arquivos) {
   linha('Dentes do tratamento', (t?.dentes || []).join(', '));
   linha('Saúde', t ? [...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ') : '');
   linha('Observações', paciente.observacoes);
+  linha('Cadastrado por', paciente.cadastradoPorNome);
+  linha('Triagem feita por', t?.feitaPorNome ? `${t.feitaPorNome}${quandoCurto(t.feitaEm)}` : '');
   linha('Fotos registradas', arquivos.length ? `${arquivos.length} foto(s) no aplicativo` : '');
 
   const agora = new Date();
@@ -239,6 +246,13 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
               <p className="saude"><TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />{[...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ')}</p>
             )}
             {paciente.observacoes && <p className="obs">{paciente.observacoes}</p>}
+            {(paciente.cadastradoPorNome || t?.feitaPorNome) && (
+              <p className="obs autoria">
+                {paciente.cadastradoPorNome && <>📝 Cadastrado por <b>{paciente.cadastradoPorNome}</b>{quandoCurto(paciente.criadoEm)}</>}
+                {paciente.cadastradoPorNome && t?.feitaPorNome && <br />}
+                {t?.feitaPorNome && <>🩺 Triagem por <b>{t.feitaPorNome}</b>{quandoCurto(t.feitaEm)}</>}
+              </p>
+            )}
             {!t && <p className="obs">Ainda sem triagem.</p>}
           </div>
         </div>
@@ -286,6 +300,7 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
           {arquivos.map(a => (
             <button key={a.id} className="foto-mini" onClick={() => setVendo(a)}>
               <img src={a.dataUrl} alt={a.legenda || 'foto'} />
+              {a.autorNome && <span className="foto-autor">{a.autorNome.split(' ')[0]}</span>}
             </button>
           ))}
         </div>
