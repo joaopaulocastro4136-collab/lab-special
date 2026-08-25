@@ -515,11 +515,17 @@
   .antes-depois-par { display: flex; gap: 10px; }
   .foto-ad { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .foto-ad-rotulo { font-size: 11.5px; font-weight: 800; letter-spacing: 1.5px; color: #55645A; }
-  .foto-ad-botao { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 110px;
+  .foto-ad-vazia { display: flex; flex-direction: column; gap: 6px; }
+  .foto-ad-botao { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 76px;
     border: 2px dashed #BFCDC2; border-radius: 14px; background: #F7FAF6; color: #55645A; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .foto-ad-botao.secundario { height: 52px; flex-direction: row; gap: 7px; border-style: solid; border-color: #DBE3D8; background: #fff; font-size: 12.5px; }
   .foto-ad-tem { position: relative; }
   .foto-ad-tem img { width: 100%; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
   .foto-ad-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+  .ja-atendidos { margin-top: 10px; }
+  .ja-atendidos summary { cursor: pointer; font-size: 14px; font-weight: 800; color: #55645A; padding: 9px 12px; background: #EDF3EC; border-radius: 12px; list-style: none; }
+  .ja-atendidos summary::-webkit-details-marker { display: none; }
+  .horario-item.feito { opacity: 0.62; border-left-color: #9AA79F; }
   .antes-depois-par.ver { margin-top: 8px; }
   .foto-ad-mini { flex: 1; position: relative; border: none; background: none; padding: 0; cursor: pointer; min-width: 0; }
   .foto-ad-mini img { width: 100%; height: 96px; object-fit: cover; border-radius: 12px; display: block; }

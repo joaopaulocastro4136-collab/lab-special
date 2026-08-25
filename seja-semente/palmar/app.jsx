@@ -1538,6 +1538,11 @@ function FormNota({ acoes, acaoInicial, aoCancelar, aoSalvar }) {
           <input type="file" accept="image/*" capture="environment" onChange={pegarFoto} style={{ display: 'none' }} />
         </label>
       </div>
+      {/* Vai que a nota já foi fotografada antes e está na galeria */}
+      <label className="btn-secundario" style={{ cursor: 'pointer', textAlign: 'center', display: 'block', marginBottom: 10 }}>
+        🖼 Escolher da galeria
+        <input type="file" accept="image/*" onChange={pegarFoto} style={{ display: 'none' }} />
+      </label>
       {f.chave && <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
         <div className="cartao-topo"><strong>✓ Nota real (QR lido)</strong><span className="chip concluído">…{f.chave.slice(-8)}</span></div>
         <p className="obs" style={{ margin: 0 }}>Chave: {f.chave}</p>

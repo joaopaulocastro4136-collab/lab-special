@@ -533,6 +533,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       ...(t.atendimentoId ? { atendimentoId: t.atendimentoId } : {}),
     };
     const rotuloArea = resto.area || 'atendimento';
+    // Registrou? Então o horário dele sai da lista de espera de hoje —
+    // vale nos dois caminhos (com e sem Firebase)
+    marcarAgendamentoAtendido(t.pacienteId);
     if (!CONFIGURADO) {
       const novosArq = [];
       if (fotoAntes) novosArq.push({ id: 'fa' + Math.floor(Math.random() * 1e9), dataUrl: fotoAntes, legenda: `Antes — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
@@ -542,18 +545,27 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       if (t.atendimentoId) setMeusAtendimentos(as => as.map(a => a.id === t.atendimentoId ? { ...a, registrado: true } : a));
       return;
     }
-    const { collection, addDoc, doc, updateDoc, serverTimestamp } = fb.fns;
+    const { collection, addDoc, doc, setDoc, updateDoc, serverTimestamp } = fb.fns;
+    // IMPORTANTE: nada de ESPERAR o servidor aqui. O Firestore só responde a
+    // uma gravação quando ela chega na nuvem — num sinal ruim isso demora ou
+    // nunca chega, e o botão ficava "Salvando…" para sempre. A pessoa achava
+    // que não tinha salvado e preenchia tudo de novo; pior, a marca de
+    // "registrado" (lá embaixo) nunca era posta e o app pedia o registro
+    // outra vez. Agora o nome do documento é criado aqui mesmo, na hora, e a
+    // gravação segue sozinha — o registro fica pronto na tela na hora e sobe
+    // para a nuvem quando der.
     // As fotos do antes/depois entram nos ARQUIVOS do paciente (aparecem na
     // galeria e na ficha A4); o registro guarda só a referência — assim o
     // documento nunca estoura o limite do Firestore
-    const arq = async (dataUrl, legenda) => {
+    const arq = (dataUrl, legenda) => {
       if (!dataUrl) return '';
-      const ref = await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'arquivos'), { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: serverTimestamp() });
+      const ref = doc(collection(fb.db, 'pacientes', t.pacienteId, 'arquivos'));
+      setDoc(ref, { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
       return ref.id;
     };
-    const fotoAntesId = await arq(fotoAntes, `Antes — ${rotuloArea}`);
-    const fotoDepoisId = await arq(fotoDepois, `Depois — ${rotuloArea}`);
-    await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos'), { ...registro, fotoAntesId, fotoDepoisId, criadoEm: serverTimestamp() });
+    const fotoAntesId = arq(fotoAntes, `Antes — ${rotuloArea}`);
+    const fotoDepoisId = arq(fotoDepois, `Depois — ${rotuloArea}`);
+    setDoc(doc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos')), { ...registro, fotoAntesId, fotoDepoisId, criadoEm: serverTimestamp() }).catch(() => {});
     // Espelho na coleção RAIZ: é por aqui que o PALMAR (e depois a Colheita)
     // enxerga o que cada voluntário fez, sem precisar abrir paciente por
     // paciente. Vai só o resumo — as fotos ficam nos arquivos do paciente.
@@ -562,6 +574,22 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       data: dataISO(), criadoEm: serverTimestamp(), em: serverTimestamp(),
     }).catch(() => {});
     if (t.atendimentoId) updateDoc(doc(fb.db, 'atendimentos', t.atendimentoId), { registrado: true }).catch(() => {});
+  }
+
+  // Registrou o que foi feito? Então o paciente já foi atendido: o horário
+  // dele sai da agenda do dia (fica guardado como atendido, não é apagado —
+  // a central e o Palmar continuam vendo que aconteceu).
+  function marcarAgendamentoAtendido(pacienteId) {
+    const hoje = dataISO();
+    const meus = agendamentos.filter(g => g.pacienteId === pacienteId && !g.atendido);
+    const g = meus.find(x => x.data === hoje) || meus[0];
+    if (!g) return;
+    if (!CONFIGURADO) {
+      setAgendamentos(as => as.map(x => x.id === g.id ? { ...x, atendido: true, atendidoEm: new Date() } : x));
+      return;
+    }
+    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    updateDoc(doc(fb.db, 'agendamentos', g.id), { atendido: true, atendidoEm: serverTimestamp() }).catch(() => {});
   }
 
   async function chamarPaciente(p, puloRegistro) {
@@ -791,7 +819,11 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
 
   // Agenda do dia: o que a central mandou para hoje, e o que vem depois
   const hojeISO = dataISO();
-  const agendaHoje = agendamentos.filter(g => g.data === hojeISO)
+  const agendaHoje = agendamentos.filter(g => g.data === hojeISO && !g.atendido)
+    .sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+  // Os que já foram atendidos hoje — saem da lista de espera, mas ficam à
+  // mão para conferir (e para reabrir a ficha, se precisar)
+  const atendidosHoje = agendamentos.filter(g => g.data === hojeISO && g.atendido)
     .sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
   const corDaArea = nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '');
 
@@ -1030,7 +1062,30 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
                   );
                 })}
               </div>
-            ) : <Vazio texto="Nenhum paciente agendado para hoje." />}
+            ) : <Vazio texto={atendidosHoje.length ? 'Todos os pacientes de hoje já foram atendidos. 🌱' : 'Nenhum paciente agendado para hoje.'} />}
+            {atendidosHoje.length > 0 && (
+              <details className="ja-atendidos">
+                <summary>✅ Já atendidos hoje ({atendidosHoje.length})</summary>
+                <div className="lista-horarios" style={{ marginTop: 8 }}>
+                  {atendidosHoje.map(g => {
+                    const p = todosPacientes.find(x => x.id === g.pacienteId);
+                    return (
+                      <button key={g.id} className="horario-item feito" onClick={() => g.pacienteId && setFichaId(g.pacienteId)}>
+                        <span className="horario-hora">{g.hora}</span>
+                        <span className="horario-linha">
+                          <Bolha nome={g.pacienteNome || g.titulo} foto={p?.foto} />
+                          <span className="horario-nome">
+                            <strong>{g.pacienteNome || g.titulo}</strong>
+                            <span>{g.titulo || g.area || ''} · atendido</span>
+                          </span>
+                          <ChevronRight size={19} strokeWidth={2.6} className="horario-seta" />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
             <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 14 }} onClick={() => setTelaEquipe(true)}>🔔 Chamar alguém da equipe</button>
             <p className="dica" style={{ margin: '6px 0 0' }}>Escolha a pessoa e o celular dela toca na hora, como uma ligação.</p>
             <h2 style={{ fontSize: 20, marginTop: 16 }}>Avisos</h2>
