@@ -37,6 +37,10 @@ const APPS = [
     bundle: 'com.sejasemente.semeador',
     descricao: 'Aplicativo do voluntário do projeto social Seja Semente: avisos da central, escalas com confirmação de presença e agenda. Versão de teste para os voluntários do projeto.',
   },
+  {
+    bundle: 'com.sejasemente.palmar',
+    descricao: 'Palmar — aplicativo de gestão do projeto social Seja Semente: acompanha as ações (mutirões) com equipe escalada e relatório, tempos e ranking dos voluntários, estoque de materiais, notas fiscais e o valor produzido pelo projeto. Versão de teste para os gestores.',
+  },
 ];
 
 let deuErro = false;
