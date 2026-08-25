@@ -293,14 +293,20 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, aoEncerr
     return () => clearInterval(gira);
   }, [chaveDado]);
   const rolando = faceRolando > 0 && !!estado.dado;
-  const semJogada = minhaVez && estado.dado && !rolando && !jogaveis.length;
+  const semJogada = minhaVez && !!estado.dado && !jogaveis.length;
 
-  // Rolou e não tem jogada? A vez passa sozinha depois de mostrar o dado
+  // Rolou e não tem jogada? A vez passa sozinha depois de mostrar o dado.
+  // O relógio arma no LANCE (chave de texto), não na animação nem no objeto
+  // vindo do Firestore — senão, dependendo da ordem em que as coisas chegam,
+  // ninguém armava o relógio e o jogo paralisava no "passando a vez…"
+  function passarVez() {
+    aoAtualizar({ ...estado, dado: null, vez: (estado.vez + 1) % n });
+  }
   useEffect(() => {
     if (!semJogada) return;
-    const t = setTimeout(() => aoAtualizar({ ...estado, dado: null, vez: (estado.vez + 1) % n }), 1100);
+    const t = setTimeout(passarVez, 1100);
     return () => clearTimeout(t);
-  }, [estado]); // eslint-disable-line
+  }, [semJogada, chaveDado]); // eslint-disable-line
 
   function rolar() {
     if (!minhaVez || estado.dado) return;
@@ -361,11 +367,14 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, aoEncerr
           <div className="ludo-fala">
             {rolando ? 'Rolando o dado… 🎲'
               : minhaVez
-                ? (semJogada ? 'Nenhuma jogada possível — passando a vez…'
+                ? (semJogada ? `Deu ${estado.dado.valor} — nenhuma jogada possível.`
                   : estado.dado ? (jogaveis.length ? `Deu ${estado.dado.valor}! Toque num dentinho brilhando para mover.` : '…')
                   : 'Sua vez! Toque no dado para jogar. 🎲')
                 : `Vez de ${(daVez?.nome || '').split(' ')[0]}…`}
             {!estado.dado && minhaVez && <span className="obs" style={{ display: 'block' }}>1 ou 6 tiram o dentinho da base — e o 6 ainda dá outra jogada!</span>}
+            {semJogada && !rolando && (
+              <button className="btn-secundario" style={{ display: 'block', marginTop: 5, padding: '7px 14px' }} onClick={passarVez}>Passar a vez ➜</button>
+            )}
           </div>
         </div>
       )}
