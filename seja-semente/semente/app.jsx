@@ -21,6 +21,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
+import { TelaChamada } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
@@ -655,7 +656,7 @@ function NovoProcedimento({ aoAdicionar }) {
   );
 }
 
-function TelaPrincipal({ usuario, aoSair }) {
+function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEncerrarChamada }) {
   const [aba, setAba] = useState('cadastro');
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -1347,6 +1348,19 @@ function TelaPrincipal({ usuario, aoSair }) {
           return (
             <>
               <h2>Pacientes</h2>
+              {chamadas.length > 0 && (
+                <div className="cartao chamadas-ativas">
+                  <strong>📣 Chamando agora</strong>
+                  {chamadas.map(c => (
+                    <div key={c.id} className="chamada-linha">
+                      <Bolha nome={c.pacienteNome} foto={c.pacienteFoto} />
+                      <span className="chamada-nome"><b>{c.pacienteNome}</b><i>por {c.chamadoPorNome}</i></span>
+                      <button className="btn-recusar" style={{ flex: 'none', padding: '9px 13px' }} onClick={() => aoEncerrarChamada(c, false)}>Encerrar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="dica" style={{ margin: '0 0 8px' }}>Toque no 📣 do paciente para chamá-lo — toca em todos os celulares da equipe.</p>
               <input className="busca" placeholder="Pesquisar por nome ou código…" value={buscaPacientes} onChange={e => setBuscaPacientes(e.target.value)} />
               {lista.length ? lista.map(p => (
                 <div className="cartao" key={p.id} onClick={() => setFichaId(p.id)} style={{ cursor: 'pointer' }}>
@@ -1356,6 +1370,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                       <div className="cartao-topo">
                         <strong>{p.nome}</strong>
                         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button className="btn-chamar" title="Chamar paciente" onClick={e => { e.stopPropagation(); aoChamarPaciente(p); }}><Megaphone size={16} strokeWidth={2.4} /></button>
                           {p.prioridade && <span className="chip prioridade">prioridade</span>}
                           {p.triagem
                             ? <button className={'chip ' + p.status.replace(' ', '-')} onClick={e => { e.stopPropagation(); mudarStatus(p); }}>{p.status}</button>
@@ -1646,6 +1661,38 @@ function App() {
     setUsuario(null);
   }
 
+  // ─── Chamada de paciente: toca em TODOS os celulares logados até atender ───
+  const [chamadas, setChamadas] = useState([]);
+  const [chamadasVistas, setChamadasVistas] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO || !usuario) return;
+    const { collection, onSnapshot, query, where } = fb.fns;
+    return onSnapshot(query(collection(fb.db, 'chamadas'), where('ativa', '==', true)), snap => {
+      const agora = Date.now();
+      setChamadas(snap.docs.map(d => {
+        const c = { id: d.id, ...d.data() };
+        const t = c.criadoEm?.toDate?.()?.getTime?.() ?? agora;
+        // "nova": chamada recente — evita tocar chamada velha ao abrir o app
+        return { ...c, nova: agora - t < 3 * 60 * 1000 };
+      }));
+    });
+  }, [usuario?.uid]);
+  function encerrarChamada(c, atendida) {
+    setChamadasVistas(v => [...v, c.id]);
+    if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
+    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    updateDoc(doc(fb.db, 'chamadas', c.id), atendida
+      ? { ativa: false, atendidaPorUid: usuario?.uid, atendidaPorNome: usuario?.nome || '', atendidaEm: serverTimestamp() }
+      : { ativa: false }).catch(() => {});
+  }
+  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorUid !== usuario?.uid : true));
+  // Chamar um paciente (aba Pacientes): cria a chamada que toca em todo mundo
+  function chamarPaciente(p) {
+    const dados = { pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '', chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '', ativa: true };
+    if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+  }
   // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
   const [abrindo, setAbrindo] = useState(true);
   const abertura = abrindo ? <Abertura tema="verde" nome="Seja Semente" frase="semeando sorrisos" aoTerminar={() => setAbrindo(false)} /> : null;
@@ -1663,8 +1710,8 @@ function App() {
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} />;
-  return <>{conteudo}{abertura}</>;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} />;
+  return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 
 // A trava __appJaSubiu impede o app de subir duas vezes na casca viva do
