@@ -28,6 +28,7 @@ console.log(`Aparelhos registrados: ${lista.length}`);
 for (const d of lista) {
   const f = d.fields || {};
   const token = d.name.split('/').pop();
-  console.log(`  ${token.slice(0, 8)}… · ${f.nome?.stringValue || '?'} · app ${f.app?.stringValue || '?'} · uid ${String(f.uid?.stringValue || '?').slice(0, 8)}…`);
+  const ligacao = f.voipToken?.stringValue ? '📞 LIGAÇÃO ok' : '🔔 só notificação';
+  console.log(`  ${token.slice(0, 8)}… · ${f.nome?.stringValue || '?'} · app ${f.app?.stringValue || '?'} · ${ligacao}`);
 }
 if (!lista.length) console.log('  (nenhum ainda — o app precisa estar na versão 6.8, aberto uma vez, com a notificação PERMITIDA)');

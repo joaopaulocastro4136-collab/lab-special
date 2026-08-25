@@ -31,10 +31,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         registroVoip = reg
     }
 
-    // Entrega o token VoIP para o app (JS), que grava no banco
+    // Entrega o token VoIP para o app (JS), que grava no banco.
+    // O app demora alguns segundos para carregar (busca o código da
+    // hospedagem), então insiste várias vezes — entregas repetidas são
+    // inofensivas.
     func entregarTokenVoip() {
         guard !tokenVoip.isEmpty else { return }
-        rodarJS("window.__tokenVoip='" + tokenVoip + "';window.dispatchEvent(new CustomEvent('token-voip',{detail:'" + tokenVoip + "'}))")
+        for atraso in [0.5, 3.0, 7.0, 12.0, 20.0, 35.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + atraso) { [weak self] in
+                guard let eu = self, !eu.tokenVoip.isEmpty else { return }
+                eu.rodarJS("window.__tokenVoip='" + eu.tokenVoip + "';window.dispatchEvent(new CustomEvent('token-voip',{detail:'" + eu.tokenVoip + "'}))")
+            }
+        }
     }
 
     func rodarJS(_ codigo: String) {
