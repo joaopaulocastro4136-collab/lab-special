@@ -270,7 +270,7 @@ function Festa() {
 }
 
 // ─── A mesa: jogadores, dado e tabuleiro (funciona online e na demonstração) ───
-function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }) {
+function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, aoEncerrar, aoFechar, rotulo }) {
   const n = estado.jogadores.length;
   const daVez = estado.jogadores[estado.vez % Math.max(n, 1)];
   const minhaVez = estado.status === 'jogando' && daVez?.uid === meuUid;
@@ -334,11 +334,22 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }
 
       {estado.status === 'encerrado' ? (
         <>
-          <Festa />
+          {estado.vencedorNome ? <Festa /> : null}
           <div className="ludo-banner">
-            <span className="ludo-trofeu">🏆</span>
-            <strong>{estado.vencedorUid === meuUid ? 'Você venceu!' : `${estado.vencedorNome} venceu!`}</strong> 🎉
+            {estado.vencedorNome ? (
+              <>
+                <span className="ludo-trofeu">🏆</span>
+                <strong>{estado.vencedorUid === meuUid ? 'Você venceu!' : `${estado.vencedorNome} venceu!`}</strong> 🎉
+              </>
+            ) : (
+              <strong>Jogo encerrado{estado.encerradoPorNome ? ` por ${estado.encerradoPorNome.split(' ')[0]}` : ''}.</strong>
+            )}
             {aoJogarDeNovo && <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 8 }} onClick={aoJogarDeNovo}>Jogar de novo</button>}
+            {aoFechar && (
+              <button className="btn-secundario" style={{ width: '100%', marginTop: 8 }} onClick={() => {
+                if (window.confirm('Fechar esta sala? Ela some para todo mundo.')) aoFechar();
+              }}>🚪 Fechar sala</button>
+            )}
           </div>
         </>
       ) : (
@@ -360,6 +371,21 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }
 
       <Tabuleiro estado={estado} meuUid={meuUid} minhaVez={minhaVez && !!estado.dado && !rolando} aoTocarPeca={tocarPeca} />
       <p className="dica" style={{ marginTop: 8 }}>Casas com dentinho cinza são seguras — ali ninguém é capturado. 🛡</p>
+
+      {estado.status === 'jogando' && (aoEncerrar || aoFechar) && (
+        <div className="linha-botoes" style={{ marginTop: 6 }}>
+          {aoEncerrar && (
+            <button className="btn-secundario" style={{ flex: 1 }} onClick={() => {
+              if (window.confirm('Encerrar o jogo para todo mundo? A partida termina sem vencedor.')) aoEncerrar();
+            }}>⏹ Encerrar jogo</button>
+          )}
+          {aoFechar && (
+            <button className="btn-secundario" style={{ flex: 1 }} onClick={() => {
+              if (window.confirm('Fechar esta sala? A partida acaba e a sala some para todo mundo.')) aoFechar();
+            }}>🚪 Fechar sala</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -404,7 +430,22 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
   }
   function jogarDeNovo() {
     const pecas = {}; sala.jogadores.forEach(j => { pecas[j.uid] = [-1, -1, -1, -1]; });
-    gravar(sala, { pecas, vez: 0, dado: null, status: 'jogando', vencedorNome: '', vencedorUid: '' });
+    gravar(sala, { pecas, vez: 0, dado: null, status: 'jogando', vencedorNome: '', vencedorUid: '', encerradoPorNome: '' });
+  }
+  // Termina a partida para todo mundo, sem vencedor (fica registrado quem encerrou)
+  function encerrarJogo() {
+    gravar(sala, { status: 'encerrado', dado: null, vencedorNome: '', vencedorUid: '', encerradoPorNome: usuario.nome || '' });
+  }
+  // Apaga a sala de vez — ela some da lista e todo mundo volta para as salas
+  function fecharSala() {
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'jogos-ludo', sala.id)).catch(() => {});
+    setSalaId(null);
+  }
+  function sairDaSala() {
+    const pecas = { ...sala.pecas }; delete pecas[usuario.uid];
+    gravar(sala, { jogadores: sala.jogadores.filter(j => j.uid !== usuario.uid), pecas });
+    setSalaId(null);
   }
 
   if (sala) {
@@ -429,6 +470,16 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
               <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={() => gravar(sala, { status: 'jogando' })}>▶ Começar o jogo</button>
             )}
             {souJogador && sala.jogadores.length < 2 && <p className="obs">Precisa de pelo menos 2 jogadores. Avisa a equipe no chat! 💬</p>}
+            {souJogador && (
+              <div className="linha-botoes" style={{ marginTop: 10 }}>
+                {sala.criadorUid !== usuario.uid && (
+                  <button className="btn-secundario" style={{ flex: 1 }} onClick={sairDaSala}>Sair da sala</button>
+                )}
+                <button className="btn-secundario" style={{ flex: 1 }} onClick={() => {
+                  if (window.confirm('Fechar esta sala? Ela some para todo mundo.')) fecharSala();
+                }}>🚪 Fechar sala</button>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -436,6 +487,8 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
     return <MesaLudo estado={sala} meuUid={souJogador ? usuario.uid : '(assistindo)'}
       aoAtualizar={atualizar} aoSair={() => setSalaId(null)}
       aoJogarDeNovo={souJogador ? jogarDeNovo : null}
+      aoEncerrar={souJogador ? encerrarJogo : null}
+      aoFechar={souJogador ? fecharSala : null}
       rotulo={souJogador ? null : 'Você está assistindo a esta partida 👀'} />;
   }
 
@@ -478,7 +531,10 @@ function LudoDemo({ usuario, aoVoltar }) {
   }
   // Sem internet configurada dá para treinar: os dois jogadores no mesmo aparelho
   return <MesaLudo estado={estado} meuUid={daVez.uid} aoAtualizar={setEstado} aoSair={aoVoltar}
-    aoJogarDeNovo={jogarDeNovo} rotulo="Modo demonstração: passa-e-joga no mesmo aparelho" />;
+    aoJogarDeNovo={jogarDeNovo}
+    aoEncerrar={() => setEstado({ ...estado, status: 'encerrado', dado: null, vencedorNome: '', vencedorUid: '', encerradoPorNome: usuario.nome || '' })}
+    aoFechar={aoVoltar}
+    rotulo="Modo demonstração: passa-e-joga no mesmo aparelho" />;
 }
 
 // ─── A caixinha de Jogos do Perfil ───
