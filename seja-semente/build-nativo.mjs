@@ -1,5 +1,5 @@
 // Gera a CASCA VIVA dos apps para o iPhone (rodar: node build-nativo.mjs
-// semente|semeador). A casca guarda só a ponte nativa (login Google pela
+// semente|semeador|palmar|colheita). A casca guarda só a ponte nativa (login Google pela
 // tela do aparelho) e, ao abrir, busca o código do app direto da hospedagem
 // (https://…web.app/app.js, publicado sem cache pelo hospedar.mjs) — assim
 // toda novidade publicada chega no aplicativo instalado NA HORA, sem passar
@@ -17,9 +17,10 @@ const APPS = {
   semente: { pasta: 'nativo-central', titulo: 'Seja Semente', site: 'https://seja-semente-app.web.app' },
   semeador: { pasta: 'nativo-semeador', titulo: 'Semeador', site: 'https://seja-semente-semeador.web.app' },
   palmar: { pasta: 'nativo-palmar', titulo: 'Palmar', site: 'https://seja-semente-palmar.web.app' },
+  colheita: { pasta: 'nativo-colheita', titulo: 'Colheita', site: 'https://seja-semente-colheita.web.app' },
 };
 const app = APPS[qual];
-if (!app) { console.error('Uso: node build-nativo.mjs semente|semeador'); process.exit(1); }
+if (!app) { console.error('Uso: node build-nativo.mjs semente|semeador|palmar|colheita'); process.exit(1); }
 
 async function montar(entrada, saida) {
   await esbuild.build({
