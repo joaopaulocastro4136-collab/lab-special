@@ -15,3 +15,9 @@ ios/App/build/
 ios/App/Pods/
 ios/DerivedData/
 *.log
+
+# Sobras de ferramentas de análise (bundles e cópias temporárias)
+__out.*
+__pre.*
+__render.*
+__t.jsx
