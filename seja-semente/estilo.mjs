@@ -486,6 +486,21 @@ export const CSS = `
   .registro-feito { border-top: 1px solid #EAEFE8; padding: 9px 0 4px; }
   .registro-feito:first-of-type { border-top: none; padding-top: 2px; }
   .registro-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .faixa-registro { display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; cursor: pointer;
+    background: #FBE3DA; border: 1.5px solid #E8A08C; color: #8F2F1B; border-radius: 14px; padding: 11px 14px; margin-bottom: 10px; }
+  .antes-depois-par { display: flex; gap: 10px; }
+  .foto-ad { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .foto-ad-rotulo { font-size: 11.5px; font-weight: 800; letter-spacing: 1.5px; color: #55645A; }
+  .foto-ad-botao { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 110px;
+    border: 2px dashed #BFCDC2; border-radius: 14px; background: #F7FAF6; color: #55645A; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .foto-ad-tem { position: relative; }
+  .foto-ad-tem img { width: 100%; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
+  .foto-ad-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+  .antes-depois-par.ver { margin-top: 8px; }
+  .foto-ad-mini { flex: 1; position: relative; border: none; background: none; padding: 0; cursor: pointer; min-width: 0; }
+  .foto-ad-mini img { width: 100%; height: 96px; object-fit: cover; border-radius: 12px; display: block; }
+  .foto-ad-mini span { position: absolute; left: 6px; bottom: 6px; background: rgba(30,43,34,0.72); color: #fff;
+    font-size: 10px; font-weight: 800; letter-spacing: 1.2px; padding: 3px 7px; border-radius: 8px; }
 
   /* ─── Pasta da Prótese ─── */
   .protese-trava { text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 22px 18px; }
