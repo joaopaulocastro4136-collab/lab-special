@@ -49,7 +49,8 @@ export function TelaChamada({ chamada, aoAtender }) {
 
   if (!chamada) return null;
   // Chamada de STAFF: quem aparece grande é quem está chamando — a tela só
-  // toca nos aparelhos da pessoa escolhida (paraUid), não na equipe toda
+  // toca nos aparelhos da pessoa escolhida (paraUid), não na equipe toda.
+  // Com "motivo" (chamada de grupo), o título vem grande: "Almoço na cantina"
   const ehStaff = chamada.tipo === 'staff';
   return (
     <div className="chamada-tela" role="alertdialog" aria-label={ehStaff ? 'Chamada da equipe' : 'Chamada de paciente'}>
@@ -58,14 +59,90 @@ export function TelaChamada({ chamada, aoAtender }) {
         <i /><i /><i />
         <Bolha nome={(ehStaff ? chamada.chamadoPorNome : chamada.pacienteNome) || '?'} foto={ehStaff ? chamada.chamadoPorFoto : chamada.pacienteFoto} />
       </div>
-      <h1>{ehStaff ? chamada.chamadoPorNome : chamada.pacienteNome}</h1>
+      <h1>{ehStaff ? (chamada.motivo || chamada.chamadoPorNome) : chamada.pacienteNome}</h1>
       {!ehStaff && chamada.pacienteCodigo && <p className="chamada-cod">{chamada.pacienteCodigo}</p>}
       <p className="chamada-quem">{ehStaff
-        ? `está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''} — vá até lá`
+        ? (chamada.motivo
+          ? `${chamada.chamadoPorNome || 'A equipe'} está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''}`
+          : `está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''} — vá até lá`)
         : `chamado por ${chamada.chamadoPorNome || 'alguém da equipe'}`}</p>
       <button className="chamada-atender" onClick={() => aoAtender(chamada)}>
         {ehStaff ? '✅ Estou indo' : '✅ OK, estou levando'}
       </button>
+    </div>
+  );
+}
+
+// ─── Chamada de GRUPO (convocação): a central cria uma chamada com título
+// ("Almoço na cantina"), escolhe as pessoas e o celular de cada uma toca
+// como ligação com o título na tela. Quem já foi chamado fica marcado ───
+export function TelaConvocacoes({ convocacoes, aoCriar, aoAbrir, aoExcluir, aoVoltar }) {
+  const [titulo, setTitulo] = useState('');
+  const criar = () => { if (titulo.trim()) { aoCriar(titulo.trim()); setTitulo(''); } };
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>Chamadas de grupo</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Crie uma chamada (ex.: "Almoço na cantina"), escolha as pessoas, e o celular delas toca como ligação com o título na tela.</p>
+      <div className="cartao" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input style={{ flex: 1, minWidth: 0 }} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Chamar para quê? Ex.: Almoço na cantina" onKeyDown={e => e.key === 'Enter' && criar()} />
+        <button className="btn-mais" disabled={!titulo.trim()} onClick={criar}>Criar</button>
+      </div>
+      {convocacoes.length ? convocacoes.map(c => (
+        <div className="cartao" key={c.id} onClick={() => aoAbrir(c)} style={{ cursor: 'pointer' }}>
+          <div className="cartao-topo">
+            <strong>📣 {c.titulo}</strong>
+            <button className="btn-remover" title="Excluir" onClick={(e) => { e.stopPropagation(); aoExcluir(c); }}>✕</button>
+          </div>
+          <p className="obs" style={{ margin: 0 }}>{Object.keys(c.chamados || {}).length} pessoa(s) chamada(s) · toque para abrir e chamar</p>
+        </div>
+      )) : <p className="dica">Nenhuma chamada de grupo criada ainda.</p>}
+    </div>
+  );
+}
+
+export function TelaConvocacao({ convocacao, pessoas, aoChamar, aoExcluir, aoVoltar }) {
+  const [marcados, setMarcados] = useState([]);
+  const chamados = convocacao.chamados || {};
+  const pendentes = pessoas.filter(p => !chamados[p.uid]);
+  const alterna = (uid) => setMarcados(m => (m.includes(uid) ? m.filter(x => x !== uid) : [...m, uid]));
+  const chamar = () => { aoChamar(pendentes.filter(p => marcados.includes(p.uid))); setMarcados([]); };
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>📣 {convocacao.titulo}</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Marque as pessoas e toque em chamar — o celular de cada uma toca como ligação, com "{convocacao.titulo}" na tela e o botão "Estou indo".</p>
+      <h3 style={{ margin: '12px 0 8px' }}>Ainda não chamados</h3>
+      {pendentes.length ? pendentes.map(p => (
+        <label key={p.uid} className={marcados.includes(p.uid) ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
+          <input type="checkbox" checked={marcados.includes(p.uid)} onChange={() => alterna(p.uid)} />
+          <Bolha nome={p.nome} foto={p.foto} avatar={p.avatar} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <strong>{p.nome}</strong>
+            {p.detalhe && <span className="obs" style={{ display: 'block' }}>{p.detalhe}</span>}
+          </span>
+        </label>
+      )) : <p className="dica">Todo mundo já foi chamado 🎉</p>}
+      {pendentes.length > 0 && (
+        <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 6 }} disabled={!marcados.length} onClick={chamar}>
+          🔔 Chamar marcados{marcados.length ? ` (${marcados.length})` : ''}
+        </button>
+      )}
+      {Object.keys(chamados).length > 0 && (
+        <>
+          <h3 style={{ margin: '16px 0 8px' }}>Já chamados</h3>
+          {Object.entries(chamados).map(([uid, c]) => (
+            <div className="cartao" key={uid}>
+              <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                <Bolha nome={c.nome} />
+                <strong style={{ flex: 1 }}>{c.nome}</strong>
+                <span className="chip em-atendimento">✓ chamado</span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+      <button className="btn-sair" style={{ width: '100%' }} onClick={aoExcluir}>🗑 Excluir esta chamada de grupo</button>
     </div>
   );
 }

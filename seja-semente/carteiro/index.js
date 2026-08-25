@@ -76,10 +76,12 @@ exports.carteiroChamadas = onDocumentCreated(
     if (!alvos.length) { console.log('Nenhum aparelho para avisar.'); return; }
 
     const titulo = chamada.tipo === 'staff'
-      ? `📣 ${chamada.chamadoPorNome || 'Alguém da equipe'} está chamando VOCÊ`
+      ? (chamada.motivo ? `📣 ${chamada.motivo}` : `📣 ${chamada.chamadoPorNome || 'Alguém da equipe'} está chamando VOCÊ`)
       : `📣 Chamando paciente: ${chamada.pacienteNome || ''}`;
     const texto = chamada.tipo === 'staff'
-      ? 'Toque para responder "Estou indo" — a equipe está te esperando.'
+      ? (chamada.motivo
+        ? `${chamada.chamadoPorNome || 'A equipe'} está chamando você — toque para responder "Estou indo".`
+        : 'Toque para responder "Estou indo" — a equipe está te esperando.')
       : `${chamada.chamadoPorNome || 'Alguém'} chamou — abra para avisar "OK, estou levando".`;
     const payload = {
       aps: {
@@ -101,7 +103,7 @@ exports.carteiroChamadas = onDocumentCreated(
     const comLigacao = alvos.filter((a) => a.voipToken);
     const soAviso = alvos.filter((a) => !a.voipToken);
     const quem = chamada.tipo === 'staff'
-      ? (chamada.chamadoPorNome || 'Equipe Seja Semente')
+      ? (chamada.motivo || chamada.chamadoPorNome || 'Equipe Seja Semente')
       : `Paciente: ${chamada.pacienteNome || ''}`;
     for (const alvo of comLigacao) {
       const r = await empurrar(cliente, jwt, alvo, { chamadaId: event.params.id, quem }, 'voip', alvo.voipToken);
