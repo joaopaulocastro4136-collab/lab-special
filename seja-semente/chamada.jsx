@@ -7,22 +7,27 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, BellRing } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 
-// Toque de chamada: dois bipes subindo, repetindo — feito na hora com o
-// WebAudio (sem arquivo de som). Se o navegador bloquear, segue sem som.
+// Toque de chamada: campainha insistente estilo telefone — feito na hora
+// com o WebAudio (sem arquivo de som). Cada nota soa em duas oitavas ao
+// mesmo tempo e no volume máximo que o WebAudio permite; o volume final é
+// o dos botões laterais do celular. Se o navegador bloquear, segue sem som.
 function tocarBipe(ctx) {
   try {
     const agora = ctx.currentTime;
-    for (const [t, freq] of [[0, 740], [0.22, 988]]) {
-      const osc = ctx.createOscillator();
-      const vol = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      vol.gain.setValueAtTime(0.0001, agora + t);
-      vol.gain.exponentialRampToValueAtTime(0.35, agora + t + 0.03);
-      vol.gain.exponentialRampToValueAtTime(0.0001, agora + t + 0.20);
-      osc.connect(vol).connect(ctx.destination);
-      osc.start(agora + t);
-      osc.stop(agora + t + 0.25);
+    // "trim-trim": duas rajadas de 3 notas, como campainha de telefone fixo
+    for (const [t, freq] of [[0, 740], [0.14, 988], [0.28, 740], [0.55, 740], [0.69, 988], [0.83, 740]]) {
+      for (const mult of [1, 2]) {
+        const osc = ctx.createOscillator();
+        const vol = ctx.createGain();
+        osc.type = mult === 1 ? 'square' : 'sine';
+        osc.frequency.value = freq * mult;
+        vol.gain.setValueAtTime(0.0001, agora + t);
+        vol.gain.exponentialRampToValueAtTime(mult === 1 ? 0.55 : 0.85, agora + t + 0.02);
+        vol.gain.exponentialRampToValueAtTime(0.0001, agora + t + 0.13);
+        osc.connect(vol).connect(ctx.destination);
+        osc.start(agora + t);
+        osc.stop(agora + t + 0.16);
+      }
     }
   } catch (e) { /* sem som */ }
 }
@@ -38,7 +43,7 @@ export function TelaChamada({ chamada, aoAtender }) {
     const vibra = () => { try { navigator.vibrate?.([500, 250, 500]); } catch (e) {} };
     const toca = () => { if (ctx && ctx.state === 'running') tocarBipe(ctx); };
     vibra(); toca();
-    const t = setInterval(() => { vibra(); toca(); }, 1600);
+    const t = setInterval(() => { vibra(); toca(); }, 1400);
     return () => { clearInterval(t); try { navigator.vibrate?.(0); } catch (e) {} try { ctx?.close(); } catch (e) {} };
   }, [chamada?.id]);
 
