@@ -335,6 +335,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   }
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Triagem — {paciente.nome}</h2>
       <div className="campo"><span>Procedimentos que vai fazer (marque todos os que precisar)</span>
         <div className="caixas">
@@ -414,6 +415,7 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
   const muda = k => e => setF({ ...f, [k]: e.target.value });
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Novo voluntário / dentista</h2>
       <Campo rotulo="Nome"><input value={f.nome} onChange={muda('nome')} /></Campo>
       <Campo rotulo="Função / especialidade"><input value={f.ministerio} onChange={muda('ministerio')} placeholder="Ex.: Dentista" /></Campo>
@@ -621,6 +623,7 @@ function FormAviso({ aoSalvar, aoCancelar }) {
   const muda = k => e => setF({ ...f, [k]: e.target.value });
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Novo aviso</h2>
       <Campo rotulo="Título"><input value={f.titulo} onChange={muda('titulo')} /></Campo>
       <Campo rotulo="Texto"><textarea rows={4} value={f.texto} onChange={muda('texto')} /></Campo>
