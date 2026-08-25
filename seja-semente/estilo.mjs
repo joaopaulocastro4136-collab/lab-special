@@ -274,7 +274,8 @@ export const CSS = `
   .caixa-area strong { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 600; letter-spacing: -0.2px; color: #223528; }
   .area-topo { width: 100%; display: flex; justify-content: space-between; align-items: flex-start; }
   .caixa-area-icone { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-  .area-seta { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .area-seta { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; }
+  .pendente-bolha { position: absolute; top: -8px; right: -8px; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 999px; background: #E0492E; color: #fff; font-size: 11.5px; font-weight: 800; font-style: normal; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(224,73,46,0.4); }
   .caixa-area-detalhe { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #55645A; white-space: nowrap; max-width: 100%; }
   .area-qtd, .area-tempo { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .area-divisor { width: 1px; height: 15px; background: #E0E5DE; }
