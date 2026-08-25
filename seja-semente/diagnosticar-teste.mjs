@@ -1,4 +1,4 @@
-// Diagnóstico do TestFlight dos dois apps do Seja Semente: mostra os últimos
+// Diagnóstico do TestFlight dos aplicativos do Seja Semente: mostra os últimos
 // builds (estado de processamento e de teste interno/externo), os grupos de
 // teste e cada testador com seu estado — para descobrir por que uma
 // atualização não chegou no aparelho de alguém.
@@ -21,7 +21,7 @@ const api = async (caminho) => {
   return { status: r.status, json: await r.json() };
 };
 
-for (const [nome, appId] of [['Seja semente', '6792989095'], ['Semeador', '6792989190']]) {
+for (const [nome, appId] of [['Seja semente', '6792989095'], ['Semeador', '6792989190'], ['Palmar', '6805159974'], ['Colheita', '6805244353']]) {
   console.log(`\n══ ${nome} ══`);
 
   const builds = await api(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=3&fields[builds]=version,processingState,expired,uploadedDate`);
