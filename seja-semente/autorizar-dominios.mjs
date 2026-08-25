@@ -21,23 +21,41 @@ async function token() {
 }
 const TK = await token();
 
+// Os endereços dos quatro aplicativos na web
 const DOMINIOS = [
   'localhost',
   `${PROJETO}.firebaseapp.com`,
   `${PROJETO}.web.app`,
   'seja-semente-semeador.web.app',
   'seja-semente-semeador.firebaseapp.com',
+  'seja-semente-palmar.web.app',
+  'seja-semente-palmar.firebaseapp.com',
+  'seja-semente-colheita.web.app',
+  'seja-semente-colheita.firebaseapp.com',
 ];
 
-const r = await fetch(`https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJETO}/config?updateMask=authorizedDomains`, {
-  method: 'PATCH',
-  headers: { Authorization: 'Bearer ' + TK, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ authorizedDomains: DOMINIOS }),
-});
-const json = await r.json().catch(() => ({}));
-if (r.status === 200) {
-  console.log('✓ Domínios autorizados no login: ' + (json.authorizedDomains || DOMINIOS).join(', '));
+const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJETO}/config`;
+const cabecalho = { Authorization: 'Bearer ' + TK, 'Content-Type': 'application/json' };
+
+// Lê o que já está autorizado e SOMA os nossos — nunca apaga o que alguém
+// tenha acrescentado à mão no console do Firebase
+const atual = await fetch(url, { headers: cabecalho }).then(r => r.json()).catch(() => ({}));
+const jaTinha = atual.authorizedDomains || [];
+const todos = [...new Set([...jaTinha, ...DOMINIOS])];
+const novos = todos.filter(d => !jaTinha.includes(d));
+
+if (!novos.length) {
+  console.log('✓ Nada a fazer — já estavam todos autorizados: ' + todos.join(', '));
 } else {
-  console.log(`✗ Falha (${r.status}): ${JSON.stringify(json).slice(0, 300)}`);
-  process.exit(1);
+  const r = await fetch(`${url}?updateMask=authorizedDomains`, {
+    method: 'PATCH', headers: cabecalho, body: JSON.stringify({ authorizedDomains: todos }),
+  });
+  const json = await r.json().catch(() => ({}));
+  if (r.status === 200) {
+    console.log('✓ Acrescentados: ' + novos.join(', '));
+    console.log('  Lista completa: ' + (json.authorizedDomains || todos).join(', '));
+  } else {
+    console.log(`✗ Falha (${r.status}): ${JSON.stringify(json).slice(0, 300)}`);
+    process.exit(1);
+  }
 }
