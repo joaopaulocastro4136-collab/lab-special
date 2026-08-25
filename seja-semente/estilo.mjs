@@ -215,7 +215,7 @@ export const CSS = `
   .semana-nav .btn-hoje { border: 1.5px solid #2F7D4E; background: #fff; color: #226343; border-radius: 999px; padding: 8px 15px; font-weight: 800; font-size: 13px; cursor: pointer; flex: none; }
   .semana-titulo { flex: 1; text-align: center; font-weight: 800; font-size: 13.5px; color: #223528; min-width: 0; }
   .semana-cartao { background: #fff; border-radius: 18px; border: 1px solid rgba(30,43,34,0.05); box-shadow: 0 6px 18px rgba(30,43,34,0.07); overflow: hidden; }
-  .semana-rolagem { overflow: auto; max-height: max(400px, calc(100vh - 330px)); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .semana-rolagem { overflow: auto; max-height: max(400px, calc(100vh - 330px)); -webkit-overflow-scrolling: touch; }
   .semana-grade { width: max-content; min-width: 100%; }
   .semana-cabecalho { display: flex; position: sticky; top: 0; z-index: 8; background: #fff; box-shadow: 0 1px 0 #E4EAE0; }
   .sem-canto { position: sticky; left: 0; z-index: 9; background: #fff; width: 50px; flex: none; border-right: 1px solid #EDF1EA; }
