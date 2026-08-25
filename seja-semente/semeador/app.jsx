@@ -180,7 +180,7 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(true);
     // O Google deve sempre PERGUNTAR qual conta usar — sem isso, depois de
     // sair ele entra de novo direto na última conta
-    const provedor = () => { const p = provedor(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
+    const provedor = () => { const p = new fb.fns.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
     try {
       // No aplicativo instalado, usa a tela de contas do próprio iPhone;
       // no navegador, a janelinha do Google (com plano B de redirect)
