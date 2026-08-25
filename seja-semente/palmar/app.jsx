@@ -16,6 +16,55 @@ import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2 } from 'lucide-react';
 import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
+import { comprimirImagem } from '../ficha.jsx';
+
+// Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
+// a nota é real; quando o QR traz o valor, ele entra sozinho)
+function LeitorQR({ aoLer, aoFechar }) {
+  const videoRef = useRef(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    let vivo = true, stream = null, timer = null;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (!vivo) { stream.getTracks().forEach(t => t.stop()); return; }
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        const jsQR = (await import('jsqr')).default;
+        const c = document.createElement('canvas');
+        timer = setInterval(() => {
+          const v = videoRef.current;
+          if (!v || !v.videoWidth) return;
+          c.width = v.videoWidth; c.height = v.videoHeight;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(v, 0, 0);
+          const img = ctx.getImageData(0, 0, c.width, c.height);
+          const q = jsQR(img.data, img.width, img.height);
+          if (q?.data) { clearInterval(timer); aoLer(q.data); }
+        }, 400);
+      } catch (e) { setErro('Não consegui abrir a câmera — confira a permissão nos ajustes.'); }
+    })();
+    return () => { vivo = false; clearInterval(timer); stream?.getTracks().forEach(t => t.stop()); };
+  }, []);
+  return (
+    <div className="chamada-tela" style={{ background: '#0B1F14' }}>
+      <p className="chamada-rotulo">🔎 Aponte para o QR da nota</p>
+      <video ref={videoRef} playsInline muted style={{ width: '100%', maxWidth: 420, borderRadius: 18 }} />
+      {erro && <div className="erro">{erro}</div>}
+      <button className="chamada-atender" onClick={aoFechar}>Cancelar</button>
+    </div>
+  );
+}
+
+// Extrai a chave (44 dígitos) e, quando o QR traz, o valor da nota
+function lerNotaDoQR(texto) {
+  const chave = (String(texto).match(/(\d{44})/) || [])[1] || '';
+  let valor = 0;
+  const mV = String(texto).match(/[?|&]vNF=([\d.,]+)/i) || String(texto).match(/\|(\d+\.\d{2})\|/);
+  if (mV) valor = Number(String(mV[1]).replace(',', '.')) || 0;
+  return { chave, valor, url: String(texto).startsWith('http') ? String(texto) : '' };
+}
 
 // Logo do Palmar: uma palmeira num quadrado arredondado (desenhada aqui
 // mesmo, sem arquivo) — a "árvore que dá sombra" para o projeto crescer
@@ -133,6 +182,12 @@ const DEMO = {
   ],
   acoes: [
     { id: 'ac1', titulo: 'Mutirão da Comunidade', data: hojeISO(), local: 'Igreja Central', status: 'iniciada', voluntariosUids: ['v1', 'v2'], registros: [], criadaEm: new Date() },
+  ],
+  investidores: [
+    { id: 'i1', nome: 'Carlos Pereira', empresa: 'Dental Sul Materiais', telefone: '(11) 97777-0000', email: 'carlos@dentalsul.com', acaoId: 'ac1', acaoTitulo: 'Mutirão da Comunidade', criadaEm: new Date() },
+  ],
+  notas: [
+    { id: 'n1', acaoId: 'ac1', acaoTitulo: 'Mutirão da Comunidade', valor: 148.9, descricao: 'Materiais descartáveis', chave: '35260812345678000199650010000012341000012349', origem: 'qr', criadaEm: new Date() },
   ],
   config: { personalizados: [], duracoes: { Cirurgia: 60, Prótese: 60, Profilaxia: 30 }, valores: { Cirurgia: 250, 'Prótese': 900, Profilaxia: 120 }, porDente: { Cirurgia: true } },
 };
@@ -281,6 +336,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   const [estoque, setEstoque] = useState(CONFIGURADO ? [] : lerLocal('pm-estoque', DEMO.estoque));
   const [movimentos, setMovimentos] = useState(CONFIGURADO ? [] : lerLocal('pm-movimentos', DEMO.movimentos));
   const [convocacoes, setConvocacoes] = useState(CONFIGURADO ? [] : lerLocal('pm-convocacoes', []));
+  const [investidores, setInvestidores] = useState(CONFIGURADO ? [] : lerLocal('pm-investidores', DEMO.investidores));
+  const [notas, setNotas] = useState(CONFIGURADO ? [] : lerLocal('pm-notas', DEMO.notas));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('pm-investidores', investidores); }, [investidores]);
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('pm-notas', notas); }, [notas]);
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('pm-voluntarios', voluntarios); }, [voluntarios]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('pm-config', configProc); }, [configProc]);
@@ -303,6 +362,8 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       escuta('estoque', ['nome'], setEstoque),
       escuta('estoque-movimentos', ['em', 'desc'], setMovimentos),
       escuta('convocacoes', ['criadaEm', 'desc'], setConvocacoes),
+      escuta('investidores', ['nome'], setInvestidores),
+      escuta('notas', ['criadaEm', 'desc'], setNotas),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ personalizados: [], duracoes: {}, valores: {}, porDente: {}, ...snap.data() });
       }),
@@ -444,6 +505,45 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   }
   const emFalta = estoque.filter(i => Number(i.quantidade || 0) <= Number(i.minimo || 0));
 
+  // ─── Investidores (patrocinadores — a Colheita vai ler isto depois) ───
+  async function criarInvestidor(f) {
+    const acao = acoes.find(a => a.id === f.acaoId);
+    const dados = { ...f, acaoTitulo: acao?.titulo || '' };
+    if (!CONFIGURADO) { setInvestidores(is => [...is, { id: 'i' + Math.floor(Math.random() * 1e9), ...dados, criadaEm: new Date() }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'investidores'), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela(null);
+  }
+  async function salvarInvestidor(i, campos) {
+    const acao = acoes.find(a => a.id === campos.acaoId);
+    const dados = { ...campos, acaoTitulo: acao?.titulo || '' };
+    if (!CONFIGURADO) { setInvestidores(is => is.map(x => x.id === i.id ? { ...x, ...dados } : x)); setTela(null); return; }
+    const { doc, updateDoc } = fb.fns;
+    updateDoc(doc(fb.db, 'investidores', i.id), dados).catch(() => {});
+    setTela(null);
+  }
+  async function excluirInvestidor(i) {
+    setTela(null);
+    if (!CONFIGURADO) { setInvestidores(is => is.filter(x => x.id !== i.id)); return; }
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'investidores', i.id)).catch(() => {});
+  }
+
+  // ─── Notas fiscais (foto ou QR — a Colheita vai ler isto depois) ───
+  async function criarNota(f) {
+    const acao = acoes.find(a => a.id === f.acaoId);
+    const dados = { ...f, acaoTitulo: acao?.titulo || '', criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '' };
+    if (!CONFIGURADO) { setNotas(ns => [{ id: 'n' + Math.floor(Math.random() * 1e9), ...dados, criadaEm: new Date() }, ...ns]); setTela(f.acaoId ? { acao: f.acaoId } : 'notas'); return; }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'notas'), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela(f.acaoId ? { acao: f.acaoId } : 'notas');
+  }
+  async function excluirNota(n) {
+    if (!CONFIGURADO) { setNotas(ns => ns.filter(x => x.id !== n.id)); return; }
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
+  }
+
   // ─── Código de acesso ao Palmar (gerado no Perfil) ───
   const [codigoGerado, setCodigoGerado] = useState('');
   async function gerarCodigo() {
@@ -495,10 +595,38 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     aoVoltar={() => setTela(null)} />;
 
   if (tela === 'novaAcao') return <FormAcao aoCancelar={() => setTela(null)} aoSalvar={criarAcao} />;
+  if (tela?.novaNota !== undefined) return <FormNota acoes={acoes} acaoInicial={tela.novaNota || ''} aoCancelar={() => setTela(tela.novaNota ? { acao: tela.novaNota } : 'notas')} aoSalvar={criarNota} />;
+  if (tela === 'notas') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+      <div className="titulo-com-botao"><h2>📄 Notas fiscais</h2><button className="btn-mais" onClick={() => setTela({ novaNota: '' })}>+ Nota</button></div>
+      <p className="dica" style={{ marginTop: 0 }}>Total registrado: <strong>{dinheiro(notas.reduce((s, n) => s + Number(n.valor || 0), 0))}</strong> · a Colheita vai mostrar tudo isso aos investidores.</p>
+      {notas.length ? notas.map(n => (
+        <div className="cartao" key={n.id}>
+          <div className="cartao-topo"><strong>{n.descricao || 'Nota fiscal'}</strong>
+            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <strong>{dinheiro(n.valor)}</strong>
+              <button className="btn-remover" onClick={() => excluirNota(n)}>✕</button>
+            </span>
+          </div>
+          <p className="obs" style={{ margin: 0 }}>
+            {n.chave ? '✓ QR real · …' + n.chave.slice(-8) : '📷 foto'}{n.acaoTitulo ? ` · ${n.acaoTitulo}` : ''}
+          </p>
+          {n.foto && <img src={n.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 10, marginTop: 8 }} />}
+        </div>
+      )) : <Vazio texto="Nenhuma nota registrada — toque em + Nota." />}
+    </div>
+  );
+  if (tela === 'novoInvestidor') return <FormInvestidor acoes={acoes} aoCancelar={() => setTela(null)} aoSalvar={criarInvestidor} />;
+  if (tela?.investidor) {
+    const i = investidores.find(x => x.id === tela.investidor);
+    if (i) return <FormInvestidor investidor={i} acoes={acoes} aoCancelar={() => setTela(null)} aoSalvar={(f) => salvarInvestidor(i, f)} aoExcluir={() => excluirInvestidor(i)} />;
+  }
   if (tela?.acao) {
     const a = acoes.find(x => x.id === tela.acao);
     if (a) return <TelaAcao acao={a} equipe={equipeAtiva} pacientes={pacientes} atendimentos={atendimentos} movimentos={movimentos}
       todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente} custoAtendimento={custoAtendimento}
+      notas={notas.filter(n => n.acaoId === a.id)} aoNovaNota={() => setTela({ novaNota: a.id })} aoExcluirNota={excluirNota}
       aoSalvar={(campos) => salvarAcao(a, campos)} aoExcluir={() => excluirAcao(a)} aoVoltar={() => setTela(null)} />;
   }
   if (tela?.voluntario) {
@@ -600,6 +728,27 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
 
         {aba === 'equipe' && (
           <>
+            {(() => {
+              const ranking = equipeAtiva
+                .map(v => ({ v, n: atendimentos.filter(a => a.profissionalUid === v.id && a.fim).length }))
+                .filter(x => x.n > 0)
+                .sort((a, b) => b.n - a.n);
+              return ranking.length > 0 && (
+                <>
+                  <h2>🏆 Ranking de atendimentos</h2>
+                  {ranking.slice(0, 10).map((x, i) => (
+                    <div className="cartao" key={x.v.id} style={i === 0 ? { border: '1.5px solid #F0A912' } : undefined}>
+                      <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                        <span style={{ fontSize: 22, width: 34, textAlign: 'center' }}>{['🥇', '🥈', '🥉'][i] || `${i + 1}º`}</span>
+                        <Bolha nome={x.v.nome} />
+                        <strong style={{ flex: 1 }}>{x.v.nome}</strong>
+                        <span className="chip concluído">{x.n} atendimento{x.n === 1 ? '' : 's'}</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
             {pendentes.length > 0 && (
               <>
                 <h2>Solicitações</h2>
@@ -638,6 +787,20 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                 </div>
               );
             }) : <Vazio texto="Nenhum voluntário ativo ainda." />}
+
+            <div className="titulo-com-botao" style={{ marginTop: 16 }}><h2>🤝 Investidores</h2><button className="btn-mais" onClick={() => setTela('novoInvestidor')}>+ Adicionar</button></div>
+            <p className="dica" style={{ marginTop: 0 }}>Quem patrocina as ações. Na Colheita, eles vão poder acompanhar tudo que foi feito com o apoio deles.</p>
+            {investidores.length ? investidores.map(i => (
+              <div className="cartao" key={i.id} onClick={() => setTela({ investidor: i.id })} style={{ cursor: 'pointer' }}>
+                <div className="cartao-linha">
+                  <Bolha nome={i.nome} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="cartao-topo"><strong>{i.nome}</strong>{i.acaoTitulo && <span className="chip triado">{i.acaoTitulo}</span>}</div>
+                    <p className="obs" style={{ margin: 0 }}>{[i.empresa, i.telefone, i.email].filter(Boolean).join(' · ')}</p>
+                  </div>
+                </div>
+              </div>
+            )) : <Vazio texto="Nenhum investidor cadastrado ainda." />}
           </>
         )}
 
@@ -685,6 +848,8 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                 </div>
               </div>
             ))}
+            <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 8 }} onClick={() => setTela('notas')}>📄 Notas fiscais ({dinheiro(notas.reduce((s, n) => s + Number(n.valor || 0), 0))})</button>
+            <p className="dica" style={{ margin: '6px 0 0' }}>Tire foto ou escaneie o QR da nota — o código prova que ela é real, e o gasto entra na ação.</p>
             <h2 style={{ fontSize: 20, marginTop: 16 }}>O que o projeto já produziu</h2>
             {(() => {
               const feitos = atendimentos.filter(a => a.fim);
@@ -783,7 +948,7 @@ function FormAcao({ aoCancelar, aoSalvar }) {
 }
 
 // ─── A ação aberta: escala, status e relatório em tempo real ───
-function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, aoSalvar, aoExcluir, aoVoltar }) {
+function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], aoNovaNota, aoExcluirNota, aoSalvar, aoExcluir, aoVoltar }) {
   const escalados = acao.voluntariosUids || [];
   const alternaEscala = (id) => aoSalvar({ voluntariosUids: escalados.includes(id) ? escalados.filter(x => x !== id) : [...escalados, id] });
 
@@ -794,6 +959,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
   const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
   const gastosMateriais = movimentos.filter(m => m.acaoId === acao.id && m.delta < 0);
   const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(m.delta) * Number(m.valorUnit || 0), 0);
+  const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
 
   // Registro manual (para ações passadas ou pacientes fora do fluxo)
   const [novo, setNovo] = useState({ pacienteNome: '', area: todasAreas[0] || '', dentes: 1 });
@@ -833,6 +999,8 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         <div className="cartao-numero"><strong>{dinheiro(custoAtend + custoRegistros)}</strong><span>valor produzido</span></div>
         <div className="cartao-numero"><strong>{gastosMateriais.length}</strong><span>materiais usados</span></div>
         <div className="cartao-numero"><strong>{dinheiro(custoMateriais)}</strong><span>custo de materiais</span></div>
+        <div className="cartao-numero"><strong>{notas.length}</strong><span>notas fiscais</span></div>
+        <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>gasto em notas</span></div>
       </div>
 
       {doDia.length > 0 && (
@@ -871,6 +1039,22 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
           <p className="obs" style={{ margin: 0 }}>{r.area}{r.dentes > 1 ? ` · ${r.dentes} dentes` : ''} · manual</p>
         </div>
       ))}
+
+      <div className="titulo-com-botao" style={{ marginTop: 14 }}><h3 style={{ margin: 0 }}>📄 Notas fiscais da ação</h3>
+        <button className="btn-mais" onClick={aoNovaNota}>+ Nota</button>
+      </div>
+      {notas.length ? notas.map(n => (
+        <div className="cartao" key={n.id}>
+          <div className="cartao-topo"><strong>{n.descricao || 'Nota fiscal'}</strong>
+            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <strong>{dinheiro(n.valor)}</strong>
+              <button className="btn-remover" onClick={() => aoExcluirNota(n)}>✕</button>
+            </span>
+          </div>
+          <p className="obs" style={{ margin: 0 }}>{n.chave ? '✓ QR real · …' + n.chave.slice(-8) : '📷 foto'}</p>
+          {n.foto && <img src={n.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 10, marginTop: 8 }} />}
+        </div>
+      )) : <p className="dica" style={{ margin: '4px 0 0' }}>Nenhuma nota nesta ação — toque em + Nota para fotografar ou escanear o QR.</p>}
 
       {gastosMateriais.length > 0 && (
         <>
@@ -961,6 +1145,102 @@ function TelaVoluntario({ voluntario: v, agendamentos, tempos, todasAreas, aoSal
       )) : <p className="dica">Nenhum agendamento para este voluntário.</p>}
 
       <button className="btn-sair" style={{ width: '100%', marginTop: 14 }} onClick={aoRemover}>🗑 Remover da equipe</button>
+    </div>
+  );
+}
+
+// ─── Nota fiscal: tirar foto (valor manual) ou escanear o QR (chave de 44
+// dígitos que prova que a nota é real — e o valor entra sozinho quando vem) ───
+function FormNota({ acoes, acaoInicial, aoCancelar, aoSalvar }) {
+  const [f, setF] = useState({ acaoId: acaoInicial || '', descricao: '', valor: '', foto: '', chave: '', url: '', origem: '' });
+  const [lendo, setLendo] = useState(false);
+  const [erro, setErro] = useState('');
+
+  async function pegarFoto(e) {
+    setErro('');
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let dataUrl = await comprimirImagem(file, 0.6, 900);
+      if (dataUrl.length > 900000) dataUrl = await comprimirImagem(file, 0.45, 700);
+      if (dataUrl.length > 900000) { setErro('A foto ficou grande demais — tente de novo.'); return; }
+      setF(x => ({ ...x, foto: dataUrl, origem: x.origem || 'foto' }));
+    } catch (e2) { setErro('Não consegui ler essa imagem.'); }
+  }
+
+  function leuQR(texto) {
+    setLendo(false);
+    const { chave, valor, url } = lerNotaDoQR(texto);
+    if (!chave) { setErro('Esse QR não parece de nota fiscal (não achei a chave de 44 dígitos).'); return; }
+    setF(x => ({ ...x, chave, url, origem: 'qr', valor: valor ? String(valor) : x.valor }));
+  }
+
+  const valorNum = Number(String(f.valor).replace(',', '.')) || 0;
+
+  if (lendo) return <LeitorQR aoLer={leuQR} aoFechar={() => setLendo(false)} />;
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>📄 Nova nota fiscal</h2>
+      <div className="linha-botoes" style={{ marginBottom: 10 }}>
+        <button className="btn-principal" onClick={() => { setErro(''); setLendo(true); }}>🔎 Escanear QR</button>
+        <label className="btn-secundario" style={{ cursor: 'pointer', textAlign: 'center' }}>
+          📷 Tirar foto
+          <input type="file" accept="image/*" capture="environment" onChange={pegarFoto} style={{ display: 'none' }} />
+        </label>
+      </div>
+      {f.chave && <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
+        <div className="cartao-topo"><strong>✓ Nota real (QR lido)</strong><span className="chip concluído">…{f.chave.slice(-8)}</span></div>
+        <p className="obs" style={{ margin: 0 }}>Chave: {f.chave}</p>
+      </div>}
+      {f.foto && <img src={f.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 12, marginBottom: 10 }} />}
+      <Campo rotulo="Valor da nota (R$)">
+        <input type="number" min="0" step="0.01" value={f.valor} onChange={e => setF({ ...f, valor: e.target.value })} placeholder={f.origem === 'qr' && !f.valor ? 'Esse QR não trouxe o valor — digite' : '0,00'} />
+      </Campo>
+      <Campo rotulo="Do que é (opcional)"><input value={f.descricao} onChange={e => setF({ ...f, descricao: e.target.value })} placeholder="Ex.: materiais descartáveis" /></Campo>
+      <Campo rotulo="Ação vinculada">
+        <select value={f.acaoId} onChange={e => setF({ ...f, acaoId: e.target.value })}>
+          <option value="">Sem ação</option>
+          {acoes.map(a => <option key={a.id} value={a.id}>{a.titulo} ({dataBonita(a.data)})</option>)}
+        </select>
+      </Campo>
+      {erro && <div className="erro">{erro}</div>}
+      <div className="linha-botoes">
+        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={!valorNum && !f.chave} onClick={() => aoSalvar({ ...f, valor: valorNum, origem: f.origem || (f.chave ? 'qr' : 'foto') })}>Salvar nota</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Investidor (patrocinador de ação — a Colheita mostra tudo a ele) ───
+function FormInvestidor({ investidor, acoes, aoCancelar, aoSalvar, aoExcluir }) {
+  const [f, setF] = useState({
+    nome: investidor?.nome || '', empresa: investidor?.empresa || '',
+    telefone: investidor?.telefone || '', email: investidor?.email || '',
+    acaoId: investidor?.acaoId || '', observacoes: investidor?.observacoes || '',
+  });
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>🤝 {investidor ? 'Investidor' : 'Novo investidor'}</h2>
+      <Campo rotulo="Nome"><input value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} placeholder="Nome do investidor" /></Campo>
+      <Campo rotulo="Empresa (opcional)"><input value={f.empresa} onChange={e => setF({ ...f, empresa: e.target.value })} /></Campo>
+      <Campo rotulo="Telefone"><input value={f.telefone} onChange={e => setF({ ...f, telefone: e.target.value })} /></Campo>
+      <Campo rotulo="E-mail"><input type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} placeholder="Vai servir para ele entrar na Colheita" /></Campo>
+      <Campo rotulo="Ação que patrocina (opcional)">
+        <select value={f.acaoId} onChange={e => setF({ ...f, acaoId: e.target.value })}>
+          <option value="">Nenhuma / o projeto todo</option>
+          {acoes.map(a => <option key={a.id} value={a.id}>{a.titulo} ({dataBonita(a.data)})</option>)}
+        </select>
+      </Campo>
+      <Campo rotulo="Observações"><input value={f.observacoes} onChange={e => setF({ ...f, observacoes: e.target.value })} /></Campo>
+      <div className="linha-botoes">
+        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Salvar</button>
+      </div>
+      {investidor && <button className="btn-sair" style={{ width: '100%', marginTop: 10 }} onClick={aoExcluir}>🗑 Remover investidor</button>}
     </div>
   );
 }
