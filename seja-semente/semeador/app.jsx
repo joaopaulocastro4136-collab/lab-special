@@ -671,9 +671,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
 
   return (
     <div className="tela-principal">
-      <header>
+      <header className="compacta">
         <div className="header-titulo">
-          <div className="logo-bolha"><LogoApp tamanho={40} /></div>
+          <div className="logo-bolha"><LogoApp tamanho={30} /></div>
           <div>
             <strong>Semeador</strong>
             <div className={centralOnline ? 'status online' : 'status'}>
@@ -784,12 +784,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
           </>
         )}
         {aba === 'chat' && (
-          <>
-            <h2>Chat da equipe</h2>
-            <p className="dica" style={{ margin: '-8px 0 10px' }}>Conversa com a central e com toda a equipe. Dá para anexar um paciente e, quando marcarem você com uma sugestão, é só tocar em Aceitar.</p>
-            <Chat usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
-              areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
-          </>
+          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
+            areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
         {aba === 'perfil' && (
           <>
