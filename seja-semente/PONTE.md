@@ -243,6 +243,7 @@ Apple (app removido) é apagado da coleção pelo próprio carteiro.
 | `nome`        | string    | `"Maria Souza"`                     |
 | `app`         | string    | `"central"` ou `"semeador"`         |
 | `aparelho`    | string    | o `idAparelho()` local (ss-aparelho) |
+| `voipToken`   | string    | token de LIGAÇÃO (CallKit, app 6.10+) — com ele o carteiro faz o iPhone tocar a tela de chamada de verdade; sem ele, cai na notificação comum repetida |
 | `atualizadoEm`| timestamp | último registro                      |
 
 ### `central-usuarios/{uid}` — quem tem acesso à central

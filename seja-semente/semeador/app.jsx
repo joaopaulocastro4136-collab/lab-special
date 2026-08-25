@@ -1104,20 +1104,30 @@ function App() {
   // vai para aparelhos/{token} e o carteiro na nuvem faz o resto) ───
   useEffect(() => {
     if (!CONFIGURADO || !conta || !window.__registrarPush) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
     const grava = (token) => {
       if (!token) return;
-      const { doc, setDoc, serverTimestamp } = fb.fns;
       setDoc(doc(fb.db, 'aparelhos', token), {
         uid: conta.uid, nome: cadastro?.nome || conta.nome || '', app: 'semeador',
         aparelho: idAparelho(), atualizadoEm: serverTimestamp(),
+        // token da LIGAÇÃO (CallKit) — quando a casca já entregou
+        ...(window.__tokenVoip ? { voipToken: window.__tokenVoip } : {}),
       }, { merge: true }).catch(() => {});
     };
     grava(window.__tokenPush);
     const ouve = (e) => grava(e.detail);
+    const ouveVoip = () => grava(window.__tokenPush);
     window.addEventListener('token-push', ouve);
+    window.addEventListener('token-voip', ouveVoip);
     window.__registrarPush();
-    return () => window.removeEventListener('token-push', ouve);
+    return () => { window.removeEventListener('token-push', ouve); window.removeEventListener('token-voip', ouveVoip); };
   }, [conta?.uid, cadastro?.nome]);
+  // A tela de ligação nativa (CallKit) chama isto quando a pessoa ATENDE
+  // com o app fechado — marca a chamada como atendida para todo mundo
+  useEffect(() => {
+    window.__atenderChamada = (id) => encerrarChamada({ id }, true);
+    return () => { delete window.__atenderChamada; };
+  });
 
   // Chamar alguém da equipe: a mesma tela de ligação, mas só nos aparelhos
   // da pessoa escolhida (paraUid) — não toca na equipe toda

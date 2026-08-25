@@ -30,23 +30,26 @@ function jwtApns(p8, keyId, teamId) {
 }
 
 // Manda um push para um aparelho; devolve o status da Apple (200 = ok,
-// 410/400 BadDeviceToken = token morto, bom para limpar)
-function empurrar(cliente, jwt, alvo, payload) {
+// 410/400 BadDeviceToken = token morto, bom para limpar).
+// tipo 'alert' = notificação comum; tipo 'voip' = LIGAÇÃO (CallKit): o
+// iPhone mostra a tela de chamada de verdade, tocando até atender.
+function empurrar(cliente, jwt, alvo, payload, tipo = 'alert', token = null) {
+  const st = {};
   return new Promise((resolve) => {
     const req = cliente.request({
       ':method': 'POST',
-      ':path': '/3/device/' + alvo.token,
+      ':path': '/3/device/' + (token || alvo.token),
       authorization: 'bearer ' + jwt,
-      'apns-topic': BUNDLES[alvo.app] || BUNDLES.semeador,
-      'apns-push-type': 'alert',
+      'apns-topic': (BUNDLES[alvo.app] || BUNDLES.semeador) + (tipo === 'voip' ? '.voip' : ''),
+      'apns-push-type': tipo,
       'apns-priority': '10',
       'apns-expiration': String(Math.floor(Date.now() / 1000) + 120),
     });
     let corpo = '';
     req.setEncoding('utf8');
-    req.on('response', (h) => { alvo._status = h[':status']; });
+    req.on('response', (h) => { st.status = h[':status']; });
     req.on('data', (c) => { corpo += c; });
-    req.on('end', () => resolve({ status: alvo._status, corpo }));
+    req.on('end', () => resolve({ status: st.status, corpo }));
     req.on('error', () => resolve({ status: 0, corpo: 'erro de rede' }));
     req.end(JSON.stringify(payload));
   });
@@ -92,18 +95,34 @@ exports.carteiroChamadas = onDocumentCreated(
     const cliente = http2.connect('https://api.push.apple.com');
     cliente.on('error', (e) => console.log('http2:', String(e)));
 
+    // Aparelho com token de LIGAÇÃO (app 6.10+): recebe a tela de chamada
+    // do iPhone (CallKit), que toca sozinha até atender — um envio basta.
+    // Os demais recebem a notificação comum, repetida a cada 8s.
+    const comLigacao = alvos.filter((a) => a.voipToken);
+    const soAviso = alvos.filter((a) => !a.voipToken);
+    const quem = chamada.tipo === 'staff'
+      ? (chamada.chamadoPorNome || 'Equipe Seja Semente')
+      : `Paciente: ${chamada.pacienteNome || ''}`;
+    for (const alvo of comLigacao) {
+      const r = await empurrar(cliente, jwt, alvo, { chamadaId: event.params.id, quem }, 'voip', alvo.voipToken);
+      if (r.status !== 200) console.log(`ligação ${String(alvo.voipToken).slice(0, 8)}…: ${r.status} ${r.corpo}`);
+    }
+    console.log(`liguei para ${comLigacao.length} aparelho(s) com tela de chamada`);
+
     // Insiste enquanto ninguém atende: reenvia a cada 8s, até 6 vezes
+    let restantes = soAviso;
     for (let rodada = 0; rodada < 6; rodada++) {
+      if (!restantes.length) break;
       const mortos = [];
-      for (const alvo of alvos) {
+      for (const alvo of restantes) {
         const r = await empurrar(cliente, jwt, alvo, payload);
         if (r.status === 410 || (r.status === 400 && r.corpo.includes('BadDeviceToken'))) mortos.push(alvo.token);
         else if (r.status !== 200) console.log(`push ${alvo.token.slice(0, 8)}…: ${r.status} ${r.corpo}`);
       }
       // Token morto (app removido, aparelho trocado): limpa da coleção
-      for (const t of mortos) { db.collection('aparelhos').doc(t).delete().catch(() => {}); alvos = alvos.filter((a) => a.token !== t); }
-      console.log(`rodada ${rodada + 1}: avisei ${alvos.length} aparelho(s)`);
-      if (rodada === 5 || !alvos.length) break;
+      for (const t of mortos) { db.collection('aparelhos').doc(t).delete().catch(() => {}); restantes = restantes.filter((a) => a.token !== t); }
+      console.log(`rodada ${rodada + 1}: avisei ${restantes.length} aparelho(s)`);
+      if (rodada === 5 || !restantes.length) break;
       await new Promise((r) => setTimeout(r, 8000));
       const denovo = await db.collection('chamadas').doc(event.params.id).get();
       if (!denovo.exists || denovo.data().ativa === false) { console.log('Chamada atendida — parando de insistir.'); break; }
