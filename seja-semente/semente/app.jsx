@@ -706,6 +706,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
+  const [acoes, setAcoes] = useState([]); // mutirões (vêm do Palmar)
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
   const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
@@ -809,6 +810,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       escuta('chat', ['criadoEm'], setMensagens),
       escuta('central-usuarios', ['nome'], setCentralUsuarios),
       escuta('convocacoes', ['criadaEm', 'desc'], setConvocacoes),
+      // Ações (mutirões) criadas no Palmar — para vincular a retirada de
+      // material do dia ao relatório de custos daquela ação
+      escuta('acoes', ['data', 'desc'], setAcoes),
     ];
     return () => soltar.forEach(s => s());
   }, []);
@@ -1055,6 +1059,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   }
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
+  // A ação (mutirão) marcada para hoje no Palmar
+  const acaoDoDia = acoes.find(a => a.data === hojeISO() && a.status !== 'encerrada') || null;
   // Todo mundo com conta no Seja Semente (voluntários + central), menos eu
   const pessoasChamaveis = (() => {
     const mapa = new Map();
@@ -1605,7 +1611,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
         })()}
 
         {aba === 'estoque' && (
-          <Estoque central usuario={usuario} fb={CONFIGURADO ? fb : null} />
+          <Estoque central usuario={usuario} fb={CONFIGURADO ? fb : null} acaoDoDia={acaoDoDia} />
         )}
         {aba === 'perfil' && (
           <>

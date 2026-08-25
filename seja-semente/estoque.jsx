@@ -20,6 +20,12 @@ function quando(v) {
 function reais(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
+// O Palmar grava `quantidade`; a central/Semeador gravam `qtd`. Estas duas
+// funções falam os DOIS dialetos, para os três aplicativos verem o mesmo
+// estoque (e cada gravação daqui pra frente escreve os dois campos)
+export function qtdDe(item) {
+  return Number(item?.qtd ?? item?.quantidade ?? 0);
+}
 function lerValor(texto) {
   const n = Number(String(texto).replace(/[^\d,\.]/g, '').replace(',', '.'));
   return isNaN(n) ? 0 : n;
@@ -85,7 +91,7 @@ function EditarItem({ item, aoSalvar, aoFechar }) {
 }
 
 // central=true libera valor/mínimo/editar/apagar; todo mundo retira e adiciona
-export function Estoque({ usuario, fb, central }) {
+export function Estoque({ usuario, fb, central, acaoDoDia }) {
   const [itens, setItens] = useState([]);
   const [movimentos, setMovimentos] = useState([]);
   const [mexendo, setMexendo] = useState(null); // { id, tipo: 'saida'|'entrada'|'editar' }
@@ -98,7 +104,7 @@ export function Estoque({ usuario, fb, central }) {
     const { collection, query, orderBy, limit, onSnapshot } = fb.fns;
     const s1 = onSnapshot(query(collection(fb.db, 'estoque'), orderBy('nome')),
       snap => setItens(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const s2 = onSnapshot(query(collection(fb.db, 'estoque-movimentos'), orderBy('criadoEm', 'desc'), limit(40)),
+    const s2 = onSnapshot(query(collection(fb.db, 'estoque-movimentos'), orderBy('em', 'desc'), limit(40)),
       snap => setMovimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     return () => { s1(); s2(); };
   }, [online]);
@@ -106,7 +112,7 @@ export function Estoque({ usuario, fb, central }) {
   function adicionarItem(f) {
     if (!online) { setItens(is => [...is, { id: 'e' + Math.floor(Math.random() * 1e9), ...f }].sort((a, b) => a.nome.localeCompare(b.nome))); return; }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'estoque'), { ...f, criadoEm: serverTimestamp(), criadoPorNome: usuario.nome || '' }).catch(() => {});
+    addDoc(collection(fb.db, 'estoque'), { ...f, quantidade: f.qtd, criadoEm: serverTimestamp(), criadoPorNome: usuario.nome || '' }).catch(() => {});
   }
 
   function editarItem(item, campos) {
@@ -114,27 +120,46 @@ export function Estoque({ usuario, fb, central }) {
     const { doc, updateDoc } = fb.fns;
     updateDoc(doc(fb.db, 'estoque', item.id), campos).catch(() => {});
   }
+  // Conserta um item que veio do Palmar sem `qtd` (ou o contrário) — assim os
+  // três aplicativos passam a ver a mesma quantidade
+  function alinharItem(item) {
+    if (!online) return;
+    const n = qtdDe(item);
+    if (item.qtd === n && item.quantidade === n) return;
+    const { doc, updateDoc } = fb.fns;
+    updateDoc(doc(fb.db, 'estoque', item.id), { qtd: n, quantidade: n }).catch(() => {});
+  }
 
   // O coração do estoque: desconta (ou repõe) e deixa registrado quem foi —
   // com o valor da época, para o relatório de gastos (Colheita)
   function movimentar(item, tipo, qtd) {
     qtd = Math.max(1, Number(qtd || 1));
-    if (tipo === 'saida' && qtd > (item.qtd || 0)) qtd = item.qtd || 0;
+    if (tipo === 'saida' && qtd > qtdDe(item)) qtd = qtdDe(item);
     if (!qtd) return;
     const un = item.unidade || 'un';
     const pergunta = tipo === 'saida'
       ? `Retirar ${qtd} ${un} de "${item.nome}"?\n\nVai ficar registrado no seu nome (${usuario.nome || 'você'}).`
       : `Dar entrada de ${qtd} ${un} em "${item.nome}"?`;
     if (!window.confirm(pergunta)) return;
-    const mov = { itemId: item.id, itemNome: item.nome, unidade: un, tipo, qtd, valorUnit: Number(item.valor || 0), autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    const delta = tipo === 'entrada' ? qtd : -qtd;
+    const mov = {
+      itemId: item.id, itemNome: item.nome, unidade: un, tipo, qtd,
+      // `delta` e `motivo` são o dialeto do Palmar (ele soma Math.abs(delta))
+      delta, motivo: tipo === 'saida' ? 'retirada pelo voluntário' : 'entrada',
+      valorUnit: Number(item.valor || 0),
+      // vincula à ação (mutirão) do dia, quando houver — assim o material
+      // entra no relatório de custos daquela ação lá no Palmar
+      acaoId: acaoDoDia?.id || '', acaoTitulo: acaoDoDia?.titulo || '',
+      autorUid: usuario.uid, autorNome: usuario.nome || '',
+    };
     if (!online) {
-      setItens(is => is.map(i => i.id === item.id ? { ...i, qtd: (i.qtd || 0) + (tipo === 'entrada' ? qtd : -qtd) } : i));
-      setMovimentos(ms => [{ id: 'm' + Math.floor(Math.random() * 1e9), ...mov, criadoEm: new Date() }, ...ms]);
+      setItens(is => is.map(i => i.id === item.id ? { ...i, qtd: qtdDe(i) + delta, quantidade: qtdDe(i) + delta } : i));
+      setMovimentos(ms => [{ id: 'm' + Math.floor(Math.random() * 1e9), ...mov, em: new Date() }, ...ms]);
       return;
     }
     const { doc, updateDoc, increment, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'estoque', item.id), { qtd: increment(tipo === 'entrada' ? qtd : -qtd) }).catch(() => {});
-    addDoc(collection(fb.db, 'estoque-movimentos'), { ...mov, criadoEm: serverTimestamp() }).catch(() => {});
+    updateDoc(doc(fb.db, 'estoque', item.id), { qtd: increment(delta), quantidade: increment(delta) }).catch(() => {});
+    addDoc(collection(fb.db, 'estoque-movimentos'), { ...mov, em: serverTimestamp(), criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   function apagarItem(item) {
@@ -144,10 +169,15 @@ export function Estoque({ usuario, fb, central }) {
     deleteDoc(doc(fb.db, 'estoque', item.id)).catch(() => {});
   }
 
-  const repor = itens.filter(i => (i.qtd || 0) <= (i.minimo || 0));
+  // Ao abrir, alinha itens que vieram só num dialeto (uma vez por item)
+  useEffect(() => {
+    for (const i of itens) if (i.qtd === undefined || i.quantidade === undefined) alinharItem(i);
+  }, [itens.length]);
+
+  const repor = itens.filter(i => qtdDe(i) <= (i.minimo || 0));
   const filtro = busca.trim().toLowerCase();
   const daBusca = itens.filter(i => !filtro || (i.nome || '').toLowerCase().includes(filtro));
-  const valorTotal = itens.reduce((s, i) => s + (i.qtd || 0) * (i.valor || 0), 0);
+  const valorTotal = itens.reduce((s, i) => s + qtdDe(i) * (i.valor || 0), 0);
 
   return (
     <>
@@ -157,6 +187,11 @@ export function Estoque({ usuario, fb, central }) {
           ? 'Alimente o estoque aqui (com unidade e valor). Cada retirada desconta sozinha e fica registrada embaixo.'
           : 'Precisou de material? Pesquise, retire e confirme — o sistema desconta sozinho e avisa a central. Não achou o item? Adicione.'}
       </p>
+      {acaoDoDia && (
+        <div className="banner-ok" style={{ marginBottom: 10 }}>
+          🌱 Ação de hoje: <b>{acaoDoDia.titulo}</b> — o que for retirado entra no relatório de custos dela.
+        </div>
+      )}
 
       {repor.length > 0 && (
         <div className="cartao estoque-repor">
@@ -164,7 +199,7 @@ export function Estoque({ usuario, fb, central }) {
           {repor.map(i => (
             <div key={i.id} className="estoque-repor-linha">
               <span>{i.nome}</span>
-              <b>{i.qtd || 0} {i.unidade || 'un'} restando{(i.minimo || 0) > 0 ? ` · mínimo ${i.minimo}` : ''}</b>
+              <b>{qtdDe(i)} {i.unidade || 'un'} restando{(i.minimo || 0) > 0 ? ` · mínimo ${i.minimo}` : ''}</b>
             </div>
           ))}
         </div>
@@ -181,20 +216,20 @@ export function Estoque({ usuario, fb, central }) {
       <input className="busca" placeholder="Pesquisar item do estoque…" value={busca} onChange={e => setBusca(e.target.value)} />
 
       {daBusca.length ? daBusca.map(i => {
-        const baixo = (i.qtd || 0) <= (i.minimo || 0);
+        const baixo = qtdDe(i) <= (i.minimo || 0);
         return (
           <div className="cartao estoque-item" key={i.id}>
             <div className="estoque-topo">
               <div>
                 <strong>{i.nome}</strong>
                 <p className="obs" style={{ margin: 0 }}>
-                  <b className={baixo ? 'estoque-qtd baixo' : 'estoque-qtd'}>{i.qtd || 0}</b> {i.unidade || 'un'} em estoque
+                  <b className={baixo ? 'estoque-qtd baixo' : 'estoque-qtd'}>{qtdDe(i)}</b> {i.unidade || 'un'} em estoque
                   {central && (i.valor || 0) > 0 && <span> · {reais(i.valor)}/{i.unidade || 'un'}</span>}
                   {baixo && <span className="chip prioridade" style={{ marginLeft: 6 }}>repor</span>}
                 </p>
               </div>
               <div className="estoque-botoes">
-                <button className="btn-secundario" onClick={() => { setMexendo({ id: i.id, tipo: 'saida' }); setQtdMexe('1'); }} disabled={!(i.qtd > 0)}>− Retirar</button>
+                <button className="btn-secundario" onClick={() => { setMexendo({ id: i.id, tipo: 'saida' }); setQtdMexe('1'); }} disabled={qtdDe(i) <= 0}>− Retirar</button>
                 {central && <button className="btn-secundario" onClick={() => { setMexendo({ id: i.id, tipo: 'entrada' }); setQtdMexe('1'); }}>+ Entrada</button>}
                 {central && <button className="btn-secundario" onClick={() => setMexendo({ id: i.id, tipo: 'editar' })}>✎</button>}
                 {central && <button className="btn-remover" onClick={() => apagarItem(i)}>✕</button>}
