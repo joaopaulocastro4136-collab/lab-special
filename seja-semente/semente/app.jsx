@@ -17,7 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
@@ -1775,10 +1775,10 @@ function App() {
       ? { ativa: false, atendidaPorUid: usuario?.uid, atendidaPorNome: usuario?.nome || '', atendidaEm: serverTimestamp() }
       : { ativa: false }).catch(() => {});
   }
-  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorUid !== usuario?.uid : true));
+  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true));
   // Chamar um paciente (aba Pacientes): cria a chamada que toca em todo mundo
   function chamarPaciente(p) {
-    const dados = { pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '', chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '', ativa: true };
+    const dados = { pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '', chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '', chamadoPorAparelho: idAparelho(), ativa: true };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
     const { collection, addDoc, serverTimestamp } = fb.fns;
     addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
