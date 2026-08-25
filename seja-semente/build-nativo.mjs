@@ -90,10 +90,12 @@ const html = `<!DOCTYPE html>
       try { localStorage.setItem('casca-css', css); } catch (e) {}
       var e2 = document.createElement('style'); e2.textContent = css; document.head.appendChild(e2);
     }).catch(function () {});
-  // O app: rede → guardado no aparelho → cópia de fábrica
-  var corta = new AbortController();
-  var vigia = setTimeout(function () { corta.abort(); }, 8000);
-  fetch(SITE + '/app.js', { signal: corta.signal, cache: 'no-store' })
+  // O app: rede → guardado no aparelho → cópia de fábrica.
+  // Se a busca demorar mais de 8s, a tela NÃO fica esperando: sobe o que já
+  // temos e a busca continua por fora — quando chegar, fica guardada para a
+  // próxima abertura (antes a busca era cortada e a novidade se perdia).
+  var vigia = setTimeout(planoB, 8000);
+  fetch(SITE + '/app.js', { cache: 'no-store' })
     .then(function (r) { if (!r.ok) throw new Error('resposta ' + r.status); return r.text(); })
     .then(function (js) {
       clearTimeout(vigia);
@@ -101,6 +103,28 @@ const html = `<!DOCTYPE html>
       if (!subiu()) roda(js);
     })
     .catch(function () { clearTimeout(vigia); planoB(); });
+
+  // Ao VOLTAR para o aplicativo depois de um tempo fora, confere se saiu
+  // novidade. O iPhone quase nunca abre o aplicativo do zero — quem sai e
+  // volta pelo ícone continua na mesma tela de sempre. Sem isto, o que é
+  // publicado só chegaria quando a pessoa fechasse o aplicativo de vez.
+  var saiuEm = 0;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { saiuEm = Date.now(); return; }
+    if (!saiuEm || Date.now() - saiuEm < 90000) return;   // voltou logo: não mexe
+    saiuEm = 0;
+    fetch(SITE + '/app.js', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (js) {
+        if (!js) return;
+        var atual = null;
+        try { atual = localStorage.getItem('casca-app'); } catch (e) {}
+        if (js === atual) return;                          // nada novo, fica como está
+        try { localStorage.setItem('casca-app', js); } catch (e) {}
+        location.reload();                                 // entra a versão nova
+      })
+      .catch(function () {});
+  });
 })();
 </script>
 </body>
