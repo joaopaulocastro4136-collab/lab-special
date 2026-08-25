@@ -168,6 +168,8 @@ export const CSS = `
   .btn-redondo.ligado { background: #226343; border-color: #226343; color: #fff; }
   .btn-foto-chat { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 1.5px dashed #9DBBA8; border-radius: 11px; background: #EAF4EE; color: #226343; font-size: 13px; font-weight: 800; cursor: pointer; flex: none; }
   .chat-emojis { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chat-figurinhas { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chat-figurinhas button { border: none; background: #fff; border-radius: 12px; padding: 3px; cursor: pointer; box-shadow: 0 1px 4px rgba(30,43,34,0.08); }
   .chat-emojis button { border: none; background: #fff; border-radius: 10px; font-size: 22px; padding: 5px 7px; cursor: pointer; box-shadow: 0 1px 4px rgba(30,43,34,0.08); }
   .msg-foto { border: none; background: none; padding: 0; cursor: pointer; max-width: 100%; }
   .msg-foto img { max-width: 100%; max-height: 260px; border-radius: 12px; display: block; }
