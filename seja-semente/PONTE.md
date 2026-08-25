@@ -122,6 +122,9 @@ não na triagem):
 | `area`            | string           | `"Cirurgia"` (Profilaxia, Periodontia, Dentística, Endodontia, Cirurgia, Prótese, Avaliação, Outro — ver AREAS em semente/app.jsx) |
 | `saude`           | array de strings | `["Hipertensão / pressão alta"]` (Hipertensão / pressão alta, Diabetes, Problema cardíaco, Alergia a medicamento, Medicação contínua, Gestante) |
 | `outrasCondicoes` | string           | `"Insulina 2x ao dia"`                   |
+| `dentes`          | array de números FDI | `[11, 21]` — dentes do tratamento marcados no odontograma |
+| `gengiva`         | array de números FDI | `[24]` — regiões de gengiva marcadas (pelo dente mais próximo) |
+| `semMarcacao`     | boolean          | `true` quando a triagem foi concluída sem marcar dente/gengiva (caso não se aplique) |
 
 ### `agendamentos/{id}` — agenda por dia e horário
 Quem escreve: **Central** (Windows ou app Seja Semente) e também o
