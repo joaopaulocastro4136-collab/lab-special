@@ -1,4 +1,4 @@
-// Preenche as informações beta dos dois apps (descrição, e-mail de contato)
+// Preenche as informações beta dos aplicativos (descrição, e-mail de contato)
 // e reenvia o build para a análise beta da Apple — o que faltava para o
 // link público do TestFlight liberar a instalação.
 import crypto from 'crypto';
@@ -40,6 +40,10 @@ const APPS = [
   {
     bundle: 'com.sejasemente.palmar',
     descricao: 'Palmar — aplicativo de gestão do projeto social Seja Semente: acompanha as ações (mutirões) com equipe escalada e relatório, tempos e ranking dos voluntários, estoque de materiais, notas fiscais e o valor produzido pelo projeto. Versão de teste para os gestores.',
+  },
+  {
+    bundle: 'com.sejasemente.colheita',
+    descricao: 'Colheita — a prestação de contas do projeto social Seja Semente para quem investiu: relatório da ação, sorrisos transformados com antes e depois, quanto foi feito em cada especialidade e as notas fiscais para conferir. Versão de teste para investidores e parceiros do projeto.',
   },
 ];
 

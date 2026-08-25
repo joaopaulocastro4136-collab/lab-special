@@ -1,0 +1,12 @@
+{
+  "name": "seja-semente-colheita-nativo",
+  "version": "1.0.0",
+  "description": "Casca nativa (iOS) da Colheita",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor-firebase/authentication": "^8.3.0",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1"
+  }
+}

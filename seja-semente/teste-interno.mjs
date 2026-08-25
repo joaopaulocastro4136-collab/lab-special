@@ -1,4 +1,4 @@
-// Garante o teste interno dos dois apps: grupo interno com acesso a todos os
+// Garante o teste interno dos quatro aplicativos: grupo interno com acesso a todos os
 // builds e o dono da conta (joaopaulocastro4136@gmail.com) como testador.
 // Teste interno não passa pela análise beta — o app aparece na hora.
 import crypto from 'crypto';
@@ -28,12 +28,24 @@ async function api(metodo, caminho, corpo) {
   return { status: r.status, dados };
 }
 
-for (const [nome, appId] of [['Seja semente', '6792989095'], ['Semeador', '6792989190']]) {
+for (const [nome, appId] of [['Seja semente', '6792989095'], ['Semeador', '6792989190'], ['Palmar', '6805159974'], ['Colheita', '6805244353']]) {
   console.log(`\n══ ${nome} ══`);
 
   const grupos = await api('GET', `/v1/betaGroups?filter[app]=${appId}&filter[isInternalGroup]=true`);
-  const grupo = grupos.dados?.data?.[0];
-  if (!grupo) { console.log('  ✗ sem grupo interno'); continue; }
+  let grupo = grupos.dados?.data?.[0];
+  // Aplicativo novo ainda não tem grupo interno — cria um
+  if (!grupo) {
+    const cria = await api('POST', '/v1/betaGroups', {
+      data: {
+        type: 'betaGroups',
+        attributes: { name: 'Equipe interna', isInternalGroup: true, hasAccessToAllBuilds: true },
+        relationships: { app: { data: { type: 'apps', id: appId } } },
+      },
+    });
+    grupo = cria.dados?.data;
+    if (!grupo) { console.log(`  ✗ não deu para criar o grupo interno: ${JSON.stringify(cria.dados?.errors?.[0]?.detail || cria.dados || {}).slice(0, 200)}`); continue; }
+    console.log('  ✓ Grupo interno criado');
+  }
   console.log(`  Grupo interno "${grupo.attributes.name}" — acesso a todos os builds: ${grupo.attributes.hasAccessToAllBuilds}`);
 
   if (!grupo.attributes.hasAccessToAllBuilds) {

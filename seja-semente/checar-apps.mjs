@@ -13,7 +13,7 @@ const semAssin = b64({ alg: 'ES256', kid: KEY_ID, typ: 'JWT' }) + '.' + b64({ is
 const assin = crypto.sign('sha256', Buffer.from(semAssin), { key: P8, dsaEncoding: 'ieee-p1363' }).toString('base64url');
 const JWT = semAssin + '.' + assin;
 
-for (const bundle of ['com.sejasemente.central', 'com.sejasemente.semeador']) {
+for (const bundle of ['com.sejasemente.central', 'com.sejasemente.semeador', 'com.sejasemente.palmar', 'com.sejasemente.colheita']) {
   const r = await fetch(`https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=${bundle}`, {
     headers: { Authorization: 'Bearer ' + JWT },
   });

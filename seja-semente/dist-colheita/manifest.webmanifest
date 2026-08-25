@@ -1,0 +1,11 @@
+{
+  "name": "Colheita",
+  "short_name": "Colheita",
+  "description": "Prestação de contas do projeto Seja Semente para quem investiu: os sorrisos transformados, o relatório de cada ação e as notas fiscais.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#2F7D4E",
+  "theme_color": "#2F7D4E",
+  "lang": "pt-BR",
+  "icons": []
+}

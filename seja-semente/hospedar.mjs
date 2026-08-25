@@ -20,6 +20,7 @@ execSync('npm ci --no-audit --no-fund', { cwd: raiz, stdio: 'inherit' });
 execSync('node semente/build.mjs', { cwd: raiz, stdio: 'inherit' });
 execSync('node semeador/build.mjs', { cwd: raiz, stdio: 'inherit' });
 execSync('node palmar/build.mjs', { cwd: raiz, stdio: 'inherit' });
+execSync('node colheita/build.mjs', { cwd: raiz, stdio: 'inherit' });
 
 // 2. Token do Google (mesmo caminho dos outros robôs)
 async function token() {
@@ -95,4 +96,5 @@ async function publicar(siteId, pasta) {
 const okCentral = await publicar(PROJETO, 'dist-semente');
 const okSemeador = await publicar('seja-semente-semeador', 'dist-semeador');
 const okPalmar = await publicar('seja-semente-palmar', 'dist-palmar');
-if (!okCentral && !okSemeador && !okPalmar) process.exit(1);
+const okColheita = await publicar('seja-semente-colheita', 'dist-colheita');
+if (!okCentral && !okSemeador && !okPalmar && !okColheita) process.exit(1);
