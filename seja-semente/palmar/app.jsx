@@ -367,7 +367,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       escuta('central-usuarios', ['nome'], setCentralUsuarios),
       escuta('acoes', ['data', 'desc'], setAcoes),
       escuta('estoque', ['nome'], setEstoque),
-      escuta('estoque-movimentos', ['em', 'desc'], setMovimentos),
+      escuta('estoque-movimentos', ['criadoEm', 'desc'], setMovimentos),
       escuta('convocacoes', ['criadaEm', 'desc'], setConvocacoes),
       escuta('investidores', ['nome'], setInvestidores),
       escuta('notas', ['criadaEm', 'desc'], setNotas),
@@ -508,6 +508,9 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   }
   // Entrada (+) ou saída (−) de material, com motivo e ação vinculada
   async function movimentar(item, delta, motivo, acaoId) {
+    if (!delta) return;
+    // Nunca retirar mais do que existe: o registro precisa bater com a baixa
+    if (delta < 0) delta = -Math.min(-delta, qtdEstoque(item));
     if (!delta) return;
     const acao = acoes.find(a => a.id === acaoId);
     const registro = {
@@ -926,16 +929,6 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           const linhas = Object.entries(porArea).sort((a, b) => b[1].total - a[1].total);
           const total = linhas.reduce((s, [, v]) => s + v.total, 0);
           const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
-  // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
-  const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
-  const dentesTratados = procsDoDia.reduce((s, r) => s + (r.dentes || []).length, 0)
-    + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
-  const porEspecialidade = (() => {
-    const m = {};
-    for (const a of doDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
-    for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
-  })();
           return (
             <>
               <h2>Financeiro</h2>
@@ -1163,8 +1156,11 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
 
   // Relatório do dia da ação (em tempo real, vindo do Semeador/central)
   const doDia = atendimentos.filter(a => isoDe(a.inicio) === acao.data);
+  // Só o atendimento JÁ CONCLUÍDO vira valor produzido e entra na contagem —
+  // quem ainda está na cadeira aparece na lista, mas não no dinheiro
+  const feitosDoDia = doDia.filter(a => a.fim);
   const registros = acao.registros || [];
-  const custoAtend = doDia.reduce((s, a) => s + custoAtendimento(a), 0);
+  const custoAtend = feitosDoDia.reduce((s, a) => s + custoAtendimento(a), 0);
   const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
   // Materiais gastos na ação: os vinculados a ela E, para quem retirou sem
   // vínculo, os do MESMO DIA da ação (é o mutirão daquele dia)
@@ -1178,7 +1174,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
     + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
   const porEspecialidade = (() => {
     const m = {};
-    for (const a of doDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
+    for (const a of feitosDoDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
     for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
     return Object.entries(m).sort((a, b) => b[1] - a[1]);
   })();
@@ -1196,7 +1192,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
   // ── Ficha da pessoa: tudo o que ela fez nesta ação ──
   if (vendoPessoa) {
     const v = vendoPessoa;
-    const doDele = doDia.filter(a => a.profissionalUid === v.id);
+    const doDele = feitosDoDia.filter(a => a.profissionalUid === v.id);
     const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
     const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
     const materiaisDele = gastosMateriais.filter(m => m.autorUid === v.id);
@@ -1295,7 +1291,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
       <p className="dica" style={{ margin: '0 0 8px' }}>Marque quem participa. Toque no nome de quem está marcado para ver <b>o que essa pessoa fez</b> nesta ação.</p>
       {equipe.length ? equipe.map(v => {
         const marcado = escalados.includes(v.id);
-        const doDele = doDia.filter(a => a.profissionalUid === v.id);
+        const doDele = feitosDoDia.filter(a => a.profissionalUid === v.id);
         const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
         const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
         const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
@@ -1318,7 +1314,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
 
       <h3 style={{ margin: '16px 0 8px' }}>{acao.retroativa ? 'Balanço da ação' : 'Relatório em tempo real'}</h3>
       <div className="grade-numeros">
-        <div className="cartao-numero"><strong>{doDia.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{feitosDoDia.length + totalManuais}</strong><span>atendimentos</span></div>
         <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
         <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na ação</span></div>
         <div className="cartao-numero destaque"><strong>{dinheiro(custoAtend + custoRegistros)}</strong><span>valor produzido</span></div>
