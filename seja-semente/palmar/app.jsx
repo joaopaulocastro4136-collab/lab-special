@@ -73,23 +73,15 @@ function LogoApp({ tamanho = 120 }) {
     <svg width={tamanho} height={tamanho} viewBox="0 0 100 100" style={{ display: 'block', borderRadius: tamanho * 0.24, boxShadow: tamanho >= 90 ? '0 12px 30px rgba(30,43,34,0.20)' : 'none' }}>
       <defs>
         <linearGradient id="pm-fundo" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#1E5A3A" /><stop offset="1" stopColor="#123B26" />
+          <stop offset="0" stopColor="#2A6B45" /><stop offset="1" stopColor="#143D28" />
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#pm-fundo)" />
-      <circle cx="76" cy="24" r="11" fill="#F3C34A" opacity="0.9" />
-      <path d="M48 88 C50 66 50 54 51 44 L55 44 C54 56 54 68 56 88 Z" fill="#8A5A33" />
-      <g fill="#3FA268">
-        <path d="M52 44 C38 34 26 34 16 40 C28 26 46 28 52 40 Z" />
-        <path d="M52 44 C66 34 78 34 88 40 C76 26 58 28 52 40 Z" />
-        <path d="M52 42 C44 28 44 18 50 10 C38 18 40 34 50 42 Z" />
-        <path d="M52 42 C60 28 60 18 54 10 C66 18 64 34 54 42 Z" />
-        <path d="M52 43 C48 40 40 42 34 50 C42 44 48 44 52 46 Z" />
-        <path d="M52 43 C56 40 64 42 70 50 C62 44 56 44 52 46 Z" />
+      <circle cx="50" cy="47" r="33" fill="#4F8C5C" stroke="#9FC7A4" strokeWidth="2" />
+      <g fill="#FFFFFF">
+        <path d="M50 20 L60 34 L54 34 L63 47 L56 47 L66 61 L34 61 L44 47 L37 47 L46 34 L40 34 Z" />
+        <rect x="47" y="61" width="6" height="11" rx="1.4" />
       </g>
-      <circle cx="47" cy="46" r="3.2" fill="#C88A3C" />
-      <circle cx="55" cy="47" r="3.2" fill="#C88A3C" />
-      <path d="M20 88 Q50 82 80 88 L80 100 L20 100 Z" fill="#2C6E48" />
     </svg>
   );
 }
@@ -617,6 +609,56 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       )) : <Vazio texto="Nenhuma nota registrada — toque em + Nota." />}
     </div>
   );
+  if (tela === 'valores') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+      <h2>🏷 Valores dos procedimentos</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Quanto vale cada procedimento. Se marcar "por dente", o valor multiplica pelos dentes marcados na triagem do paciente.</p>
+      {todasAreas.map(nome => (
+        <div className="cartao" key={nome}>
+          <div className="cartao-topo"><strong style={{ color: corDoNome(nome) }}>{nome}</strong>
+            <label className={ehPorDente(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '4px 10px', fontSize: 13 }}>
+              <input type="checkbox" checked={ehPorDente(nome)} onChange={() => salvarConfig({ porDente: { ...configProc.porDente, [nome]: !ehPorDente(nome) } })} />
+              por dente
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+            <span className="obs">R$</span>
+            <input type="number" min="0" step="10" style={{ width: 120 }} value={configProc.valores?.[nome] ?? ''} placeholder="0"
+              onChange={e => salvarConfig({ valores: { ...configProc.valores, [nome]: Number(e.target.value || 0) } })} />
+            <span className="obs">{ehPorDente(nome) ? 'por dente tratado' : 'por atendimento'}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+  if (tela?.especialidade) {
+    const area = tela.especialidade;
+    const daArea = atendimentos.filter(a => a.fim && (a.area || 'Outros') === area)
+      .map(a => ({ nome: a.pacienteNome, quem: a.profissionalNome, quando: isoDe(a.inicio), valor: custoAtendimento(a), extra: a.duracaoMin ? `${a.duracaoMin} min` : '' }));
+    const manuais = acoes.flatMap(ac => (ac.registros || [])
+      .filter(r => (r.area || 'Outros') === area)
+      .map(r => ({ nome: r.pacienteNome, quem: 'registro manual', quando: ac.data, valor: Number(r.valor || 0), extra: r.dentes > 1 ? `${r.dentes} dentes` : '' })));
+    const lista = [...daArea, ...manuais].sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+    const total = lista.reduce((s, x) => s + x.valor, 0);
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+        <h2 style={{ color: corDoNome(area) }}>{area}</h2>
+        <div className="grade-numeros">
+          <div className="cartao-numero"><strong>{lista.length}</strong><span>atendimentos</span></div>
+          <div className="cartao-numero destaque"><strong>{dinheiro(total)}</strong><span>produzido</span></div>
+        </div>
+        <p className="dica">{ehPorDente(area) ? `${dinheiro(valorDe(area))} por dente tratado` : `${dinheiro(valorDe(area))} por atendimento`}</p>
+        {lista.length ? lista.map((x, i) => (
+          <div className="cartao" key={i}>
+            <div className="cartao-topo"><strong>{x.nome || 'Paciente'}</strong><strong>{dinheiro(x.valor)}</strong></div>
+            <p className="obs" style={{ margin: 0 }}>{[dataBonita(x.quando), x.quem, x.extra].filter(Boolean).join(' · ')}</p>
+          </div>
+        )) : <Vazio texto="Nenhum atendimento desta especialidade ainda." />}
+      </div>
+    );
+  }
   if (tela === 'novoInvestidor') return <FormInvestidor acoes={acoes} aoCancelar={() => setTela(null)} aoSalvar={criarInvestidor} />;
   if (tela?.investidor) {
     const i = investidores.find(x => x.id === tela.investidor);
@@ -828,57 +870,56 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           </>
         )}
 
-        {aba === 'financeiro' && (
-          <>
-            <h2>Financeiro</h2>
-            <p className="dica" style={{ marginTop: 0 }}>Defina o valor de cada procedimento. Se marcar "por dente", o valor multiplica pelos dentes marcados na triagem do paciente.</p>
-            {todasAreas.map(nome => (
-              <div className="cartao" key={nome}>
-                <div className="cartao-topo"><strong style={{ color: corDoNome(nome) }}>{nome}</strong>
-                  <label className={ehPorDente(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '4px 10px', fontSize: 13 }}>
-                    <input type="checkbox" checked={ehPorDente(nome)} onChange={() => salvarConfig({ porDente: { ...configProc.porDente, [nome]: !ehPorDente(nome) } })} />
-                    por dente
-                  </label>
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-                  <span className="obs">R$</span>
-                  <input type="number" min="0" step="10" style={{ width: 120 }} value={configProc.valores?.[nome] ?? ''} placeholder="0"
-                    onChange={e => salvarConfig({ valores: { ...configProc.valores, [nome]: Number(e.target.value || 0) } })} />
-                  <span className="obs">{ehPorDente(nome) ? 'por dente tratado' : 'por atendimento'}</span>
-                </div>
+        {aba === 'financeiro' && (() => {
+          // O que o projeto já produziu, por especialidade (atendimentos
+          // concluídos + registros manuais das ações)
+          const feitos = atendimentos.filter(a => a.fim);
+          const porArea = {};
+          for (const a of feitos) {
+            const chave = a.area || 'Outros';
+            porArea[chave] = porArea[chave] || { quantos: 0, total: 0 };
+            porArea[chave].quantos++;
+            porArea[chave].total += custoAtendimento(a);
+          }
+          for (const ac of acoes) for (const r of (ac.registros || [])) {
+            const chave = r.area || 'Outros';
+            porArea[chave] = porArea[chave] || { quantos: 0, total: 0 };
+            porArea[chave].quantos++;
+            porArea[chave].total += Number(r.valor || 0);
+          }
+          const linhas = Object.entries(porArea).sort((a, b) => b[1].total - a[1].total);
+          const total = linhas.reduce((s, [, v]) => s + v.total, 0);
+          const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
+          return (
+            <>
+              <h2>Financeiro</h2>
+              <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+                <strong style={{ fontSize: 30 }}>{dinheiro(total)}</strong>
+                <span>valor já produzido pelo projeto</span>
               </div>
-            ))}
-            <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 8 }} onClick={() => setTela('notas')}>📄 Notas fiscais ({dinheiro(notas.reduce((s, n) => s + Number(n.valor || 0), 0))})</button>
-            <p className="dica" style={{ margin: '6px 0 0' }}>Tire foto ou escaneie o QR da nota — o código prova que ela é real, e o gasto entra na ação.</p>
-            <h2 style={{ fontSize: 20, marginTop: 16 }}>O que o projeto já produziu</h2>
-            {(() => {
-              const feitos = atendimentos.filter(a => a.fim);
-              const porArea = {};
-              for (const a of feitos) {
-                const chave = a.area || 'Outros';
-                porArea[chave] = porArea[chave] || { quantos: 0, total: 0 };
-                porArea[chave].quantos++;
-                porArea[chave].total += custoAtendimento(a);
-              }
-              const linhas = Object.entries(porArea);
-              const total = linhas.reduce((s, [, v]) => s + v.total, 0);
-              return linhas.length ? (
-                <>
-                  {linhas.map(([area, v]) => (
-                    <div className="cartao" key={area}>
-                      <div className="cartao-topo"><strong style={{ color: corDoNome(area) }}>{area}</strong><strong>{dinheiro(v.total)}</strong></div>
-                      <p className="obs" style={{ margin: 0 }}>{v.quantos} atendimento(s) concluído(s)</p>
-                    </div>
-                  ))}
-                  <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
-                    <div className="cartao-topo"><strong>💰 Total produzido</strong><strong style={{ fontSize: 20 }}>{dinheiro(total)}</strong></div>
-                    <p className="obs" style={{ margin: 0 }}>É quanto esses atendimentos custariam fora do projeto — o valor doado em sorrisos.</p>
+              <h2 style={{ fontSize: 20 }}>Por especialidade</h2>
+              <p className="dica" style={{ marginTop: 0 }}>Toque numa especialidade para ver os atendimentos, um por um.</p>
+              {linhas.length ? linhas.map(([area, v]) => (
+                <button className="cartao" key={area} style={{ width: '100%', textAlign: 'left', cursor: 'pointer', border: 'none' }} onClick={() => setTela({ especialidade: area })}>
+                  <div className="cartao-topo">
+                    <strong style={{ color: corDoNome(area) }}>{area}</strong>
+                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <strong>{dinheiro(v.total)}</strong>
+                      <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />
+                    </span>
                   </div>
-                </>
-              ) : <Vazio texto="Quando os atendimentos forem concluídos (botão Chamar paciente no Semeador), os valores aparecem aqui." />;
-            })()}
-          </>
-        )}
+                  <p className="obs" style={{ margin: 0 }}>{v.quantos} atendimento(s) · {dinheiro(v.total / Math.max(1, v.quantos))} cada, em média</p>
+                </button>
+              )) : <Vazio texto="Quando os atendimentos forem concluídos, o que foi produzido aparece aqui, separado por especialidade." />}
+
+              <h2 style={{ fontSize: 20, marginTop: 18 }}>Gastos e ajustes</h2>
+              <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 6 }} onClick={() => setTela('notas')}>📄 Notas fiscais ({dinheiro(gastoNotas)})</button>
+              <p className="dica" style={{ margin: '0 0 12px' }}>Tire foto ou escaneie o QR da nota — o código prova que ela é real, e o gasto entra na ação.</p>
+              <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 6 }} onClick={() => setTela('valores')}>🏷 Valores dos procedimentos</button>
+              <p className="dica" style={{ margin: 0 }}>Quanto vale cada procedimento — é daqui que sai o valor produzido.</p>
+            </>
+          );
+        })()}
 
         {aba === 'perfil' && (
           <>
