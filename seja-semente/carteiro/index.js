@@ -20,6 +20,7 @@ admin.initializeApp();
 const BUNDLES = {
   central: 'com.sejasemente.central',
   semeador: 'com.sejasemente.semeador',
+  palmar: 'com.sejasemente.palmar',
 };
 
 function jwtApns(p8, keyId, teamId) {
