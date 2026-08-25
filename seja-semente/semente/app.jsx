@@ -1832,7 +1832,11 @@ function App() {
     window.addEventListener('token-push', ouve);
     window.addEventListener('token-voip', ouveVoip);
     window.__registrarPush();
-    return () => { window.removeEventListener('token-push', ouve); window.removeEventListener('token-voip', ouveVoip); };
+    // Vigia: a casca pode entregar o token da ligação depois que o app já
+    // subiu — confere de tempos em tempos até pegar
+    const vigia = setInterval(() => { if (window.__tokenVoip && window.__tokenPush) { grava(window.__tokenPush); clearInterval(vigia); } }, 3000);
+    setTimeout(() => clearInterval(vigia), 60000);
+    return () => { clearInterval(vigia); window.removeEventListener('token-push', ouve); window.removeEventListener('token-voip', ouveVoip); };
   }, [usuario?.uid]);
   // A tela de ligação nativa (CallKit) chama isto quando a pessoa ATENDE
   // com o app fechado — marca a chamada como atendida para todo mundo
