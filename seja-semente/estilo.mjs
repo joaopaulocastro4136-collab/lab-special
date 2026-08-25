@@ -437,6 +437,30 @@ export const CSS = `
   .chamada-nome b { font-size: 15px; }
   .chamada-nome i { font-style: normal; font-size: 12px; color: #7B897F; }
   .btn-chamar { border: none; background: #FCEEE9; color: #C23A1E; border-radius: 10px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+
+  /* ─── Ludo dos Dentes (caixinha de Jogos do Perfil) ─── */
+  .ludo-mesa { max-width: 480px; margin: 0 auto; }
+  .jogo-cartao { display: flex; align-items: center; gap: 12px; width: 100%; cursor: pointer; border: 1.5px solid #DBE3D8; text-align: left; font: inherit; }
+  .jogo-cartao:active { transform: scale(0.985); }
+  .jogo-icone { flex: none; display: flex; }
+  .sala-cartao { display: block; width: 100%; cursor: pointer; border: 1.5px solid #DBE3D8; font: inherit; }
+  .ludo-jogadores { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ludo-jog { display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 6px; border: 2px solid; border-radius: 999px; }
+  .ludo-jog .bolha { width: 30px !important; height: 30px !important; font-size: 12px; border-radius: 10px; }
+  .ludo-jog-nome { font-size: 13px; font-weight: 800; color: #2C3830; }
+  .ludo-jog-pts { font-size: 11.5px; font-weight: 800; }
+  .ludo-jog.vez { box-shadow: 0 0 0 3px rgba(47,125,78,0.25); animation: ludo-vez 1.4s ease-in-out infinite; }
+  @keyframes ludo-vez { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+  .ludo-controle { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .ludo-dado { flex: none; width: 56px; height: 56px; border: 2.5px solid #2F7D4E; border-radius: 16px; background: #fff; font-size: 27px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .ludo-dado:disabled { cursor: default; }
+  .ludo-dado.pulsa { animation: ludo-vez 1.1s ease-in-out infinite; box-shadow: 0 6px 18px rgba(47,125,78,0.35); }
+  .ludo-fala { font-size: 14.5px; font-weight: 600; color: #2C3830; }
+  .ludo-tabuleiro { width: 100%; height: auto; display: block; border-radius: 20px; box-shadow: 0 10px 30px rgba(30,43,34,0.14); touch-action: manipulation; }
+  .ludo-brilho { fill: rgba(255,255,255,0.55); stroke: #1E6B41; stroke-width: 2; animation: ludo-brilho 0.9s ease-in-out infinite; }
+  @keyframes ludo-brilho { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.25; } }
+  .ludo-peca-vai { animation: ludo-vez 0.9s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  .ludo-banner { text-align: center; font-size: 18px; background: #E9F5EE; border: 1.5px solid #BFDCC9; border-radius: 16px; padding: 14px; margin-bottom: 10px; }
 `;
 
 export function paginaHTML({ titulo, descricao }) {

@@ -25,6 +25,7 @@ import { TelaChamada, TelaChamarStaff } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
+import { TelaJogos } from '../ludo.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -1088,6 +1089,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
 
   // ─── Telas por cima das abas ───
   if (tela?.triagem) return <FormTriagem paciente={tela.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTela(null)} aoSalvar={(t, fts) => salvarTriagem(tela.triagem, t, fts)} />;
+  if (tela === 'jogos') return <TelaJogos usuario={{ uid: usuario.uid, nome: usuario.nome, avatar: meuPerfil.avatar || '', fotoMini: meuPerfil.fotoMini || meuPerfil.foto || '' }} fb={CONFIGURADO ? fb : null} aoVoltar={() => setTela(null)} />;
   if (tela === 'procedimentos') return (
     <div className="folha">
       <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
@@ -1561,6 +1563,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
             </div>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('procedimentos')}>🦷 Procedimentos e tempos</button>
             <p className="dica" style={{ marginBottom: 16 }}>Adicione procedimentos novos e mude o tempo médio de cada um — a agenda usa esses tempos para encaixar os pacientes.</p>
+
+            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('jogos')}>🎮 Jogos</button>
+            <p className="dica" style={{ marginBottom: 16 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
 
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('novoVoluntario')}>+ Adicionar novo dentista / usuário</button>
             <p className="dica" style={{ marginBottom: 16 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>
