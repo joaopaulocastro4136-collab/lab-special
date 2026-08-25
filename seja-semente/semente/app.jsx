@@ -1487,6 +1487,9 @@ function TelaPrincipal({ usuario, aoSair }) {
               <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
               <SeletorAvatar nome={usuario.nome} foto={meuPerfil.foto} avatar={meuPerfil.avatar} aoSalvar={salvarPerfil} />
             </div>
+            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('procedimentos')}>🦷 Procedimentos e tempos</button>
+            <p className="dica" style={{ marginBottom: 16 }}>Adicione procedimentos novos e mude o tempo médio de cada um — a agenda usa esses tempos para encaixar os pacientes.</p>
+
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('novoVoluntario')}>+ Adicionar novo dentista / usuário</button>
             <p className="dica" style={{ marginBottom: 16 }}>Para dentistas sem celular: eles entram na equipe e recebem agendamentos normalmente. Com o e-mail preenchido, fica fácil ligar a conta quando baixarem o Semeador.</p>
 
