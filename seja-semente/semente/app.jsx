@@ -430,6 +430,35 @@ function FormVoluntario({ aoSalvar, aoCancelar }) {
   );
 }
 
+// O que ESTE dentista/voluntário faz: as mesmas caixinhas coloridas da
+// triagem — marca, toca em Salvar, e o agendamento passa a mostrar só quem
+// faz aquele procedimento
+function EspecialidadesVoluntario({ voluntario, todasAreas, aoSalvar }) {
+  const [marcadas, setMarcadas] = useState(voluntario.procedimentos || []);
+  const [base, setBase] = useState(voluntario.procedimentos || []);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const alterna = nome => setMarcadas(m => m.includes(nome) ? m.filter(x => x !== nome) : [...m, nome]);
+  const mudou = JSON.stringify([...marcadas].sort()) !== JSON.stringify([...base].sort());
+  return (
+    <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <strong>O que {voluntario.nome.split(' ')[0]} faz</strong>
+      <p className="dica" style={{ margin: 0 }}>Marque os procedimentos deste voluntário. Na hora de agendar, só aparecem os dentistas marcados no procedimento escolhido.</p>
+      <div className="caixas">
+        {todasAreas.map(a => (
+          <label key={a.nome} className={marcadas.includes(a.nome) ? 'caixa marcada' : 'caixa'} onClick={() => alterna(a.nome)}>
+            <a.Icone size={15} style={{ color: a.cor }} />{a.nome}
+          </label>
+        ))}
+      </div>
+      <button className="btn-principal" style={{ maxWidth: 'none' }} disabled={!mudou || salvando}
+        onClick={async () => { setSalvando(true); await aoSalvar(marcadas); setBase(marcadas); setSalvo(true); setSalvando(false); }}>
+        {salvando ? 'Salvando…' : !mudou && salvo ? '✓ Salvo!' : 'Salvar procedimentos'}
+      </button>
+    </div>
+  );
+}
+
 // AGENDAMENTO: paciente + voluntário. CADA procedimento marcado vira UM
 // agendamento próprio — os horários se emendam pelo tempo de cada um, e
 // cada linha pode ter a hora ajustada à mão.
@@ -440,9 +469,13 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
   // Vindo da caixinha (ex.: Profilaxia), agenda SÓ aquele procedimento —
   // os outros procedimentos do paciente ficam nas caixinhas deles
   const soUma = !!areaInicial;
+  // Só quem faz o procedimento aparece para agendar (marcado no perfil do
+  // voluntário); se ninguém foi marcado ainda, mostra todos
+  const habilitados = soUma ? voluntarios.filter(v => (v.procedimentos || []).includes(areaInicial)) : voluntarios;
+  const listaProf = habilitados.length ? habilitados : voluntarios;
   const [f, setF] = useState({
     pacienteId: primeiro?.id || '',
-    profissionalUid: voluntarios[0]?.id || '',
+    profissionalUid: listaProf[0]?.id || '',
     data: dataInicial, horaInicio: '08:00',
   });
   const [marcadas, setMarcadas] = useState(areaInicial ? [areaInicial] : areasDoPaciente(primeiro));
@@ -555,9 +588,12 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
       )}
       <Campo rotulo="Voluntário / dentista padrão (dá pra trocar por procedimento ali embaixo)">
         <select value={f.profissionalUid} onChange={e => { setF({ ...f, profissionalUid: e.target.value }); setProfsProprios({}); }}>
-          {voluntarios.map(p => <option key={p.id} value={p.id}>{p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
+          {listaProf.map(p => <option key={p.id} value={p.id}>{p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
         </select>
       </Campo>
+      {soUma && habilitados.length === 0 && (
+        <p className="dica">Nenhum voluntário marcado para {areaInicial} ainda — mostrando todos. Marque os procedimentos de cada um na aba Voluntár., tocando no voluntário.</p>
+      )}
       <div className="campo">
         <span>Agenda de {prof ? prof.nome.split(' ')[0] : 'quem atende'} — toque no quadradinho do horário para marcar; segure e arraste um paciente para mudá-lo de lugar</span>
         <AgendaSemana
@@ -591,7 +627,7 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
                 <input type="time" value={s.hora} onChange={e => setHorasProprias(h => ({ ...h, [s.nome]: e.target.value }))} />
               </div>
               <select className="seq-prof" value={s.profUid} onChange={e => setProfsProprios(m => ({ ...m, [s.nome]: e.target.value }))}>
-                {voluntarios.map(p => <option key={p.id} value={p.id}>com {p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
+                {listaProf.map(p => <option key={p.id} value={p.id}>com {p.nome}{p.ministerio ? ` — ${p.ministerio}` : ''}</option>)}
               </select>
             </div>
           ))}
@@ -967,6 +1003,16 @@ function TelaPrincipal({ usuario, aoSair }) {
     deleteDoc(doc(fb.db, 'agendamentos', g.id)).catch(() => {});
   }
 
+  // Grava no voluntário o que ele faz (as caixinhas do perfil dele)
+  async function salvarProcedimentosVoluntario(v, procedimentos) {
+    if (!CONFIGURADO) {
+      setVoluntarios(vs => vs.map(x => x.id === v.id ? { ...x, procedimentos } : x));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    await updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos });
+  }
+
   async function responderSolicitacao(v, aprovar) {
     const mudanca = aprovar ? { status: 'ativo', ativo: true } : { status: 'recusado', ativo: false };
     if (!CONFIGURADO) {
@@ -1204,6 +1250,7 @@ function TelaPrincipal({ usuario, aoSair }) {
             </div>
           </div>
         </div>
+        <EspecialidadesVoluntario key={v.id} voluntario={v} todasAreas={todasAreas} aoSalvar={p => salvarProcedimentosVoluntario(v, p)} />
         <h2 style={{ fontSize: 20, margin: '8px 0 2px' }}>Agenda de {v.nome.split(' ')[0]}</h2>
         {dele.length ? dele.map(g => (
           <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
@@ -1413,6 +1460,7 @@ function TelaPrincipal({ usuario, aoSair }) {
                     <div>
                       <div className="cartao-topo"><strong>{v.nome}</strong>{v.ativo === false && <span className="chip aguardando">inativo</span>}</div>
                       <p>{[v.ministerio, v.telefone].filter(Boolean).join(' · ')}</p>
+                      {(v.procedimentos || []).length > 0 && <p className="obs">🦷 {v.procedimentos.join(' · ')}</p>}
                       <p className="obs">{agendamentos.filter(g => g.profissionalUid === v.id).length} agendamento(s) — toque para ver a agenda</p>
                     </div>
                   </div>
