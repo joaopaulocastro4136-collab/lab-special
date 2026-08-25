@@ -13,7 +13,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
-import { TelaChamada } from '../chamada.jsx';
+import { TelaChamada, TelaChamarStaff } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
@@ -492,7 +492,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
+function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const [aba, setAba] = useState('inicio');
   const temInternet = usarTemInternet();
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
@@ -545,6 +545,17 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
   // ─── Chat da equipe (mesma conversa da central, em tempo real) ───
   const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('sd-chat', DEMO.chat));
   const [equipe, setEquipe] = useState(CONFIGURADO ? [] : DEMO.equipe);
+  // Quem usa a central (organizadores) também pode ser chamado pelo sino
+  const [centralGente, setCentralGente] = useState(CONFIGURADO ? [] : [{ id: 'central-demo', nome: 'Coordenação (central)' }]);
+  const [telaEquipe, setTelaEquipe] = useState(false);
+  // Todo mundo com conta no Seja Semente (Semeador + central), menos eu
+  const pessoasChamaveis = (() => {
+    const mapa = new Map();
+    for (const v of equipe) mapa.set(v.id, { uid: v.id, nome: v.nome || '', avatar: v.avatar || '', foto: v.fotoMini || (String(v.foto || '').startsWith('http') ? v.foto : ''), detalhe: v.ministerio || 'Voluntário' });
+    for (const u of centralGente) if (!mapa.has(u.id)) mapa.set(u.id, { uid: u.id, nome: u.nome || '', avatar: u.avatar || '', foto: u.fotoMini || '', detalhe: 'Central Seja Semente' });
+    mapa.delete(usuario.uid);
+    return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+  })();
   const [chatVisto, setChatVisto] = useState(lerLocal('sd-chat-visto', 0));
   useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-chat', mensagens); }, [mensagens]);
   useEffect(() => {
@@ -755,14 +766,26 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
       snap => setEquipe(snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(v => v.status === 'ativo' || v.ativo === true))
     );
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); };
+    // Contas da central — para o sino de "chamar alguém da equipe"
+    const paraCentralGente = onSnapshot(
+      query(collection(fb.db, 'central-usuarios'), orderBy('nome')),
+      snap => setCentralGente(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); };
   }, [usuario.uid]);
 
 
+  // Chamar paciente só quando ele está agendado COMIGO (a lista de
+  // agendamentos aqui já é só a minha) — senão qualquer voluntário chamaria
+  // qualquer paciente
+  const agendadoComigo = !!fichaPaciente && agendamentos.some(g => g.pacienteId === fichaPaciente.id);
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
-    aoChamar={() => chamarPaciente(fichaPaciente)}
+    aoChamar={agendadoComigo ? () => chamarPaciente(fichaPaciente) : undefined}
+    avisoChamar={fichaPaciente && !agendadoComigo ? '🔔 Só o dentista com este paciente agendado pode chamá-lo para o atendimento.' : ''}
     atendimentoAberto={atendimentoAberto && atendimentoAberto.pacienteId === fichaId ? atendimentoAberto : null}
     aoEncerrar={encerrarAtendimento} />;
+
+  if (telaEquipe) return <TelaChamarStaff pessoas={pessoasChamaveis} aoChamar={aoChamarStaff} aoVoltar={() => setTelaEquipe(false)} />;
 
   if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTelaTriagem(null)} aoSalvar={(t, fts) => salvarTriagem(telaTriagem.triagem, t, fts)} />;
 
@@ -862,6 +885,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
                 })}
               </div>
             ) : <Vazio texto="Nenhum paciente agendado para hoje." />}
+            <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 14 }} onClick={() => setTelaEquipe(true)}>🔔 Chamar alguém da equipe</button>
+            <p className="dica" style={{ margin: '6px 0 0' }}>Escolha a pessoa e o celular dela toca na hora, como uma ligação.</p>
             <h2 style={{ fontSize: 20, marginTop: 16 }}>Avisos</h2>
             {avisos.length ? avisos.map(a => <CartaoAviso key={a.id} aviso={a} />) : <Vazio texto="Nenhum aviso por enquanto." />}
           </>
@@ -1074,7 +1099,23 @@ function App() {
       ? { ativa: false, atendidaPorUid: conta?.uid, atendidaPorNome: conta?.nome || '', atendidaEm: serverTimestamp() }
       : { ativa: false }).catch(() => {});
   }
-  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true));
+  // Chamar alguém da equipe: a mesma tela de ligação, mas só nos aparelhos
+  // da pessoa escolhida (paraUid) — não toca na equipe toda
+  function chamarStaff(pessoa) {
+    const dados = {
+      tipo: 'staff', paraUid: pessoa.uid, paraNome: pessoa.nome || '', paraFoto: pessoa.foto || '',
+      chamadoPorUid: conta?.uid || '', chamadoPorNome: cadastro?.nome || conta?.nome || '',
+      chamadoPorFoto: cadastro?.fotoMini || conta?.foto || '', chamadoPorAparelho: idAparelho(), ativa: true,
+    };
+    if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+  // Chamada de paciente toca em todo mundo; chamada de staff só na pessoa
+  // escolhida (fora do modo teste, onde ela aparece aqui para experimentar)
+  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id)
+    && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true)
+    && (!CONFIGURADO || c.tipo !== 'staff' || c.paraUid === conta?.uid));
   // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
   const [abrindo, setAbrindo] = useState(true);
   const abertura = abrindo ? <Abertura tema="dourado" nome="Semeador" frase="quem planta, colhe" aoTerminar={() => setAbrindo(false)} /> : null;
@@ -1093,7 +1134,7 @@ function App() {
   else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} />;
   else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
   else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} aoSalvarPerfil={salvarPerfil} />;
+  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro, uid: conta.uid }} aoSair={sair} aoSalvarPerfil={salvarPerfil} aoChamarStaff={chamarStaff} />;
   return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 

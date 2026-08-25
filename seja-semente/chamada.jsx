@@ -3,7 +3,8 @@
 // ligação: nome e foto do paciente pulsando, toque de chamada e vibração
 // (a vibração só funciona em Android — o iPhone não deixa sites vibrarem;
 // lá fica a tela pulsando + som). A tela só sai quando a pessoa toca.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, BellRing } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 
 // Toque de chamada: dois bipes subindo, repetindo — feito na hora com o
@@ -42,19 +43,56 @@ export function TelaChamada({ chamada, aoAtender }) {
   }, [chamada?.id]);
 
   if (!chamada) return null;
+  // Chamada de STAFF: quem aparece grande é quem está chamando — a tela só
+  // toca nos aparelhos da pessoa escolhida (paraUid), não na equipe toda
+  const ehStaff = chamada.tipo === 'staff';
   return (
-    <div className="chamada-tela" role="alertdialog" aria-label="Chamada de paciente">
-      <p className="chamada-rotulo">📣 Chamando paciente</p>
+    <div className="chamada-tela" role="alertdialog" aria-label={ehStaff ? 'Chamada da equipe' : 'Chamada de paciente'}>
+      <p className="chamada-rotulo">{ehStaff ? '📣 Chamando você' : '📣 Chamando paciente'}</p>
       <div className="chamada-pulso">
         <i /><i /><i />
-        <Bolha nome={chamada.pacienteNome || '?'} foto={chamada.pacienteFoto} />
+        <Bolha nome={(ehStaff ? chamada.chamadoPorNome : chamada.pacienteNome) || '?'} foto={ehStaff ? chamada.chamadoPorFoto : chamada.pacienteFoto} />
       </div>
-      <h1>{chamada.pacienteNome}</h1>
-      {chamada.pacienteCodigo && <p className="chamada-cod">{chamada.pacienteCodigo}</p>}
-      <p className="chamada-quem">chamado por {chamada.chamadoPorNome || 'alguém da equipe'}</p>
+      <h1>{ehStaff ? chamada.chamadoPorNome : chamada.pacienteNome}</h1>
+      {!ehStaff && chamada.pacienteCodigo && <p className="chamada-cod">{chamada.pacienteCodigo}</p>}
+      <p className="chamada-quem">{ehStaff
+        ? `está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''} — vá até lá`
+        : `chamado por ${chamada.chamadoPorNome || 'alguém da equipe'}`}</p>
       <button className="chamada-atender" onClick={() => aoAtender(chamada)}>
-        ✅ OK, estou levando
+        {ehStaff ? '✅ Estou indo' : '✅ OK, estou levando'}
       </button>
+    </div>
+  );
+}
+
+// Escolher alguém da equipe para chamar: lista todo mundo que tem conta no
+// Seja Semente (central + Semeador); o sino cria a chamada que toca só nos
+// aparelhos daquela pessoa, com a mesma tela de ligação
+export function TelaChamarStaff({ pessoas, aoChamar, aoVoltar }) {
+  const [busca, setBusca] = useState('');
+  const [chamados, setChamados] = useState([]);
+  const filtro = busca.trim().toLowerCase();
+  const lista = pessoas.filter(p => !filtro || (p.nome || '').toLowerCase().includes(filtro));
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>Chamar alguém da equipe</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Toque no sino: os celulares da pessoa tocam na hora, como uma ligação, até ela responder "Estou indo".</p>
+      <input className="busca" placeholder="Pesquisar pelo nome…" value={busca} onChange={e => setBusca(e.target.value)} />
+      {lista.length ? lista.map(p => (
+        <div className="cartao" key={p.uid}>
+          <div className="cartao-linha" style={{ alignItems: 'center' }}>
+            <Bolha nome={p.nome} foto={p.foto} avatar={p.avatar} />
+            <div style={{ flex: 1 }}>
+              <strong>{p.nome}</strong>
+              {p.detalhe && <p className="obs" style={{ margin: 0 }}>{p.detalhe}</p>}
+            </div>
+            {chamados.includes(p.uid)
+              ? <span className="chip em-atendimento">📞 chamando…</span>
+              : <button className="btn-chamar" title={'Chamar ' + p.nome} onClick={() => { aoChamar(p); setChamados(c => [...c, p.uid]); }}><BellRing size={16} strokeWidth={2.4} /></button>}
+          </div>
+        </div>
+      )) : <p className="dica">Ninguém encontrado com esse nome.</p>}
     </div>
   );
 }
