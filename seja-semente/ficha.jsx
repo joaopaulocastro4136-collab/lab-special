@@ -201,6 +201,7 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
   // ── Modo edição ──
   if (editando) return (
     <div className="folha">
+      <button className="btn-voltar" onClick={() => setEditando(null)}><ChevronLeft size={18} /> Voltar</button>
       <h2>Editar — {paciente.nome}</h2>
       {paciente.codigo && <p className="dica">Código: {paciente.codigo}</p>}
       <label className="campo"><span>Nome</span><input value={editando.nome} onChange={e => setEditando({ ...editando, nome: e.target.value })} /></label>

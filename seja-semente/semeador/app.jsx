@@ -284,7 +284,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
 // ─── Primeira entrada: o voluntário preenche o cadastro, que vira uma
 //     solicitação para a central Seja Semente aprovar ───
-function TelaCadastro({ usuario, aoEnviar }) {
+function TelaCadastro({ usuario, aoEnviar, aoSair }) {
   const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '' });
   const [av, setAv] = useState({ foto: '', fotoMini: '', avatar: '' });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
@@ -292,6 +292,7 @@ function TelaCadastro({ usuario, aoEnviar }) {
   const pronto = f.nome.trim() && f.telefone.trim() && cpfOk && f.nascimento;
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoSair}><ChevronLeft size={18} /> Sair / trocar de conta</button>
       <h2>Cadastro de voluntário</h2>
       <p className="dica">Bem-vindo! Preencha seus dados — eles vão para a central Seja Semente, que aprova a sua entrada como voluntário.</p>
       <div className="campo"><span>Sua foto (ou um dentinho da biblioteca)</span>
@@ -413,6 +414,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   }
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Triagem — {paciente.nome}</h2>
       <div className="campo"><span>Procedimentos que vai fazer (marque todos os que precisar)</span>
         <div className="caixas">
@@ -1007,7 +1009,7 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!conta) conteudo = <TelaLogin aoEntrarDemo={setConta} />;
-  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
+  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} />;
   else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
   else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
   else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} aoSalvarPerfil={salvarPerfil} />;
