@@ -192,6 +192,25 @@ guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
 | `autorNome` | string    | `"Lucas Andrade"`                      |
 | `criadoEm`  | timestamp | data/hora                              |
 
+### `chamadas/{id}` — chamada de paciente (toca em todos os celulares)
+Quem escreve: **qualquer ponta** (central, Semeador ou o programa Windows).
+Enquanto `ativa` for `true` e a chamada tiver menos de 3 minutos, todos os
+aparelhos logados mostram uma TELA CHEIA estilo ligação (nome e foto do
+paciente pulsando, com toque e vibração) até alguém tocar em atender —
+que grava `ativa: false` e derruba a chamada em todo mundo.
+
+| Campo            | Tipo      | Exemplo                          |
+|------------------|-----------|----------------------------------|
+| `pacienteId`     | string    | id do doc em `pacientes`         |
+| `pacienteNome`   | string    | `"José da Silva"`               |
+| `pacienteCodigo` | string    | `"SS-0001"`                     |
+| `pacienteFoto`   | string    | dataUrl/URL da foto (opcional)   |
+| `chamadoPorUid`  | string    | uid de quem chamou               |
+| `chamadoPorNome` | string    | `"João Paulo"`                  |
+| `ativa`          | boolean   | `true` enquanto está tocando     |
+| `atendidaPorUid` / `atendidaPorNome` / `atendidaEm` | — | preenchidos por quem atendeu |
+| `criadoEm`       | timestamp | data/hora da chamada             |
+
 ### `central-usuarios/{uid}` — quem tem acesso à central
 Quem escreve: **Central**. Cada pessoa autorizada a usar a central (app Seja
 Semente / programa Windows) tem um doc aqui. O **primeiro** a entrar, quando a

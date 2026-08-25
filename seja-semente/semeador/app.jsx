@@ -9,10 +9,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
+import { TelaChamada } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
@@ -1049,6 +1050,31 @@ function App() {
     setCadastro(null);
   }
 
+  // ─── Chamada de paciente: toca em TODOS os celulares logados até atender ───
+  const [chamadas, setChamadas] = useState([]);
+  const [chamadasVistas, setChamadasVistas] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO || !conta) return;
+    const { collection, onSnapshot, query, where } = fb.fns;
+    return onSnapshot(query(collection(fb.db, 'chamadas'), where('ativa', '==', true)), snap => {
+      const agora = Date.now();
+      setChamadas(snap.docs.map(d => {
+        const c = { id: d.id, ...d.data() };
+        const t = c.criadoEm?.toDate?.()?.getTime?.() ?? agora;
+        // "nova": chamada recente — evita tocar chamada velha ao abrir o app
+        return { ...c, nova: agora - t < 3 * 60 * 1000 };
+      }));
+    });
+  }, [conta?.uid]);
+  function encerrarChamada(c, atendida) {
+    setChamadasVistas(v => [...v, c.id]);
+    if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
+    const { doc, updateDoc, serverTimestamp } = fb.fns;
+    updateDoc(doc(fb.db, 'chamadas', c.id), atendida
+      ? { ativa: false, atendidaPorUid: conta?.uid, atendidaPorNome: conta?.nome || '', atendidaEm: serverTimestamp() }
+      : { ativa: false }).catch(() => {});
+  }
+  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true));
   // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
   const [abrindo, setAbrindo] = useState(true);
   const abertura = abrindo ? <Abertura tema="dourado" nome="Semeador" frase="quem planta, colhe" aoTerminar={() => setAbrindo(false)} /> : null;
@@ -1068,7 +1094,7 @@ function App() {
   else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
   else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
   else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} aoSalvarPerfil={salvarPerfil} />;
-  return <>{conteudo}{abertura}</>;
+  return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 
 // A trava __appJaSubiu impede o app de subir duas vezes na casca viva do

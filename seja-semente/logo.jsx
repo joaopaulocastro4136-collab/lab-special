@@ -191,6 +191,15 @@ export function usarTemInternet() {
   return tem;
 }
 
+// Identidade DESTE aparelho (celular/navegador): sorteada uma vez e guardada.
+// Usada para a chamada de paciente não tocar no aparelho de quem chamou —
+// mas tocar em todos os outros, mesmo que a conta seja a mesma.
+export function idAparelho() {
+  let id = lerLocal('ss-aparelho', '');
+  if (!id) { id = 'ap-' + Math.random().toString(36).slice(2, 12); gravarLocal('ss-aparelho', id); }
+  return id;
+}
+
 // Guarda e lê dados no aparelho (modo demonstração vira "app de verdade":
 // o que você cadastra fica salvo mesmo fechando o aplicativo)
 export function lerLocal(chave, padrao) {
