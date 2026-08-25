@@ -1244,12 +1244,20 @@ function TelaPrincipal({ usuario, aoSair }) {
             <p className="dica" style={{ margin: '10px 0 8px' }}>Pacientes por procedimento (toque para ver):</p>
             <div className="grade-areas">
               {todasAreas.map(a => {
-                const total = pacientes.filter(p => areasDoPaciente(p).includes(a.nome)).length;
+                const doProcedimento = pacientes.filter(p => areasDoPaciente(p).includes(a.nome));
+                const total = doProcedimento.length;
+                // Quantos ainda FALTAM agendar deste procedimento — vira a
+                // bolinha vermelha na setinha da caixinha
+                const semAgendar = doProcedimento.filter(p =>
+                  !agendamentos.some(g => g.pacienteId === p.id && (g.area === a.nome || (g.titulo || '').startsWith(a.nome)))).length;
                 return (
                   <button key={a.nome} className="caixa-area" onClick={() => setTela({ area: a })}>
                     <span className="area-topo">
                       <span className="caixa-area-icone" style={{ background: a.cor + '1C', color: a.cor }}><a.Icone size={26} strokeWidth={2.2} /></span>
-                      <span className="area-seta" style={{ background: a.cor + '16', color: a.cor }}><ChevronRight size={18} strokeWidth={3} /></span>
+                      <span className="area-seta" style={{ background: a.cor + '16', color: a.cor }}>
+                        <ChevronRight size={18} strokeWidth={3} />
+                        {semAgendar > 0 && <i className="pendente-bolha" title={`${semAgendar} para agendar`}>{semAgendar}</i>}
+                      </span>
                     </span>
                     <strong>{a.nome}</strong>
                     <span className="caixa-area-detalhe">
