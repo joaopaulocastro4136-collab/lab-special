@@ -587,6 +587,18 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       foto: '', pacienteId: p.id, pacienteNome: p.nome, pacienteCodigo: p.codigo || '',
       paraUid: '', paraNome: '', sugestaoArea: '',
     });
+    // LIGAÇÃO: cria a chamada que TOCA nos celulares de todo mundo logado
+    // (central e Semeador) com o nome do paciente e o botão "OK, estou
+    // levando" — e, pelo carteiro na nuvem, vira ligação de verdade nos
+    // iPhones mesmo com o app fechado. Não toca no aparelho de quem chamou.
+    if (CONFIGURADO) {
+      const { collection, addDoc, serverTimestamp } = fb.fns;
+      addDoc(collection(fb.db, 'chamadas'), {
+        pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '',
+        chamadoPorUid: usuario.uid, chamadoPorNome: usuario.nome || '', chamadoPorAparelho: idAparelho(),
+        ativa: true, criadoEm: serverTimestamp(),
+      }).catch(() => {});
+    }
   }
 
   async function encerrarAtendimento() {
