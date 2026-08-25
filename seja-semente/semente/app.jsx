@@ -28,6 +28,7 @@ import { SeletorAvatar } from '../avatar.jsx';
 import { TelaJogos } from '../ludo.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
+import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -707,6 +708,25 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
   const [dia, setDia] = useState(hojeISO());
   const [acoes, setAcoes] = useState([]); // mutirões (vêm do Palmar)
+  const [depoimentos, setDepoimentos] = useState([]); // a voz dos pacientes
+
+  // Depoimento: o que o paciente falou — vai para a Colheita em primeira mão
+  async function salvarDepoimento(f) {
+    const dados = { ...f, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setDepoimentos(ds => [{ id: 'd' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }, ...ds]);
+      setTela('depoimentos');
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() });
+    setTela('depoimentos');
+  }
+  function apagarDepoimento(d) {
+    if (!CONFIGURADO) { setDepoimentos(ds => ds.filter(x => x.id !== d.id)); return; }
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'depoimentos', d.id)).catch(() => {});
+  }
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
   const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
@@ -813,6 +833,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       // Ações (mutirões) criadas no Palmar — para vincular a retirada de
       // material do dia ao relatório de custos daquela ação
       escuta('acoes', ['data', 'desc'], setAcoes),
+      escuta('depoimentos', ['criadoEm', 'desc'], setDepoimentos),
     ];
     return () => soltar.forEach(s => s());
   }, []);
@@ -1103,6 +1124,10 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
 
   // ─── Telas por cima das abas ───
   if (tela?.triagem) return <FormTriagem paciente={tela.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTela(null)} aoSalvar={(t, fts) => salvarTriagem(tela.triagem, t, fts)} />;
+  if (tela?.novoDepoimento !== undefined) return <FormDepoimento pacientes={pacientes} pacienteInicial={tela.novoDepoimento}
+    aoCancelar={() => setTela('depoimentos')} aoSalvar={salvarDepoimento} />;
+  if (tela === 'depoimentos') return <TelaDepoimentos depoimentos={depoimentos} pacientes={pacientes}
+    aoNovo={() => setTela({ novoDepoimento: null })} aoExcluir={apagarDepoimento} aoVoltar={() => setTela(null)} />;
   if (tela === 'jogos') return <TelaJogos usuario={{ uid: usuario.uid, nome: usuario.nome, avatar: meuPerfil.avatar || '', fotoMini: meuPerfil.fotoMini || meuPerfil.foto || '' }} fb={CONFIGURADO ? fb : null} aoVoltar={() => setTela(null)} />;
   if (tela === 'protese') return <TelaProtese usuario={usuario} central pacientes={pacientes} agendamentos={agendamentos}
     voluntarios={voluntarios.filter(v => v.status === 'ativo' || v.ativo === true)}
@@ -1146,7 +1171,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   );
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })}
-    procedimentosFeitos={fichaProcedimentos} />;
+    procedimentosFeitos={fichaProcedimentos}
+    aoDepoimento={() => fichaPaciente && setTela({ novoDepoimento: fichaPaciente })} />;
   if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   // ─── Chamadas de grupo (convocações) ───
   async function criarConvocacao(titulo) {
@@ -1632,6 +1658,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
             </div>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('procedimentos')}>🦷 Procedimentos e tempos</button>
             <p className="dica" style={{ marginBottom: 16 }}>Adicione procedimentos novos e mude o tempo médio de cada um — a agenda usa esses tempos para encaixar os pacientes.</p>
+
+            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('depoimentos')}>💬 Depoimentos dos pacientes</button>
+            <p className="dica" style={{ marginBottom: 16 }}>A voz de quem foi atendido — aparece em primeiro lugar na Colheita, para quem apoia o projeto. 💚</p>
 
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('jogos')}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 16 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>

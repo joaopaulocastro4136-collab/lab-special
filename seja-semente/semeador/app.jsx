@@ -21,6 +21,7 @@ import { TelaJogos } from '../ludo.jsx';
 import { FormRegistro } from '../registro.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
+import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -715,6 +716,27 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const [telaJogos, setTelaJogos] = useState(false);    // caixinha de Jogos do Perfil
   const [telaProtese, setTelaProtese] = useState(false); // pasta da Prótese
   const [acoes, setAcoes] = useState([]);                // mutirões (vêm do Palmar)
+  const [depoimentos, setDepoimentos] = useState([]);    // a voz dos pacientes
+  const [telaDepo, setTelaDepo] = useState(null);        // 'lista' | {novo: paciente}
+
+  // Depoimento: o que o paciente falou depois do atendimento (vai para a
+  // Colheita, em primeira mão, para quem apoia o projeto ver)
+  async function salvarDepoimento(f) {
+    const dados = { ...f, autorUid: usuario.uid, autorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      setDepoimentos(ds => [{ id: 'd' + Math.floor(Math.random() * 1e9), ...dados, criadoEm: new Date() }, ...ds]);
+      setTelaDepo('lista');
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() });
+    setTelaDepo('lista');
+  }
+  function apagarDepoimento(d) {
+    if (!CONFIGURADO) { setDepoimentos(ds => ds.filter(x => x.id !== d.id)); return; }
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'depoimentos', d.id)).catch(() => {});
+  }
 
   // O dentista da prótese agenda ele mesmo, na própria agenda
   async function agendarProtese(p, data, hora) {
@@ -866,6 +888,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     // Ações (mutirões) criadas no Palmar — para vincular a retirada de
     // material do dia ao relatório de custos daquela ação
     const paraAcoes = onSnapshot(collection(fb.db, 'acoes'), snap => setAcoes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const paraDepo = onSnapshot(query(collection(fb.db, 'depoimentos'), orderBy('criadoEm', 'desc')),
+      snap => setDepoimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const paraAtendimentos = onSnapshot(
       query(collection(fb.db, 'atendimentos'), orderBy('inicio', 'desc')),
       snap => setMeusAtendimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -881,7 +905,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       query(collection(fb.db, 'central-usuarios'), orderBy('nome')),
       snap => setCentralGente(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); paraAcoes(); };
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); paraAcoes(); paraDepo(); };
   }, [usuario.uid]);
 
 
@@ -897,6 +921,11 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     aoSalvar={async dados => { await salvarRegistro(telaRegistro, dados); const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }} />;
 
   // Pasta da Prótese: só destrava para quem tem Prótese nos procedimentos
+  if (telaDepo?.novo !== undefined) return <FormDepoimento pacientes={todosPacientes} pacienteInicial={telaDepo.novo}
+    aoCancelar={() => setTelaDepo('lista')} aoSalvar={salvarDepoimento} />;
+  if (telaDepo === 'lista') return <TelaDepoimentos depoimentos={depoimentos} pacientes={todosPacientes}
+    aoNovo={() => setTelaDepo({ novo: null })} aoExcluir={apagarDepoimento} aoVoltar={() => setTelaDepo(null)} />;
+
   if (telaProtese) return <TelaProtese usuario={usuario} pacientes={todosPacientes} agendamentos={agendamentos}
     duracao={duracaoDe('Prótese')} corDaArea={corDaArea} duracaoDe={duracaoDe}
     bloqueada={!(usuario.procedimentos || []).includes('Prótese')}
@@ -913,7 +942,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     atendimentoAberto={atendimentoAberto && atendimentoAberto.pacienteId === fichaId ? atendimentoAberto : null}
     aoEncerrar={encerrarAtendimento}
     procedimentosFeitos={fichaProcedimentos}
-    aoRegistrar={() => setTelaRegistro({ pacienteId: fichaId, pacienteNome: fichaPaciente?.nome || '', area: areasDoPaciente(fichaPaciente)[0] || '', atendimentoId: null, motivo: null, depois: null })} />;
+    aoRegistrar={() => setTelaRegistro({ pacienteId: fichaId, pacienteNome: fichaPaciente?.nome || '', area: areasDoPaciente(fichaPaciente)[0] || '', atendimentoId: null, motivo: null, depois: null })}
+    aoDepoimento={() => fichaPaciente && setTelaDepo({ novo: fichaPaciente })} />;
 
   if (telaEquipe) return <TelaChamarStaff pessoas={pessoasChamaveis} aoChamar={aoChamarStaff} aoVoltar={() => setTelaEquipe(false)} />;
 
@@ -1130,6 +1160,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
               <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
               <SeletorAvatar nome={usuario.nome} foto={usuario.foto} avatar={usuario.avatar} aoSalvar={aoSalvarPerfil} />
             </div>
+            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaDepo('lista')}>💬 Depoimentos dos pacientes</button>
+            <p className="dica" style={{ marginBottom: 12 }}>Registre o que a pessoa falou depois do atendimento — aparece em primeiro lugar para quem apoia o projeto. 💚</p>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaJogos(true)}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>

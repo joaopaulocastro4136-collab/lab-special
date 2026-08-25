@@ -17,6 +17,8 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2 } from 'lucide-react';
 import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { comprimirImagem } from '../ficha.jsx';
+import { Arcada } from '../dentes.jsx';
+import { CartaoDepoimento } from '../depoimento.jsx';
 
 // Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
 // a nota é real; quando o QR traz o valor, ele entra sozinho)
@@ -340,6 +342,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   // Dados do próprio Palmar
   const [acoes, setAcoes] = useState(CONFIGURADO ? [] : lerLocal('pm-acoes', DEMO.acoes));
   const [procedimentos, setProcedimentos] = useState(CONFIGURADO ? [] : (DEMO.procedimentos || []));
+  const [depoimentos, setDepoimentos] = useState(CONFIGURADO ? [] : (DEMO.depoimentos || []));
   const [estoque, setEstoque] = useState(CONFIGURADO ? [] : lerLocal('pm-estoque', DEMO.estoque));
   const [movimentos, setMovimentos] = useState(CONFIGURADO ? [] : lerLocal('pm-movimentos', DEMO.movimentos));
   const [convocacoes, setConvocacoes] = useState(CONFIGURADO ? [] : lerLocal('pm-convocacoes', []));
@@ -375,6 +378,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       // foi feito e as fotos de antes/depois) — é isto que mostra, pessoa
       // por pessoa, o trabalho de cada ação
       escuta('procedimentos-feitos', ['em', 'desc'], setProcedimentos),
+      escuta('depoimentos', ['criadoEm', 'desc'], setDepoimentos),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ personalizados: [], duracoes: {}, valores: {}, porDente: {}, ...snap.data() });
       }),
@@ -670,13 +674,24 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       ))}
     </div>
   );
+  // ── Ficha do paciente vista pela gestão: um checkup completo, só leitura ──
+  if (tela?.paciente) {
+    const p = pacientes.find(x => x.id === tela.paciente);
+    if (p) return <FichaGestao paciente={p} fb={CONFIGURADO ? fb : null}
+      procedimentos={procedimentos.filter(r => r.pacienteId === p.id)}
+      atendimentos={atendimentos.filter(a => a.pacienteId === p.id && a.fim)}
+      agendamentos={agendamentos.filter(g => g.pacienteId === p.id)}
+      depoimento={depoimentos.find(d => d.pacienteId === p.id) || null}
+      custoAtendimento={custoAtendimento} aoVoltar={() => setTela(tela.voltarPara || null)} />;
+  }
+
   if (tela?.especialidade) {
     const area = tela.especialidade;
     const daArea = atendimentos.filter(a => a.fim && (a.area || 'Outros') === area)
-      .map(a => ({ nome: a.pacienteNome, quem: a.profissionalNome, quando: isoDe(a.inicio), valor: custoAtendimento(a), extra: a.duracaoMin ? `${a.duracaoMin} min` : '' }));
+      .map(a => ({ pacienteId: a.pacienteId, nome: a.pacienteNome, quem: a.profissionalNome, quando: isoDe(a.inicio), valor: custoAtendimento(a), extra: a.duracaoMin ? `${a.duracaoMin} min` : '' }));
     const manuais = acoes.flatMap(ac => (ac.registros || [])
       .filter(r => (r.area || 'Outros') === area)
-      .map(r => ({ nome: r.pacienteNome, quem: 'registro manual', quando: ac.data, valor: Number(r.valor || 0), extra: r.dentes > 1 ? `${r.dentes} dentes` : '' })));
+      .map(r => ({ pacienteId: '', nome: r.pacienteNome, quem: 'registro manual', quando: ac.data, valor: Number(r.valor || 0), extra: r.dentes > 1 ? `${r.dentes} dentes` : '' })));
     const lista = [...daArea, ...manuais].sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
     const total = lista.reduce((s, x) => s + x.valor, 0);
     return (
@@ -688,12 +703,24 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           <div className="cartao-numero destaque"><strong>{dinheiro(total)}</strong><span>produzido</span></div>
         </div>
         <p className="dica">{ehPorDente(area) ? `${dinheiro(valorDe(area))} por dente tratado` : `${dinheiro(valorDe(area))} por atendimento`}</p>
-        {lista.length ? lista.map((x, i) => (
-          <div className="cartao" key={i}>
-            <div className="cartao-topo"><strong>{x.nome || 'Paciente'}</strong><strong>{dinheiro(x.valor)}</strong></div>
-            <p className="obs" style={{ margin: 0 }}>{[dataBonita(x.quando), x.quem, x.extra].filter(Boolean).join(' · ')}</p>
-          </div>
-        )) : <Vazio texto="Nenhum atendimento desta especialidade ainda." />}
+        <p className="dica" style={{ marginTop: 0 }}>Toque no paciente para abrir a ficha dele — o que foi feito, as fotos e todas as informações.</p>
+        {lista.length ? lista.map((x, i) => {
+          const abrivel = !!x.pacienteId && pacientes.some(p => p.id === x.pacienteId);
+          const Tag = abrivel ? 'button' : 'div';
+          return (
+            <Tag className="cartao" key={i} onClick={abrivel ? () => setTela({ paciente: x.pacienteId }) : undefined}
+              style={abrivel ? { width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', font: 'inherit' } : undefined}>
+              <div className="cartao-topo">
+                <strong>{x.nome || 'Paciente'}</strong>
+                <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <strong>{dinheiro(x.valor)}</strong>
+                  {abrivel && <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />}
+                </span>
+              </div>
+              <p className="obs" style={{ margin: 0 }}>{[dataBonita(x.quando), x.quem, x.extra].filter(Boolean).join(' · ')}</p>
+            </Tag>
+          );
+        }) : <Vazio texto="Nenhum atendimento desta especialidade ainda." />}
       </div>
     );
   }
@@ -929,16 +956,6 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           const linhas = Object.entries(porArea).sort((a, b) => b[1].total - a[1].total);
           const total = linhas.reduce((s, [, v]) => s + v.total, 0);
           const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
-  // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
-  const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
-  const dentesTratados = procsDoDia.reduce((s, r) => s + (r.dentes || []).length, 0)
-    + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
-  const porEspecialidade = (() => {
-    const m = {};
-    for (const a of doDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
-    for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
-  })();
           return (
             <>
               <h2>Financeiro</h2>
@@ -1427,6 +1444,147 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
       )}
 
       <button className="btn-sair" style={{ width: '100%', marginTop: 14 }} onClick={aoExcluir}>🗑 Excluir esta ação</button>
+    </div>
+  );
+}
+
+
+// ─── Ficha do paciente pelos olhos da gestão: dados, o que foi feito, as
+//     fotos (buscadas sob demanda) e o depoimento. Só leitura — é o checkup
+//     de quem coordena o projeto. ───
+function FichaGestao({ paciente: p, fb, procedimentos = [], atendimentos = [], agendamentos = [], depoimento, custoAtendimento, aoVoltar }) {
+  const [arquivos, setArquivos] = useState([]);
+  const [vendo, setVendo] = useState(null);
+  const t = p.triagem || null;
+  const areas = Array.isArray(t?.areas) ? t.areas : (t?.area ? [t.area] : (t?.procedimento ? [t.procedimento] : []));
+
+  // Busca as fotos da ficha só quando esta tela abre
+  useEffect(() => {
+    if (!fb) return;
+    const { collection, query, orderBy, onSnapshot } = fb.fns;
+    return onSnapshot(query(collection(fb.db, 'pacientes', p.id, 'arquivos'), orderBy('criadoEm', 'desc')),
+      snap => setArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, [p.id]);
+  const fotoDe = (id) => arquivos.find(a => a.id === id) || null;
+  const totalProduzido = atendimentos.reduce((s, a) => s + custoAtendimento(a), 0);
+
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <div className="cartao">
+        <div className="cartao-linha">
+          <Bolha nome={p.nome} foto={p.foto} />
+          <div style={{ flex: 1 }}>
+            <div className="cartao-topo">
+              <strong style={{ fontSize: 18 }}>{p.nome}</strong>
+              {p.codigo && <span className="chip concluído">{p.codigo}</span>}
+            </div>
+            <p className="obs" style={{ margin: 0 }}>{[p.idade ? `${p.idade} anos` : '', p.telefone, p.cpf ? `CPF ${p.cpf}` : ''].filter(Boolean).join(' · ')}</p>
+            {p.endereco && <p className="obs" style={{ margin: 0 }}>📍 {p.endereco}</p>}
+            {areas.length > 0 && <p className="obs" style={{ margin: '4px 0 0' }}>{areas.join(' · ')}</p>}
+            {t && (t.saude?.length > 0 || t.outrasCondicoes) && (
+              <p className="saude" style={{ margin: '4px 0 0' }}>
+                <TriangleAlert size={15} style={{ verticalAlign: '-2px', marginRight: 5 }} />
+                {[...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ')}
+              </p>
+            )}
+            {p.observacoes && <p className="obs" style={{ margin: '4px 0 0' }}>{p.observacoes}</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="grade-numeros">
+        <div className="cartao-numero"><strong>{procedimentos.length || atendimentos.length}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{procedimentos.reduce((s, r) => s + (r.dentes || []).length, 0)}</strong><span>dentes tratados</span></div>
+        <div className="cartao-numero"><strong>{arquivos.length}</strong><span>fotos na ficha</span></div>
+        <div className="cartao-numero destaque"><strong>{dinheiro(totalProduzido)}</strong><span>valor entregue</span></div>
+      </div>
+
+      {(t?.dentes?.length > 0 || t?.gengiva?.length > 0) && (
+        <div className="cartao">
+          <strong style={{ display: 'block', marginBottom: 8 }}>Marcação da triagem</strong>
+          <Arcada marcados={t.dentes || []} gengiva={t.gengiva || []} compacta />
+        </div>
+      )}
+
+      {depoimento && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>💬 O que {String(p.nome).split(' ')[0]} disse</h3>
+          <CartaoDepoimento depoimento={depoimento} destaque />
+        </>
+      )}
+
+      <h3 style={{ margin: '14px 0 8px' }}>🦷 O que foi feito ({procedimentos.length})</h3>
+      {procedimentos.length ? procedimentos.map(r => {
+        const antes = fotoDe(r.fotoAntesId), depois = fotoDe(r.fotoDepoisId);
+        return (
+          <div className="cartao" key={r.id}>
+            <div className="cartao-topo">
+              <strong style={{ color: corDoNome(r.area || '') }}>{r.area || 'Atendimento'}</strong>
+              <span className="obs">{dataBonita(r.data || isoDe(r.em || r.criadoEm))}{r.autorNome ? ` · ${String(r.autorNome).split(' ')[0]}` : ''}</span>
+            </div>
+            {r.descricao && <p style={{ margin: '6px 0 0' }}>{r.descricao}</p>}
+            {(antes || depois) && (
+              <div className="antes-depois-par ver">
+                {antes && <button className="foto-ad-mini" onClick={() => setVendo(antes)}><img src={antes.dataUrl} alt="Antes" /><span>ANTES</span></button>}
+                {depois && <button className="foto-ad-mini" onClick={() => setVendo(depois)}><img src={depois.dataUrl} alt="Depois" /><span>DEPOIS</span></button>}
+              </div>
+            )}
+            {(r.dentes || []).length > 0 && <p className="obs" style={{ margin: '6px 0 0' }}>Dentes: {r.dentes.join(', ')}</p>}
+          </div>
+        );
+      }) : <p className="dica">Ainda sem registro detalhado — os atendimentos abaixo vieram do cronômetro.</p>}
+
+      {atendimentos.length > 0 && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>⏱ Atendimentos cronometrados</h3>
+          {atendimentos.map(a => (
+            <div className="cartao" key={a.id}>
+              <div className="cartao-topo"><strong>{a.area || 'Atendimento'}</strong><strong>{dinheiro(custoAtendimento(a))}</strong></div>
+              <p className="obs" style={{ margin: 0 }}>{dataBonita(isoDe(a.inicio))} · {a.profissionalNome}{a.duracaoMin ? ` · ${a.duracaoMin} min` : ''}</p>
+            </div>
+          ))}
+        </>
+      )}
+
+      {agendamentos.length > 0 && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>📅 Agenda</h3>
+          {agendamentos.map(g => (
+            <div className="cartao" key={g.id}>
+              <div className="cartao-topo"><strong>{g.area || g.titulo}</strong><span className="obs">{dataBonita(g.data)} às {g.hora}</span></div>
+              <p className="obs" style={{ margin: 0 }}>{g.profissionalNome || 'sem dentista'}</p>
+            </div>
+          ))}
+        </>
+      )}
+
+      {arquivos.length > 0 && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>📷 Todas as fotos ({arquivos.length})</h3>
+          <div className="grade-fotos">
+            {arquivos.map(a => (
+              <button key={a.id} className="foto-mini" onClick={() => setVendo(a)}>
+                <img src={a.dataUrl} alt={a.legenda || 'foto'} />
+                {a.autorNome && <span className="foto-autor">{String(a.autorNome).split(' ')[0]}</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {vendo && (
+        <div className="foto-cheia" onClick={() => setVendo(null)}>
+          <button className="foto-fechar">✕</button>
+          <img src={vendo.dataUrl} alt={vendo.legenda || 'foto'} />
+          {(vendo.legenda || vendo.autorNome) && (
+            <div className="foto-info">
+              {vendo.legenda && <strong>{vendo.legenda}</strong>}
+              {vendo.autorNome && <span>por {vendo.autorNome}</span>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
