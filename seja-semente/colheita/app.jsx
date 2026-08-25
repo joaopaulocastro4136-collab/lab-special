@@ -2,8 +2,10 @@
 //  COLHEITA — o aplicativo de quem INVESTIU no projeto Seja Semente.
 //  É a prestação de contas em forma de sorrisos. Só LEITURA: o investidor
 //  não muda nada, ele confere.
-//    1. SORRISOS — quantas pessoas foram transformadas e a galeria do
-//       antes/depois: toque num sorriso e veja a história inteira
+//    1. PLANTE SORRISO — a experiência: os depoimentos de quem foi atendido
+//       em primeira mão e, embaixo, cada história com o antes e o depois.
+//       Aqui NÃO tem valores — é só o que foi feito e a alegria de quem
+//       recebeu. Dinheiro fica em CONTAS.
 //    2. AÇÕES — o relatório final de cada mutirão: pessoas atendidas,
 //       valor produzido por especialidade, materiais e notas
 //    3. CONTAS — as notas fiscais, o que foi comprado, com a prova do QR
@@ -16,6 +18,7 @@ import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, Home } from 'lucide-react';
 import { SobreOProjeto } from '../projeto.jsx';
+import { CartaoDepoimento } from '../depoimento.jsx';
 
 // Logo da Colheita: a mão dourada com o coração — a mesma do ecossistema
 function LogoApp({ tamanho = 120 }) {
@@ -226,6 +229,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
 
   const [acoes, setAcoes] = useState(CONFIGURADO ? [] : DEMO.acoes);
   const [sorrisos, setSorrisos] = useState(CONFIGURADO ? [] : DEMO.sorrisos);
+  const [depoimentos, setDepoimentos] = useState(CONFIGURADO ? [] : (DEMO.depoimentos || []));
   const [notas, setNotas] = useState(CONFIGURADO ? [] : DEMO.notas);
   const [movimentos, setMovimentos] = useState(CONFIGURADO ? [] : DEMO.movimentos);
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { valores: {}, porDente: {} } : DEMO.config);
@@ -239,6 +243,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
     const soltar = [
       escuta('acoes', ['data', 'desc'], setAcoes),
       escuta('notas', ['criadaEm', 'desc'], setNotas),
+      // A voz de quem foi atendido — o que abre o Plante Sorriso
+      escuta('depoimentos', ['criadoEm', 'desc'], setDepoimentos),
       escuta('estoque-movimentos', ['em', 'desc'], setMovimentos),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ valores: {}, porDente: {}, ...snap.data() });
@@ -278,6 +284,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
     return id ? fotos[id] : '';
   };
 
+  // O depoimento daquela pessoa (se ela deixou um)
+  const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado !== false) || null;
   const valorDe = (nome) => Number(configProc.valores?.[nome] || 0);
   const ehPorDente = (nome) => !!configProc.porDente?.[nome];
   const valorDoSorriso = (s) => {
@@ -293,11 +301,34 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   const notasVisiveis = filtrando ? notas.filter(n => n.acaoId === minhaAcao.id) : notas;
   const acoesVisiveis = filtrando ? acoes.filter(a => a.id === minhaAcao.id) : acoes;
   const movimentosVisiveis = filtrando ? movimentos.filter(m => m.acaoId === minhaAcao.id) : movimentos;
+  // Só depoimentos autorizados aparecem para quem apoia o projeto
+  const depoimentosVisiveis = depoimentos.filter(d => d.autorizado !== false)
+    .filter(d => !filtrando || isoDe(d.criadoEm) === minhaAcao.data);
 
   const pessoas = new Set(sorrisosVisiveis.map(s => s.pacienteId)).size;
   const produzido = sorrisosVisiveis.reduce((s, x) => s + valorDoSorriso(x), 0);
   const gastoNotas = notasVisiveis.reduce((s, n) => s + Number(n.valor || 0), 0);
-  const gastoMateriais = movimentosVisiveis.filter(m => m.delta < 0).reduce((s, m) => s + Math.abs(m.delta) * Number(m.valorUnit || 0), 0);
+  // Saídas de material: entende o formato do Palmar (delta) e o da
+  // central/Semeador (tipo + qtd)
+  const deltaMov = (m) => typeof m?.delta === 'number' ? m.delta : (m?.tipo === 'entrada' ? Number(m.qtd || 0) : -Number(m.qtd || 0));
+  const saidas = movimentosVisiveis.filter(m => deltaMov(m) < 0);
+  const gastoMateriais = saidas.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
+  const notasVerificadas = notasVisiveis.filter(n => n.chave).length;
+  // Quanto cada ação custou (notas + materiais), para a lista "Por ação"
+  const porAcaoContas = (() => {
+    const m = {};
+    for (const n of notasVisiveis) {
+      const k = n.acaoTitulo || 'Sem ação vinculada';
+      m[k] = m[k] || { total: 0, quantos: 0 };
+      m[k].total += Number(n.valor || 0); m[k].quantos++;
+    }
+    for (const x of saidas) {
+      const k = x.acaoTitulo || 'Sem ação vinculada';
+      m[k] = m[k] || { total: 0, quantos: 0 };
+      m[k].total += Math.abs(deltaMov(x)) * Number(x.valorUnit || 0); m[k].quantos++;
+    }
+    return Object.entries(m).sort((a, b) => b[1].total - a[1].total);
+  })();
 
   // Carrega as fotos dos sorrisos que estão à vista
   const [quantos, setQuantos] = useState(12);
@@ -319,22 +350,69 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
       return (
         <div className="folha">
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
-          <h2>😁 O sorriso de {primeiroNome(s.pacienteNome)}</h2>
-          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{s.autorNome ? ` · por ${s.autorNome}` : ''}</p>
-          <div className="antes-depois-par ver">
-            {antes ? <span className="foto-ad-mini" style={{ cursor: 'default' }}><img src={antes} alt="Antes" /><span>ANTES</span></span> : null}
-            {depois ? <span className="foto-ad-mini" style={{ cursor: 'default' }}><img src={depois} alt="Depois" /><span>DEPOIS</span></span> : null}
-          </div>
-          {!antes && !depois && <p className="dica">Este atendimento não teve fotos registradas.</p>}
+          <h2>O sorriso de {primeiroNome(s.pacienteNome)}</h2>
+          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{s.autorNome ? ` · cuidado por ${s.autorNome}` : ''}</p>
+          {(antes || depois) ? (
+            <div className="plante-antesdepois">
+              <figure>{antes ? <img src={antes} alt="Antes" /> : <span className="plante-sem">🦷</span>}<figcaption>ANTES</figcaption></figure>
+              <span className="plante-flecha">→</span>
+              <figure>{depois ? <img src={depois} alt="Depois" /> : <span className="plante-sem">✨</span>}<figcaption>DEPOIS</figcaption></figure>
+            </div>
+          ) : <p className="dica">Este atendimento não teve fotos registradas.</p>}
           <div className="cartao" style={{ marginTop: 12 }}>
-            <div className="cartao-topo"><strong style={{ color: corDoNome(s.area) }}>{s.area || 'Atendimento'}</strong><strong>{dinheiro(valorDoSorriso(s))}</strong></div>
-            {s.descricao && <p style={{ margin: '6px 0 0' }}>{s.descricao}</p>}
+            <span className="plante-area" style={{ background: corDoNome(s.area) + '1C', color: corDoNome(s.area) }}>{s.area || 'Atendimento'}</span>
+            {s.descricao && <p style={{ margin: '8px 0 0' }}>{s.descricao}</p>}
             {(s.dentes || []).length > 0 && <p className="obs" style={{ margin: '6px 0 0' }}>🦷 Dentes tratados: {s.dentes.join(', ')}</p>}
           </div>
-          <p className="dica" style={{ marginTop: 12 }}>O valor é quanto este atendimento custaria fora do projeto — foi isso que a sua doação entregou.</p>
+          {depoimentoDe(s.pacienteId) && (
+            <>
+              <h3 style={{ margin: '16px 0 8px' }}>O que {primeiroNome(s.pacienteNome)} disse</h3>
+              <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque />
+            </>
+          )}
+          <p className="dica" style={{ marginTop: 12 }}>Foi a sua semente que devolveu este sorriso. 💚</p>
         </div>
       );
     }
+  }
+
+  // ── Detalhe de uma conta: as notas ou os materiais, um por um ──
+  if (tela?.conta) {
+    const ehNotas = tela.conta === 'notas';
+    const total = ehNotas ? gastoNotas : gastoMateriais;
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
+        <h2>{ehNotas ? '📄 Compras com nota fiscal' : '📦 Materiais usados'}</h2>
+        <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+          <strong style={{ fontSize: 26 }}>{dinheiro(total)}</strong>
+          <span>{ehNotas ? `em ${notasVisiveis.length} nota(s)` : `em ${saidas.length} retirada(s) do estoque`}</span>
+        </div>
+        {ehNotas ? (
+          notasVisiveis.length ? notasVisiveis.map(n => (
+            <div className="cartao" key={n.id}>
+              <div className="cartao-topo"><strong>{n.descricao || 'Nota fiscal'}</strong><strong>{dinheiro(n.valor)}</strong></div>
+              <p className="obs" style={{ margin: 0 }}>
+                {n.chave ? `✓ nota verificada pelo QR · …${String(n.chave).slice(-8)}` : '📷 foto da nota'}
+                {n.acaoTitulo ? ` · ${n.acaoTitulo}` : ''}
+              </p>
+              {n.foto && <img src={n.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 10, marginTop: 8 }} />}
+            </div>
+          )) : <Vazio texto="Nenhuma nota registrada ainda." />
+        ) : (
+          saidas.length ? saidas.map(m => (
+            <div className="cartao" key={m.id}>
+              <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+              <p className="obs" style={{ margin: 0 }}>
+                {Math.abs(deltaMov(m))} unidade(s)
+                {m.autorNome ? ` · ${String(m.autorNome).split(' ')[0]}` : ''}
+                {m.acaoTitulo ? ` · ${m.acaoTitulo}` : ''}
+              </p>
+            </div>
+          )) : <Vazio texto="Nenhum material retirado ainda." />
+        )}
+      </div>
+    );
   }
 
   if (tela?.acao) {
@@ -349,10 +427,10 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
         porArea[chave].total += valorDoSorriso(s);
       }
       const notasDaAcao = notas.filter(n => n.acaoId === a.id);
-      const materiaisDaAcao = movimentos.filter(m => m.acaoId === a.id && m.delta < 0);
+      const materiaisDaAcao = movimentos.filter(m => m.acaoId === a.id && deltaMov(m) < 0);
       const totalProd = Object.values(porArea).reduce((s, v) => s + v.total, 0);
       const totalGasto = notasDaAcao.reduce((s, n) => s + Number(n.valor || 0), 0)
-        + materiaisDaAcao.reduce((s, m) => s + Math.abs(m.delta) * Number(m.valorUnit || 0), 0);
+        + materiaisDaAcao.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
       return (
         <div className="folha">
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
@@ -394,8 +472,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
               <h3 style={{ margin: '16px 0 8px' }}>📦 Materiais usados</h3>
               {materiaisDaAcao.map(m => (
                 <div className="cartao" key={m.id}>
-                  <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(m.delta) * Number(m.valorUnit || 0))}</strong></div>
-                  <p className="obs" style={{ margin: 0 }}>{Math.abs(m.delta)} unidade(s)</p>
+                  <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+                  <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s)</p>
                 </div>
               ))}
             </>
@@ -438,42 +516,64 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
 
         {aba === 'inicio' && <SobreOProjeto Logo={LogoApp} />}
 
-        {aba === 'sorrisos' && (
+        {aba === 'plante' && (
           <>
-            <h2>Os sorrisos</h2>
-            {filtrando && <p className="dica" style={{ marginTop: 0 }}>Mostrando a ação que você apoiou: <b>{minhaAcao.titulo}</b>.</p>}
-            <div className="grade-numeros">
-              <div className="cartao-numero"><strong>{pessoas}</strong><span>vidas transformadas</span></div>
-              <div className="cartao-numero"><strong>{sorrisosVisiveis.length}</strong><span>sorrisos devolvidos</span></div>
-              <div className="cartao-numero destaque"><strong>{dinheiro(produzido)}</strong><span>em tratamento entregue</span></div>
-              <div className="cartao-numero"><strong>{dinheiro(gastoNotas + gastoMateriais)}</strong><span>custo prestado em contas</span></div>
+            {/* A CAPA: o convite. Sem número de dinheiro nenhum — aqui é só
+                gente, sorriso e o que foi feito. */}
+            <div className="plante-capa">
+              <span className="plante-selo">PLANTE SORRISO</span>
+              <h1>Você plantou.<br />Olha o que <em>nasceu</em>.</h1>
+              <div className="plante-marcas">
+                <span><b>{pessoas}</b>vidas</span>
+                <i />
+                <span><b>{sorrisosVisiveis.length}</b>sorrisos</span>
+                <i />
+                <span><b>{depoimentosVisiveis.length}</b>vozes</span>
+              </div>
             </div>
+            {filtrando && <p className="dica">Mostrando a ação que você apoiou: <b>{minhaAcao.titulo}</b>.</p>}
+
+            {/* PRIMEIRA MÃO: a voz de quem foi atendido */}
+            {depoimentosVisiveis.length > 0 && (
+              <>
+                <h2 style={{ marginTop: 18 }}>O que eles disseram</h2>
+                <p className="dica" style={{ marginTop: 0 }}>Palavras de quem sentou na cadeira. {depoimentosVisiveis.length > 1 ? 'Arraste para o lado. 👉' : ''}</p>
+                {depoimentosVisiveis.length > 1 ? (
+                  <div className="depo-faixa">
+                    {depoimentosVisiveis.slice(0, 8).map(d => <CartaoDepoimento key={d.id} depoimento={d} destaque />)}
+                  </div>
+                ) : (
+                  <CartaoDepoimento depoimento={depoimentosVisiveis[0]} destaque />
+                )}
+              </>
+            )}
+
+            {/* EMBAIXO: cada pessoa atendida, com o antes e o depois */}
+            <h2 style={{ marginTop: 18 }}>As histórias</h2>
             {carregando ? <p className="dica">Buscando os sorrisos…</p> : (
               sorrisosVisiveis.length ? (
                 <>
-                  <p className="dica">Toque num sorriso para ver a história inteira.</p>
-                  {sorrisosVisiveis.slice(0, quantos).map(s => {
-                    const antes = fotoDe(s, 'antes');
-                    const depois = fotoDe(s, 'depois');
-                    return (
-                      <button className="cartao" key={s.id} style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }} onClick={() => setTela({ sorriso: s.id })}>
-                        <div className="cartao-topo">
-                          <strong>{primeiroNome(s.pacienteNome)}</strong>
-                          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span className="chip triado" style={{ background: corDoNome(s.area) + '1C', color: corDoNome(s.area) }}>{s.area}</span>
-                            <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />
+                  <p className="dica" style={{ marginTop: 0 }}>Toque numa pessoa para ver a história inteira.</p>
+                  <div className="plante-grade">
+                    {sorrisosVisiveis.slice(0, quantos).map(s => {
+                      const antes = fotoDe(s, 'antes');
+                      const depois = fotoDe(s, 'depois');
+                      const cor = corDoNome(s.area);
+                      return (
+                        <button className="plante-cartao" key={s.id} onClick={() => setTela({ sorriso: s.id })}>
+                          <span className="plante-fotos">
+                            {antes ? <img src={antes} alt="Antes" /> : <span className="plante-sem">🦷</span>}
+                            {depois ? <img src={depois} alt="Depois" /> : <span className="plante-sem">✨</span>}
+                            <span className="plante-seta">→</span>
                           </span>
-                        </div>
-                        {(antes || depois) && (
-                          <div className="antes-depois-par ver" style={{ marginTop: 8 }}>
-                            {antes && <span className="foto-ad-mini"><img src={antes} alt="Antes" /><span>ANTES</span></span>}
-                            {depois && <span className="foto-ad-mini"><img src={depois} alt="Depois" /><span>DEPOIS</span></span>}
-                          </div>
-                        )}
-                        <p className="obs" style={{ margin: '6px 0 0' }}>{dataBonita(isoDe(s.criadoEm))}{s.autorNome ? ` · ${s.autorNome}` : ''}</p>
-                      </button>
-                    );
-                  })}
+                          <span className="plante-pe">
+                            <strong>{primeiroNome(s.pacienteNome)}</strong>
+                            <span className="plante-area" style={{ background: cor + '1C', color: cor }}>{s.area || 'Atendimento'}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   {sorrisosVisiveis.length > quantos && (
                     <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={() => setQuantos(q => q + 12)}>
                       Ver mais sorrisos ({sorrisosVisiveis.length - quantos})
@@ -506,33 +606,40 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
 
         {aba === 'contas' && (
           <>
-            <h2>Prestação de contas</h2>
-            <p className="dica" style={{ marginTop: 0 }}>Cada compra do projeto, com a nota. As marcadas com ✓ tiveram o QR da nota lido — é a nota oficial, conferida.</p>
-            <div className="grade-numeros">
-              <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>em notas fiscais</span></div>
-              <div className="cartao-numero"><strong>{dinheiro(gastoMateriais)}</strong><span>em materiais usados</span></div>
+            <h2>Contas</h2>
+            <p className="dica" style={{ marginTop: 0 }}>Cada real do projeto, aberto. Toque numa linha para ver item por item.</p>
+            <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+              <strong style={{ fontSize: 30 }}>{dinheiro(gastoNotas + gastoMateriais)}</strong>
+              <span>total investido e prestado em contas</span>
             </div>
-            {notasVisiveis.length ? notasVisiveis.map(n => (
-              <div className="cartao" key={n.id}>
-                <div className="cartao-topo"><strong>{n.descricao || 'Nota fiscal'}</strong><strong>{dinheiro(n.valor)}</strong></div>
-                <p className="obs" style={{ margin: 0 }}>
-                  {n.chave ? `✓ nota verificada pelo QR · …${String(n.chave).slice(-8)}` : '📷 foto da nota'}
-                  {n.acaoTitulo ? ` · ${n.acaoTitulo}` : ''}
-                </p>
-                {n.foto && <img src={n.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 10, marginTop: 8 }} />}
-              </div>
-            )) : <Vazio texto="Nenhuma nota registrada ainda." />}
-            {movimentosVisiveis.filter(m => m.delta < 0).length > 0 && (
+            <h2 style={{ fontSize: 20 }}>Para onde foi</h2>
+            <p className="dica" style={{ marginTop: 0 }}>Toque numa linha para ver os lançamentos, um por um.</p>
+            <button className="cartao linha-conta" onClick={() => setTela({ conta: 'notas' })}>
+              <span>
+                <strong>📄 Compras com nota fiscal</strong>
+                <span className="obs">{notasVisiveis.length} nota(s){notasVerificadas ? ` · ${notasVerificadas} conferida(s) pelo QR` : ''}</span>
+              </span>
+              <span className="linha-conta-valor">{dinheiro(gastoNotas)}<ChevronRight size={18} strokeWidth={2.6} /></span>
+            </button>
+            <button className="cartao linha-conta" onClick={() => setTela({ conta: 'materiais' })}>
+              <span>
+                <strong>📦 Materiais usados nos atendimentos</strong>
+                <span className="obs">{saidas.length} retirada(s) do estoque</span>
+              </span>
+              <span className="linha-conta-valor">{dinheiro(gastoMateriais)}<ChevronRight size={18} strokeWidth={2.6} /></span>
+            </button>
+            {porAcaoContas.length > 0 && (
               <>
-                <h3 style={{ margin: '16px 0 8px' }}>📦 Materiais usados</h3>
-                {movimentosVisiveis.filter(m => m.delta < 0).map(m => (
-                  <div className="cartao" key={m.id}>
-                    <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(m.delta) * Number(m.valorUnit || 0))}</strong></div>
-                    <p className="obs" style={{ margin: 0 }}>{Math.abs(m.delta)} unidade(s){m.acaoTitulo ? ` · ${m.acaoTitulo}` : ''}</p>
+                <h2 style={{ fontSize: 20, marginTop: 16 }}>Por ação</h2>
+                {porAcaoContas.map(([titulo, v]) => (
+                  <div className="cartao linha-conta" key={titulo} style={{ cursor: 'default' }}>
+                    <span><strong>🌱 {titulo}</strong><span className="obs">{v.quantos} lançamento(s)</span></span>
+                    <span className="linha-conta-valor">{dinheiro(v.total)}</span>
                   </div>
                 ))}
               </>
             )}
+            <p className="dica" style={{ marginTop: 14 }}>As notas com ✓ tiveram o QR lido direto do papel — é a nota oficial da Receita, conferida pelo aplicativo.</p>
           </>
         )}
 
@@ -571,7 +678,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
 
       <nav>
         <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}><Home size={22} /><span>Projeto</span></button>
-        <button className={aba === 'sorrisos' ? 'ativo' : ''} onClick={() => setAba('sorrisos')}><Sparkles size={22} /><span>Sorrisos</span></button>
+        <button className={aba === 'plante' ? 'ativo' : ''} onClick={() => setAba('plante')}><Sparkles size={22} /><span>Plante</span></button>
         <button className={aba === 'acoes' ? 'ativo' : ''} onClick={() => setAba('acoes')}><Flag size={22} /><span>Ações</span></button>
         <button className={aba === 'contas' ? 'ativo' : ''} onClick={() => setAba('contas')}><Receipt size={22} /><span>Contas</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
