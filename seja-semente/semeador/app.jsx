@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
-import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare } from 'lucide-react';
+import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare, Package } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { TelaChamada, TelaChamarStaff } from '../chamada.jsx';
@@ -18,6 +18,9 @@ import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
 import { TelaJogos } from '../ludo.jsx';
+import { FormRegistro } from '../registro.jsx';
+import { TelaProtese } from '../protese.jsx';
+import { Estoque } from '../estoque.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -508,8 +511,47 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const atendimentoAberto = meusAtendimentos.find(a => !a.fim) || null;
   const minutosDesde = v => Math.max(1, Math.round((Date.now() - (v?.toDate ? v.toDate() : new Date(v)).getTime()) / 60000));
 
-  async function chamarPaciente(p) {
+  // ─── Registro do que foi feito (a "pasta" do paciente) ───
+  const [telaRegistro, setTelaRegistro] = useState(null); // { pacienteId, pacienteNome, area, atendimentoId, depois, motivo }
+  const [demoRegistros, setDemoRegistros] = useState({}); // demo: { pacienteId: [registros] }
+
+  // O último atendimento encerrado (nas últimas 24h) que ficou sem registro
+  function atendimentoSemRegistro() {
+    const limite = Date.now() - 24 * 60 * 60 * 1000;
+    return meusAtendimentos.find(a => {
+      if (!a.fim || a.registrado) return false;
+      const fim = a.fim?.toDate ? a.fim.toDate() : new Date(a.fim);
+      return !isNaN(fim) && fim.getTime() >= limite;
+    }) || null;
+  }
+
+  async function salvarRegistro(t, dados) {
+    const registro = {
+      ...dados, pacienteNome: t.pacienteNome || '',
+      autorUid: usuario.uid, autorNome: usuario.nome || '',
+      ...(t.atendimentoId ? { atendimentoId: t.atendimentoId } : {}),
+    };
+    if (!CONFIGURADO) {
+      setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registro, criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
+      if (t.atendimentoId) setMeusAtendimentos(as => as.map(a => a.id === t.atendimentoId ? { ...a, registrado: true } : a));
+      return;
+    }
+    const { collection, addDoc, doc, updateDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos'), { ...registro, criadoEm: serverTimestamp() });
+    if (t.atendimentoId) updateDoc(doc(fb.db, 'atendimentos', t.atendimentoId), { registrado: true }).catch(() => {});
+  }
+
+  async function chamarPaciente(p, puloRegistro) {
     if (!p) return;
+    // Ficou atendimento sem registro? Lembra o dentista ANTES de chamar o próximo
+    if (!puloRegistro) {
+      const pend = atendimentoSemRegistro();
+      if (pend && pend.pacienteId !== p.id) {
+        setFichaId(null);
+        setTelaRegistro({ pacienteId: pend.pacienteId, pacienteNome: pend.pacienteNome, area: pend.area || '', atendimentoId: pend.id, motivo: 'chamar', depois: p });
+        return;
+      }
+    }
     const agora = new Date();
     const area = (agendamentos.find(g => g.pacienteId === p.id)?.area) || areasDoPaciente(p)[0] || '';
     const novo = { profissionalUid: usuario.uid, profissionalNome: usuario.nome || '', pacienteId: p.id, pacienteNome: p.nome, area, inicio: agora, fim: null };
@@ -537,10 +579,13 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     const dur = minutosDesde(atendimentoAberto.inicio);
     if (!CONFIGURADO) {
       setMeusAtendimentos(as => as.map(a => a.id === atendimentoAberto.id ? { ...a, fim: agora, duracaoMin: dur } : a));
-      return;
+    } else {
+      const { doc, updateDoc } = fb.fns;
+      updateDoc(doc(fb.db, 'atendimentos', atendimentoAberto.id), { fim: agora, duracaoMin: dur }).catch(() => {});
     }
-    const { doc, updateDoc } = fb.fns;
-    updateDoc(doc(fb.db, 'atendimentos', atendimentoAberto.id), { fim: agora, duracaoMin: dur }).catch(() => {});
+    // Encerrou? Já abre o registro do que foi feito, enquanto está fresquinho
+    setFichaId(null);
+    setTelaRegistro({ pacienteId: atendimentoAberto.pacienteId, pacienteNome: atendimentoAberto.pacienteNome, area: atendimentoAberto.area || '', atendimentoId: atendimentoAberto.id, motivo: 'fim', depois: null });
   }
 
   // ─── Chat da equipe (mesma conversa da central, em tempo real) ───
@@ -633,6 +678,24 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   // ─── Triagem no Semeador: o dentista faz a separação por aqui mesmo ───
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
   const [telaJogos, setTelaJogos] = useState(false);    // caixinha de Jogos do Perfil
+  const [telaProtese, setTelaProtese] = useState(false); // pasta da Prótese
+
+  // O dentista da prótese agenda ele mesmo, na própria agenda
+  async function agendarProtese(p, data, hora) {
+    const novo = {
+      area: 'Prótese', titulo: 'Prótese', duracaoMin: duracaoDe('Prótese'),
+      pacienteId: p.id, pacienteNome: p.nome,
+      profissionalUid: usuario.uid, profissionalNome: usuario.nome || '',
+      data, hora, origem: 'protese',
+      marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '',
+    };
+    if (!CONFIGURADO) {
+      setAgendamentos(gs => [...gs, { id: 'g' + Math.floor(Math.random() * 1e9), ...novo, criadoEm: new Date() }]);
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    await addDoc(collection(fb.db, 'agendamentos'), { ...novo, criadoEm: serverTimestamp() }).catch(() => {});
+  }
   const [buscaArea, setBuscaArea] = useState('');
   const [buscaTriagem, setBuscaTriagem] = useState(''); // pesquisa geral de paciente na aba Triagem
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {} } : lerLocal('sd-config-proc', { personalizados: [], duracoes: {} }));
@@ -700,20 +763,23 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const [fichaId, setFichaId] = useState(null);
   const [fichaPaciente, setFichaPaciente] = useState(null);
   const [fichaArquivos, setFichaArquivos] = useState([]);
+  const [fichaProcedimentos, setFichaProcedimentos] = useState([]);
   const [demoArquivos, setDemoArquivos] = useState({});
 
   useEffect(() => {
-    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); return; }
+    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); setFichaProcedimentos([]); return; }
     if (!CONFIGURADO) {
       setFichaPaciente(todosPacientes.find(p => p.id === fichaId) || null);
       setFichaArquivos(demoArquivos[fichaId] || []);
+      setFichaProcedimentos(demoRegistros[fichaId] || []);
       return;
     }
     const { doc, onSnapshot, collection, query, orderBy } = fb.fns;
     const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
     const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { s1(); s2(); };
-  }, [fichaId, todosPacientes, demoArquivos]);
+    const s3 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'procedimentos'), orderBy('criadoEm', 'desc')), snap => setFichaProcedimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    return () => { s1(); s2(); s3(); };
+  }, [fichaId, todosPacientes, demoArquivos, demoRegistros]);
 
   async function salvarArquivo(dataUrl, legenda) {
     const registro = { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '' };
@@ -779,6 +845,21 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
 
   if (telaJogos) return <TelaJogos usuario={{ uid: usuario.uid, nome: usuario.nome, avatar: usuario.avatar || '', fotoMini: usuario.fotoMini || usuario.foto || '' }} fb={CONFIGURADO ? fb : null} aoVoltar={() => setTelaJogos(false)} />;
 
+  // Registro do que foi feito: abre ao encerrar um atendimento ou quando o
+  // dentista chama o próximo sem ter registrado o anterior
+  if (telaRegistro) return <FormRegistro
+    paciente={todosPacientes.find(p => p.id === telaRegistro.pacienteId) || { nome: telaRegistro.pacienteNome }}
+    areas={todasAreas.map(a => a.nome)} areaInicial={telaRegistro.area} motivo={telaRegistro.motivo}
+    aoCancelar={() => { const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }}
+    aoSalvar={async dados => { await salvarRegistro(telaRegistro, dados); const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }} />;
+
+  // Pasta da Prótese: só destrava para quem tem Prótese nos procedimentos
+  if (telaProtese) return <TelaProtese usuario={usuario} pacientes={todosPacientes} agendamentos={agendamentos}
+    duracao={duracaoDe('Prótese')} corDaArea={corDaArea} duracaoDe={duracaoDe}
+    bloqueada={!(usuario.procedimentos || []).includes('Prótese')}
+    aoVoltar={() => setTelaProtese(false)} aoAbrirFicha={id => { setTelaProtese(false); setFichaId(id); }}
+    aoAgendar={agendarProtese} />;
+
   // Chamar paciente só quando ele está agendado COMIGO (a lista de
   // agendamentos aqui já é só a minha) — senão qualquer voluntário chamaria
   // qualquer paciente
@@ -787,7 +868,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     aoChamar={agendadoComigo ? () => chamarPaciente(fichaPaciente) : undefined}
     avisoChamar={fichaPaciente && !agendadoComigo ? '🔔 Só o dentista com este paciente agendado pode chamá-lo para o atendimento.' : ''}
     atendimentoAberto={atendimentoAberto && atendimentoAberto.pacienteId === fichaId ? atendimentoAberto : null}
-    aoEncerrar={encerrarAtendimento} />;
+    aoEncerrar={encerrarAtendimento}
+    procedimentosFeitos={fichaProcedimentos}
+    aoRegistrar={() => setTelaRegistro({ pacienteId: fichaId, pacienteNome: fichaPaciente?.nome || '', area: areasDoPaciente(fichaPaciente)[0] || '', atendimentoId: null, motivo: null, depois: null })} />;
 
   if (telaEquipe) return <TelaChamarStaff pessoas={pessoasChamaveis} aoChamar={aoChamarStaff} aoVoltar={() => setTelaEquipe(false)} />;
 
@@ -866,6 +949,14 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       <main className={aba === 'chat' ? 'com-chat' : undefined}>
         {aba === 'inicio' && (
           <>
+            <button className="caixa-entrada" style={{ marginBottom: 10 }} onClick={() => setTelaProtese(true)}>
+              <span className="entrada-icone" style={{ background: '#FCEFD2', color: '#C4880C' }}><Crown size={23} strokeWidth={2.2} /></span>
+              <span className="entrada-texto">
+                <strong>Pasta da Prótese {(usuario.procedimentos || []).includes('Prótese') ? '' : '🔒'}</strong>
+                <span>{(usuario.procedimentos || []).includes('Prótese') ? 'Agende as próteses direto na sua agenda' : 'Só para dentistas liberados para Prótese'}</span>
+              </span>
+              <ChevronRight size={20} strokeWidth={2.6} className="entrada-seta" />
+            </button>
             <h2>Pacientes de hoje</h2>
             <p className="dica" style={{ marginBottom: 2 }}>{dataBonita(hojeISO)} · toque no paciente para abrir a ficha</p>
             {agendaHoje.length ? (
@@ -967,6 +1058,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
           <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
             areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
+        {aba === 'estoque' && (
+          <Estoque usuario={usuario} fb={CONFIGURADO ? fb : null} />
+        )}
         {aba === 'perfil' && (
           <>
             <h2>Meu perfil</h2>
@@ -1003,6 +1097,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
           <span className="icone-aba"><MessagesSquare size={22} />{mensagens.length > chatVisto && <i className="bolinha" />}</span>
           <span>Chat</span>
         </button>
+        <button className={aba === 'estoque' ? 'ativo' : ''} onClick={() => setAba('estoque')}><Package size={22} /><span>Estoque</span></button>
         <button className={aba === 'perfil' ? 'ativo' : ''} onClick={() => setAba('perfil')}><User size={22} /><span>Perfil</span></button>
       </nav>
     </div>
