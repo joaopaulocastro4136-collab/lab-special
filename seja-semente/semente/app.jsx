@@ -344,6 +344,9 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
       <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
         <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
       </div>
+      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
+        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
+      </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
       <p className="dica">Depois da triagem, o paciente entra nas caixinhas dos procedimentos marcados e já pode ser agendado com um voluntário.</p>
       <div className="linha-botoes">
@@ -461,6 +464,7 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
 
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Agendar paciente</h2>
       {triados.length === 0 && <p className="dica">Nenhum paciente com triagem ainda — faça a triagem primeiro.</p>}
       <Campo rotulo={soUma ? `Paciente (só quem é de ${areaInicial})` : 'Paciente'}>
@@ -521,6 +525,9 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
         />
       </div>
       <p className="dica" style={{ margin: 0 }}>📌 Vai ficar: <b>{dataBonita(f.data)} às {sequencia[0]?.hora || f.horaInicio}</b> — toque em outro quadradinho para mudar (ou ajuste a hora ali embaixo).</p>
+      <button className="btn-descer" onClick={e => e.currentTarget.closest('.folha')?.querySelector('.linha-botoes')?.scrollIntoView({ behavior: 'smooth', block: 'end' })}>
+        Descer para concluir o agendamento ↓
+      </button>
       {sequencia.length > 0 && (
         <div className="campo"><span>Como fica ({sequencia.length} agendamento{sequencia.length === 1 ? '' : 's'})</span>
           {sequencia.map(s => (

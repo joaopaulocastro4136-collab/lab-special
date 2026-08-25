@@ -422,6 +422,9 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
       <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
         <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
       </div>
+      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
+        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
+      </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
       <p className="dica">A triagem aparece na central Seja Semente na hora — de lá o paciente já pode ser agendado.</p>
       <div className="linha-botoes">
