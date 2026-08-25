@@ -104,6 +104,19 @@
   .cartao-numero span { font-size: 12.5px; color: #6E7D72; font-weight: 600; }
   .cartao-numero.destaque { background: linear-gradient(135deg, #2F7D4E, #1E5A3A); }
   .cartao-numero.destaque strong, .cartao-numero.destaque span { color: #fff; }
+  /* ── Faça uma doação: Pix, conta do banco e a vakinha ── */
+  .cartao-doacao { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .marca-doacao { display: inline-flex; align-items: center; gap: 6px; font-family: 'Fraunces', Georgia, serif; font-size: 19px; color: #226343; background: #EAF4EE; border-radius: 999px; padding: 5px 15px; }
+  .marca-doacao.banco { color: #1F4C93; background: #E6EEFA; }
+  .chave-doacao { width: 100%; text-align: center; background: #F2FAF5; border: 1.5px dashed #9DBBA8; border-radius: 14px; padding: 14px 10px; font-size: 21px; font-weight: 800; color: #1E5A3A; letter-spacing: 0.3px; }
+  .linha-conta { display: flex; gap: 10px; width: 100%; }
+  .linha-conta button { flex: 1; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left; background: #F5F8F4; border: 1.5px solid #DBE3D8; border-radius: 14px; padding: 11px 13px; cursor: pointer; font: inherit; }
+  .linha-conta button span { font-size: 12px; font-weight: 700; color: #6E7D72; }
+  .linha-conta button strong { font-size: 19px; font-weight: 800; color: #1E2B22; }
+  .linha-conta button em { font-size: 11.5px; font-weight: 800; font-style: normal; color: #37935B; text-transform: uppercase; letter-spacing: 0.4px; }
+  .cartao-vakinha { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; border: 1.5px solid #37935B; }
+  .cartao-vakinha strong { display: block; font-size: 17px; color: #226343; }
+  .seta-vakinha { flex: none; width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-size: 18px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(47,125,78,0.32); }
   .btn-header { border: none; background: rgba(255,255,255,0.14); color: #fff; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
   .btn-header + .btn-header { margin-left: 8px; }
   .banner-ok { background: #D6F1E0; color: #1E6B41; border-radius: 13px; padding: 12px 15px; font-weight: 800; font-size: 14.5px; margin-bottom: 12px; }
