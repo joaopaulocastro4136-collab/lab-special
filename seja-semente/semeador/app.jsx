@@ -685,7 +685,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
         </div>
       </header>
 
-      <main>
+      <main className={aba === 'chat' ? 'com-chat' : undefined}>
         {aba === 'inicio' && (
           <>
             <h2>Pacientes de hoje</h2>

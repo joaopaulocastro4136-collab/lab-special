@@ -9,8 +9,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Bolha, corDoNome } from './logo.jsx';
 import { comprimirImagem } from './ficha.jsx';
 import { Send, Check, X, ClipboardList, AtSign, Camera, Plus, Smile } from 'lucide-react';
+import { FIGURINHAS, Figurinha } from './figurinhas.jsx';
 
-const EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '👏', '🎉', '❤️', '😢', '😮', '💪', '🦷', '🌱', '✅', '⚠️', '📅'];
+const EMOJIS = ['😀', '😁', '😂', '🤣', '😍', '😘', '🙏', '👍', '👎', '👏', '🙌', '🤝', '💪', '🎉', '🥳', '❤️', '💚', '😢', '😭', '😮', '😬', '🤔', '😴', '😷', '🦷', '🪥', '💉', '🩺', '✨', '✅', '⚠️', '❗', '📅', '⏰', '🌱', '🍎'];
 
 function quandoBonito(v) {
   const d = v?.toDate ? v.toDate() : v instanceof Date ? v : null;
@@ -67,6 +68,18 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
     setEnviando(false);
   }
 
+  // Figurinha vai na hora, como no WhatsApp: tocou, enviou
+  async function enviarFigurinha(id) {
+    setVerEmojis(false);
+    await aoEnviar({
+      texto: '', foto: '', figurinha: id,
+      pacienteId: '', pacienteNome: '', pacienteCodigo: '',
+      paraUid: pessoa?.id || '', paraNome: pessoa?.nome || '',
+      sugestaoArea: '',
+    });
+    setPessoaId('');
+  }
+
   return (
     <div className={'chat' + (cheio ? ' cheio' : '')}>
       <div className="chat-mensagens">
@@ -74,9 +87,9 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
         {mensagens.map(m => (
           <div key={m.id} className={'msg' + (m.autorUid === usuario.uid ? ' minha' : '')}>
             <Bolha nome={m.autorNome || '?'} foto={m.autorFotoMini} avatar={m.autorAvatar} />
-            {/* Cada pessoa tem a sua cor (nome e barrinha do balão) — dá para
-                reconhecer quem mandou só de bater o olho */}
-            <div className="msg-corpo" style={{ borderLeft: `4px solid ${corDoNome(m.autorNome)}` }}>
+            {/* Cada pessoa tem a sua cor (nome, barrinha E fundo do balão) —
+                dá para reconhecer quem mandou só de bater o olho */}
+            <div className="msg-corpo" style={{ borderLeft: `4px solid ${corDoNome(m.autorNome)}`, background: corDoNome(m.autorNome) + '16' }}>
               <div className="msg-topo">
                 <strong style={{ color: m.autorUid === usuario.uid ? '#1E6B41' : corDoNome(m.autorNome) }}>{m.autorUid === usuario.uid ? 'Você' : m.autorNome}</strong>
                 <span className="quando">{quandoBonito(m.criadoEm)}</span>
@@ -91,6 +104,7 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
                   <img src={m.foto} alt="foto enviada" />
                 </button>
               )}
+              {m.figurinha && <Figurinha id={m.figurinha} tamanho={100} />}
               {m.texto && <p>{m.texto}</p>}
               {m.pacienteNome && (
                 <button className="chip-paciente" onClick={() => m.pacienteId && aoAbrirPaciente?.(m.pacienteId)}>
@@ -143,9 +157,19 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
           </div>
         )}
         {verEmojis && (
-          <div className="chat-emojis">
-            {EMOJIS.map(e => <button key={e} onClick={() => setTexto(t => t + e)}>{e}</button>)}
-          </div>
+          <>
+            <p className="dica" style={{ margin: '2px 2px 0' }}>Figurinhas (toque para enviar):</p>
+            <div className="chat-figurinhas">
+              {FIGURINHAS.map(f => (
+                <button key={f.id} onClick={() => enviarFigurinha(f.id)} title={f.nome} aria-label={f.nome}>
+                  <Figurinha id={f.id} tamanho={46} />
+                </button>
+              ))}
+            </div>
+            <div className="chat-emojis">
+              {EMOJIS.map(e => <button key={e} onClick={() => setTexto(t => t + e)}>{e}</button>)}
+            </div>
+          </>
         )}
         {erro && <div className="erro">{erro}</div>}
         <div className="chat-envio">

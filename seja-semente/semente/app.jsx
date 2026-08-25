@@ -1140,7 +1140,7 @@ function TelaPrincipal({ usuario, aoSair }) {
         </div>
       </header>
 
-      <main>
+      <main className={aba === 'chat' ? 'com-chat' : undefined}>
         {aba === 'cadastro' && (
           <>
             <h2>Cadastro</h2>
