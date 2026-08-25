@@ -100,11 +100,11 @@ const DEMO = {
     { id: 's3', pacienteId: 'p3', pacienteNome: 'Ana Paula', area: 'Profilaxia', descricao: 'Limpeza completa e orientação de escovação.', dentes: [], autorNome: 'Maria Souza', criadoEm: new Date(Date.now() - 2 * 864e5), antes: fotoFalsa('ANTES', '#8B6B5C'), depois: fotoFalsa('DEPOIS', '#3F8C5F') },
   ],
   notas: [
-    { id: 'n1', acaoTitulo: 'Mutirão da Comunidade', valor: 148.9, descricao: 'Materiais descartáveis', chave: '35260812345678000199650010000012341000012349', origem: 'qr', criadaEm: new Date() },
-    { id: 'n2', acaoTitulo: 'Mutirão da Comunidade', valor: 320, descricao: 'Anestésicos e agulhas', origem: 'foto', criadaEm: new Date() },
+    { id: 'n1', acaoId: 'ac1', acaoTitulo: 'Mutirão da Comunidade', valor: 148.9, descricao: 'Materiais descartáveis', chave: '35260812345678000199650010000012341000012349', origem: 'qr', criadaEm: new Date() },
+    { id: 'n2', acaoId: 'ac1', acaoTitulo: 'Mutirão da Comunidade', valor: 320, descricao: 'Anestésicos e agulhas', origem: 'foto', criadaEm: new Date() },
   ],
   movimentos: [
-    { id: 'm1', itemNome: 'Anestésico lidocaína', delta: -4, valorUnit: 4.5, acaoTitulo: 'Mutirão da Comunidade', em: new Date() },
+    { id: 'm1', itemNome: 'Anestésico lidocaína', delta: -4, valorUnit: 4.5, acaoId: 'ac1', acaoTitulo: 'Mutirão da Comunidade', em: new Date() },
   ],
   config: { valores: { Cirurgia: 1000, 'Prótese': 900, Profilaxia: 500 }, porDente: { Cirurgia: true } },
 };
