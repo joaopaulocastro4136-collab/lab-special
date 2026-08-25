@@ -9,7 +9,7 @@ const JWT = sem + '.' + crypto.sign('sha256', Buffer.from(sem), { key: P8, dsaEn
 const api = async (c) => (await fetch('https://api.appstoreconnect.apple.com' + c, { headers: { Authorization: 'Bearer ' + JWT } })).json();
 for (const [nome, id] of [['Palmar', '6805159974'], ['Colheita', '6805244353']]) {
   console.log(`\n══ ${nome} ══`);
-  const r = await api(`/v1/apps/${id}/builds?limit=3&include=preReleaseVersion`);
+  const r = await api(`/v1/builds?filter[app]=${id}&sort=-uploadedDate&limit=3&include=preReleaseVersion`);
   const versoes = Object.fromEntries((r.included || []).map(i => [i.id, i.attributes.version]));
   for (const b of r.data || []) {
     const pv = versoes[b.relationships?.preReleaseVersion?.data?.id] || '?';
