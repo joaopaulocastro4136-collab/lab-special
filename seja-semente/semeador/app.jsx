@@ -11,7 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare } from 'lucide-react';
-import { FichaPaciente } from '../ficha.jsx';
+import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
@@ -284,7 +284,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
 // ─── Primeira entrada: o voluntário preenche o cadastro, que vira uma
 //     solicitação para a central Seja Semente aprovar ───
-function TelaCadastro({ usuario, aoEnviar }) {
+function TelaCadastro({ usuario, aoEnviar, aoSair }) {
   const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '' });
   const [av, setAv] = useState({ foto: '', fotoMini: '', avatar: '' });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
@@ -292,6 +292,7 @@ function TelaCadastro({ usuario, aoEnviar }) {
   const pronto = f.nome.trim() && f.telefone.trim() && cpfOk && f.nascimento;
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoSair}><ChevronLeft size={18} /> Sair / trocar de conta</button>
       <h2>Cadastro de voluntário</h2>
       <p className="dica">Bem-vindo! Preencha seus dados — eles vão para a central Seja Semente, que aprova a sua entrada como voluntário.</p>
       <div className="campo"><span>Sua foto (ou um dentinho da biblioteca)</span>
@@ -365,11 +366,18 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
     saude: inicial?.saude || [],
     outrasCondicoes: inicial?.outrasCondicoes || '',
     dentes: inicial?.dentes || [],
+    gengiva: inicial?.gengiva || [],
+    semMarcacao: !!inicial?.semMarcacao,
   });
   // Odontograma: toca no dente para marcar/desmarcar os dentes do tratamento
   const alternaDente = n => setF(atual => ({
     ...atual,
     dentes: atual.dentes.includes(n) ? atual.dentes.filter(x => x !== n) : [...atual.dentes, n].sort((a, b) => a - b),
+  }));
+  const [modoDente, setModoDente] = useState('dentes'); // o seletor Dentes | Gengiva
+  const alternaGengiva = n => setF(atual => ({
+    ...atual,
+    gengiva: atual.gengiva.includes(n) ? atual.gengiva.filter(x => x !== n) : [...atual.gengiva, n].sort((a, b) => a - b),
   }));
   const [novoTipo, setNovoTipo] = useState('');
   const alternaArea = a => setF({ ...f, areas: f.areas.includes(a) ? f.areas.filter(x => x !== a) : [...f.areas, a] });
@@ -382,6 +390,21 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
     setNovoTipo('');
   }
   const [novaCondicao, setNovaCondicao] = useState('');
+  // Fotos opcionais da triagem (ex.: dentro da boca) — vão para a ficha
+  const [fotos, setFotos] = useState([]);
+  const [erroFoto, setErroFoto] = useState('');
+  async function pegarFoto(e) {
+    setErroFoto('');
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let dataUrl = await comprimirImagem(file);
+      if (dataUrl.length > 900000) dataUrl = await comprimirImagem(file, 0.5, 800);
+      if (dataUrl.length > 900000) { setErroFoto('A foto ficou grande demais — tente outra.'); return; }
+      setFotos(fs => [...fs, { dataUrl, legenda: 'Foto da triagem' }]);
+    } catch (e2) { setErroFoto('Não consegui ler essa imagem.'); }
+  }
   async function adicionarCondicao() {
     const nome = novaCondicao.trim();
     if (!nome) return;
@@ -391,6 +414,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   }
   return (
     <div className="folha">
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>Triagem — {paciente.nome}</h2>
       <div className="campo"><span>Procedimentos que vai fazer (marque todos os que precisar)</span>
         <div className="caixas">
@@ -419,17 +443,46 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
           <button className="btn-mais" onClick={adicionarCondicao} disabled={!novaCondicao.trim()}>+ Add</button>
         </div>
       </div>
-      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
-        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
-      </div>
-      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
-        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
+      <div className="campo"><span>Marcação do tratamento (obrigatória){f.dentes.length ? ` · ${f.dentes.length} dente${f.dentes.length === 1 ? '' : 's'}` : ''}{f.gengiva.length ? ` · gengiva em ${f.gengiva.length}` : ''}</span>
+        <div className="seletor" style={{ margin: '2px 0 0' }}>
+          <button type="button" className={modoDente === 'dentes' ? 'ativo' : ''} onClick={() => setModoDente('dentes')}>🦷 Dentes{f.dentes.length ? ` (${f.dentes.length})` : ''}</button>
+          <button type="button" className={modoDente === 'gengiva' ? 'ativo' : ''} onClick={() => setModoDente('gengiva')}>🌸 Gengiva{f.gengiva.length ? ` (${f.gengiva.length})` : ''}</button>
+        </div>
+        <p className="dica" style={{ margin: 0 }}>{modoDente === 'dentes'
+          ? 'Toque nos DENTES do tratamento (ficam verdes).'
+          : 'Toque no dente para marcar a GENGIVA daquela região (capinha rosa).'}</p>
+        <Arcada marcados={f.dentes} gengiva={f.gengiva} aoAlternar={n => (modoDente === 'dentes' ? alternaDente(n) : alternaGengiva(n))} />
+        <label className={f.semMarcacao ? 'caixa marcada' : 'caixa'} style={{ alignSelf: 'flex-start' }}>
+          <input type="checkbox" checked={f.semMarcacao} onChange={() => setF(atual => ({ ...atual, semMarcacao: !atual.semMarcacao }))} />
+          Sem marcação neste caso (não se aplica)
+        </label>
+        {!f.semMarcacao && f.dentes.length === 0 && f.gengiva.length === 0 && (
+          <p className="erro" style={{ margin: 0 }}>Marque os dentes ou a gengiva do tratamento — ou toque em “Sem marcação”.</p>
+        )}
       </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
+      <div className="campo"><span>Fotos da triagem (opcional) — ex.: dentro da boca</span>
+        <label className="btn-foto" style={{ cursor: 'pointer' }}>
+          📷 Tirar ou anexar foto
+          <input type="file" accept="image/*" onChange={pegarFoto} style={{ display: 'none' }} />
+        </label>
+        {fotos.length > 0 && (
+          <div className="grade-fotos">
+            {fotos.map((ft, i) => (
+              <span key={i} className="foto-mini" style={{ position: 'relative', display: 'block' }}>
+                <img src={ft.dataUrl} alt={`foto ${i + 1}`} />
+                <button type="button" className="btn-remover" style={{ position: 'absolute', top: 4, right: 4 }} onClick={() => setFotos(fs => fs.filter((_, j) => j !== i))}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {fotos.length > 0 && <p className="dica" style={{ margin: 0 }}>{fotos.length} foto{fotos.length === 1 ? '' : 's'} — vão para a ficha do paciente ao concluir a triagem.</p>}
+        {erroFoto && <div className="erro">{erroFoto}</div>}
+      </div>
       <p className="dica">A triagem aparece na central Seja Semente na hora — de lá o paciente já pode ser agendado.</p>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={f.areas.length === 0} onClick={() => aoSalvar(f)}>Concluir triagem</button>
+        <button className="btn-principal" disabled={f.areas.length === 0 || (!f.semMarcacao && f.dentes.length === 0 && f.gengiva.length === 0)} onClick={() => aoSalvar(f, fotos)}>Concluir triagem</button>
       </div>
     </div>
   );
@@ -556,16 +609,20 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
     const { doc, setDoc } = fb.fns;
     setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
   }
-  async function salvarTriagem(paciente, triagem) {
+  async function salvarTriagem(paciente, triagem, fotos = []) {
     // Fica registrado quem fez a triagem (e quando), vinculado à conta
     triagem = { ...triagem, feitaPorUid: usuario.uid, feitaPorNome: usuario.nome || '', feitaEm: new Date() };
+    // As fotos tiradas na triagem entram direto na ficha do paciente
+    const registroDe = ft => ({ dataUrl: ft.dataUrl, legenda: ft.legenda || 'Foto da triagem', autorUid: usuario.uid, autorNome: usuario.nome || '' });
     if (!CONFIGURADO) {
       setTodosPacientes(ps => ps.map(p => p.id === paciente.id ? { ...p, triagem, status: 'triado' } : p));
+      if (fotos.length) setDemoArquivos(a => ({ ...a, [paciente.id]: [...fotos.map(ft => ({ id: 'f' + Math.floor(Math.random() * 1e9), ...registroDe(ft), criadoEm: new Date() })), ...(a[paciente.id] || [])] }));
       setTelaTriagem(null);
       return;
     }
-    const { doc, updateDoc } = fb.fns;
+    const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
     updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
+    for (const ft of fotos) addDoc(collection(fb.db, 'pacientes', paciente.id, 'arquivos'), { ...registroDe(ft), criadoEm: serverTimestamp() }).catch(() => {});
     setTelaTriagem(null);
   }
   const semTriagem = todosPacientes.filter(p => !p.triagem);
@@ -652,7 +709,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
 
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
 
-  if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTelaTriagem(null)} aoSalvar={t => salvarTriagem(telaTriagem.triagem, t)} />;
+  if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTelaTriagem(null)} aoSalvar={(t, fts) => salvarTriagem(telaTriagem.triagem, t, fts)} />;
 
   if (telaTriagem === 'entrada') return (
     <div className="folha">
@@ -952,7 +1009,7 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!conta) conteudo = <TelaLogin aoEntrarDemo={setConta} />;
-  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} />;
+  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} />;
   else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
   else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
   else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro }} aoSair={sair} aoSalvarPerfil={salvarPerfil} />;
