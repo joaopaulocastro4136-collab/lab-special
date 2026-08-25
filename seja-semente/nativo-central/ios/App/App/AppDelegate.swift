@@ -18,7 +18,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func ligarChamadaNativa() {
         let cfg = CXProviderConfiguration()
-        cfg.supportsVideo = false
+        cfg.supportsVideo = true
         cfg.maximumCallGroups = 1
         cfg.maximumCallsPerCallGroup = 1
         cfg.supportedHandleTypes = [.generic]
@@ -124,7 +124,7 @@ extension AppDelegate: PKPushRegistryDelegate {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: quem)
         update.localizedCallerName = quem
-        update.hasVideo = false
+        update.hasVideo = true
         provedorChamada?.reportNewIncomingCall(with: uuid, update: update) { _ in completion() }
         // Ninguém atendeu em 50s: para de tocar sozinho (a chamada já passou)
         DispatchQueue.main.asyncAfter(deadline: .now() + 50) { [weak self] in
@@ -141,11 +141,10 @@ extension AppDelegate: CXProviderDelegate {
     func providerDidReset(_ provider: CXProvider) { chamadasAbertas.removeAll() }
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        let id = chamadasAbertas[action.callUUID] ?? ""
+        // Atender ABRE o aplicativo (a chamada é "de vídeo" para o iOS) —
+        // lá dentro a tela verde mostra quem chama e o botão "Estou indo".
         chamadasAbertas[action.callUUID] = nil
-        if !id.isEmpty { rodarJS("window.__atenderChamada && window.__atenderChamada('" + id + "')") }
         action.fulfill()
-        // Não é ligação de áudio de verdade: fecha a tela logo após atender
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.provedorChamada?.reportCall(with: action.callUUID, endedAt: nil, reason: .remoteEnded)
         }
