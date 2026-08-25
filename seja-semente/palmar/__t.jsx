@@ -1483,4 +1483,4 @@ function App() {
 }
 
 
-export { App, TelaPrincipal, TelaAcao, TelaVoluntario, TelaItem, FormNota, FormItem, FormAcao, FormInvestidor, TelaLogin, TelaCodigo, DEMO, LeitorQR };
+export { App };

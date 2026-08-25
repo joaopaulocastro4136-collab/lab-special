@@ -48,43 +48,17 @@ console.log(`  interno: ${det.dados?.data?.attributes?.internalBuildState} · ex
 const sub = await api('GET', `/v1/builds/${build.id}/betaAppReviewSubmission?fields[betaAppReviewSubmissions]=betaReviewState`);
 console.log(`  análise beta: ${sub.dados?.data?.attributes?.betaReviewState || '(nenhuma)'}`);
 
-// ─── 2. Caminho rápido: grupo INTERNO ───
-console.log('\n══ 2. Grupo interno (sem esperar a Apple) ══');
+// ─── 2. Quem já pode instalar (grupo interno) ───
+console.log('\n══ 2. Testadores internos ══');
 const grupos = await api('GET', `/v1/betaGroups?filter[app]=${app.id}&limit=20`);
 for (const g of grupos.dados?.data || []) {
-  console.log(`  grupo existente: "${g.attributes.name}" · interno: ${g.attributes.isInternalGroup} · link: ${g.attributes.publicLink || '—'}`);
+  const dentro = await api('GET', `/v1/betaGroups/${g.id}/betaTesters?limit=20&fields[betaTesters]=email,firstName,lastName,state`);
+  console.log(`  "${g.attributes.name}" · interno: ${g.attributes.isInternalGroup} · testadores: ${(dentro.dados?.data || []).length}`);
+  for (const t of dentro.dados?.data || []) console.log(`      ${t.attributes.email} · ${t.attributes.state}`);
 }
-let interno = (grupos.dados?.data || []).find(g => g.attributes.isInternalGroup);
-if (!interno) {
-  const cria = await api('POST', '/v1/betaGroups', {
-    data: {
-      type: 'betaGroups',
-      attributes: { name: GRUPO_INTERNO, isInternalGroup: true },
-      relationships: { app: { data: { type: 'apps', id: app.id } } },
-    },
-  });
-  if (cria.status >= 200 && cria.status < 300) { interno = cria.dados.data; console.log(`  ✓ grupo interno criado (${interno.id})`); }
-  else console.log(`  ✗ criar grupo interno: ${cria.status} ${erroDe(cria)}`);
-}
-if (interno) {
-  const poe = await api('POST', `/v1/betaGroups/${interno.id}/relationships/builds`, {
-    data: [{ type: 'builds', id: build.id }],
-  });
-  console.log(`  build no grupo interno: ${poe.status < 300 ? '✓ OK' : poe.status + ' ' + erroDe(poe)}`);
+// Todos os testadores do app, com o estado da instalação
+const todos = await api('GET', `/v1/betaTesters?filter[apps]=${app.id}&limit=20&fields[betaTesters]=email,state`);
+console.log(`  testadores do app: ${(todos.dados?.data || []).length}`);
+for (const t of todos.dados?.data || []) console.log(`      ${t.attributes.email} · ${t.attributes.state}`);
 
-  // Usuários da conta como testadores internos
-  const users = await api('GET', '/v1/users?limit=20&fields[users]=username,firstName,lastName,roles');
-  for (const u of users.dados?.data || []) {
-    const email = u.attributes.username;
-    console.log(`  usuário da conta: ${email} (${(u.attributes.roles || []).join(', ')})`);
-    const cria = await api('POST', '/v1/betaTesters', {
-      data: {
-        type: 'betaTesters',
-        attributes: { email, firstName: u.attributes.firstName || 'Gestor', lastName: u.attributes.lastName || 'Palmar' },
-        relationships: { betaGroups: { data: [{ type: 'betaGroups', id: interno.id }] } },
-      },
-    });
-    console.log(`    convite: ${cria.status < 300 ? '✓ enviado' : cria.status + ' ' + erroDe(cria)}`);
-  }
-}
 console.log('\n✓ Fim');

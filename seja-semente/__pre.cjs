@@ -1,12 +1,5 @@
 const { JSDOM } = require('jsdom');
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'https://x.test/', pretendToBeVisual: true });
-global.window = dom.window;
-global.document = dom.window.document;
-global.HTMLElement = dom.window.HTMLElement;
-global.Element = dom.window.Element;
-global.Node = dom.window.Node;
-global.MouseEvent = dom.window.MouseEvent;
-global.Event = dom.window.Event;
-global.localStorage = dom.window.localStorage;
+for (const k of ['window','document','HTMLElement','Element','Node','MouseEvent','Event','localStorage']) global[k] = k==='window'?dom.window:dom.window[k];
 global.requestAnimationFrame = cb => setTimeout(cb, 0);
 global.cancelAnimationFrame = clearTimeout;
