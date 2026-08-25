@@ -17,6 +17,9 @@ function foiCancelado(e) {
 // Na primeira abertura o plugin às vezes falha à toa (erro com números);
 // por isso tenta de novo sozinho, até 3 vezes, antes de desistir.
 window.__loginGoogleNativo = async () => {
+  // Desloga da conta Google anterior ANTES de entrar: assim a tela de
+  // contas sempre pergunta qual usar (senão repete a última)
+  try { await FirebaseAuthentication.signOut(); } catch (e) { /* sem sessão */ }
   let ultimo = null;
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
@@ -31,4 +34,9 @@ window.__loginGoogleNativo = async () => {
     }
   }
   throw ultimo || new Error('sem resposta do Google');
+};
+
+// O app chama ao SAIR: encerra também a sessão Google nativa do aparelho
+window.__sairNativoGoogle = async () => {
+  try { await FirebaseAuthentication.signOut(); } catch (e) { /* sem sessão */ }
 };
