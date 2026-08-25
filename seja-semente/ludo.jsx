@@ -276,35 +276,36 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, aoEncerr
   const minhaVez = estado.status === 'jogando' && daVez?.uid === meuUid;
   const jogaveis = minhaVez ? jogadasDe(estado, meuUid) : [];
 
-  // O dado "rola" na tela de todo mundo antes de mostrar o número que saiu
+  // O dado "rola" rapidinho na tela de todo mundo antes de mostrar o número.
+  // A chave é um TEXTO (não o objeto): o Firestore entrega o mesmo lance mais
+  // de uma vez (gravação local + confirmação do servidor) e comparar objeto
+  // reiniciava/matava a animação no meio, travando o "Rolando o dado…"
   const [faceRolando, setFaceRolando] = useState(0);
-  const tinhaDado = useRef(false);
+  const chaveDado = estado.dado ? `${estado.dado.uid || ''}:${estado.dado.valor}:${estado.dado.n || 0}` : '';
   useEffect(() => {
-    const tem = !!estado.dado;
-    if (tem && !tinhaDado.current) {
-      tinhaDado.current = true;
-      let voltas = 0;
-      const gira = setInterval(() => {
-        setFaceRolando(1 + Math.floor(Math.random() * 6));
-        if (++voltas >= 9) { clearInterval(gira); setFaceRolando(0); }
-      }, 95);
-      return () => clearInterval(gira);
-    }
-    tinhaDado.current = tem;
-  }, [estado.dado]);
+    if (!chaveDado) { setFaceRolando(0); return; }
+    let voltas = 0;
+    setFaceRolando(1 + Math.floor(Math.random() * 6));
+    const gira = setInterval(() => {
+      if (++voltas >= 4) { setFaceRolando(0); clearInterval(gira); return; }
+      setFaceRolando(1 + Math.floor(Math.random() * 6));
+    }, 90);
+    return () => clearInterval(gira);
+  }, [chaveDado]);
   const rolando = faceRolando > 0 && !!estado.dado;
   const semJogada = minhaVez && estado.dado && !rolando && !jogaveis.length;
 
   // Rolou e não tem jogada? A vez passa sozinha depois de mostrar o dado
   useEffect(() => {
     if (!semJogada) return;
-    const t = setTimeout(() => aoAtualizar({ ...estado, dado: null, vez: (estado.vez + 1) % n }), 1600);
+    const t = setTimeout(() => aoAtualizar({ ...estado, dado: null, vez: (estado.vez + 1) % n }), 1100);
     return () => clearTimeout(t);
   }, [estado]); // eslint-disable-line
 
   function rolar() {
     if (!minhaVez || estado.dado) return;
-    aoAtualizar({ ...estado, dado: { valor: 1 + Math.floor(Math.random() * 6), uid: meuUid } });
+    // `n` diferencia lances seguidos com o mesmo número (6 atrás de 6)
+    aoAtualizar({ ...estado, dado: { valor: 1 + Math.floor(Math.random() * 6), uid: meuUid, n: Date.now() } });
   }
   function tocarPeca(i) {
     if (!minhaVez || !estado.dado || rolando) return;
