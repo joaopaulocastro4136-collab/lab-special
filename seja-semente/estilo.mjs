@@ -414,6 +414,29 @@ export const CSS = `
   @keyframes nome-sobe { 0% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: translateY(0); } }
 
   .bolha-btn { border: none; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
+
+  /* ── Chamada de paciente: tela cheia estilo ligação, pulsando ── */
+  .chamada-tela { position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 30px; text-align: center; color: #fff;
+    background: radial-gradient(120% 120% at 50% 0%, #2F7D4E 0%, #1B5335 55%, #0E2E1C 100%); animation: chamada-pisca 1.6s ease-in-out infinite; }
+  @keyframes chamada-pisca { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.3); } }
+  .chamada-rotulo { margin: 0 0 10px; font-size: 14px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; opacity: 0.9; }
+  .chamada-tela h1 { margin: 8px 0 0; font-family: 'Fraunces', Georgia, serif; font-size: 38px; font-weight: 600; letter-spacing: -0.5px; }
+  .chamada-cod { margin: 0; font-size: 15px; font-weight: 800; opacity: 0.85; }
+  .chamada-quem { margin: 2px 0 20px; font-size: 14px; opacity: 0.8; }
+  .chamada-pulso { position: relative; width: 160px; height: 160px; display: flex; align-items: center; justify-content: center; }
+  .chamada-pulso .bolha { width: 108px !important; height: 108px !important; border-radius: 34px; font-size: 40px; box-shadow: 0 12px 34px rgba(0,0,0,0.35); }
+  .chamada-pulso i { position: absolute; inset: 0; border: 3px solid rgba(255,255,255,0.55); border-radius: 50px; animation: pulso-anel 1.8s ease-out infinite; }
+  .chamada-pulso i:nth-child(2) { animation-delay: 0.6s; }
+  .chamada-pulso i:nth-child(3) { animation-delay: 1.2s; }
+  @keyframes pulso-anel { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
+  .chamada-atender { padding: 17px 32px; border: none; border-radius: 999px; background: #fff; color: #1E6B41; font-size: 17px; font-weight: 800; cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,0.3); }
+  .chamadas-ativas { display: flex; flex-direction: column; gap: 10px; border: 1.5px solid #EFC4B8; background: #FCEEE9; }
+  .chamadas-ativas > strong { font-size: 15px; color: #B3402A; }
+  .chamada-linha { display: flex; align-items: center; gap: 10px; }
+  .chamada-nome { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chamada-nome b { font-size: 15px; }
+  .chamada-nome i { font-style: normal; font-size: 12px; color: #7B897F; }
+  .btn-chamar { border: none; background: #FCEEE9; color: #C23A1E; border-radius: 10px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
 `;
 
 export function paginaHTML({ titulo, descricao }) {
