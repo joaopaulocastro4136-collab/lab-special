@@ -21,7 +21,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
-import { TelaChamada, TelaChamarStaff } from '../chamada.jsx';
+import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
@@ -727,6 +727,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   // Todas as contas da central — junto com os voluntários, é quem pode ser
   // chamado pelo sino "Chamar staff"
   const [centralUsuarios, setCentralUsuarios] = useState([]);
+  // Chamadas de GRUPO (convocações): "Almoço na cantina" etc.
+  const [convocacoes, setConvocacoes] = useState(CONFIGURADO ? [] : lerLocal('ss-convocacoes', []));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-convocacoes', convocacoes); }, [convocacoes]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-perfil', meuPerfil); }, [meuPerfil]);
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -805,6 +808,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       escuta('atendimentos', ['inicio', 'desc'], setAtendimentos),
       escuta('chat', ['criadoEm'], setMensagens),
       escuta('central-usuarios', ['nome'], setCentralUsuarios),
+      escuta('convocacoes', ['criadaEm', 'desc'], setConvocacoes),
     ];
     return () => soltar.forEach(s => s());
   }, []);
@@ -1138,7 +1142,45 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })}
     procedimentosFeitos={fichaProcedimentos} />;
   if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
+  // ─── Chamadas de grupo (convocações) ───
+  async function criarConvocacao(titulo) {
+    const nova = { titulo, criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '', chamados: {} };
+    if (!CONFIGURADO) {
+      const id = 'cv' + Math.floor(Math.random() * 1e9);
+      setConvocacoes(cs => [{ id, ...nova, criadaEm: new Date() }, ...cs]);
+      setTela({ convocacao: id });
+      return;
+    }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
+    if (ref) setTela({ convocacao: ref.id });
+  }
+  function chamarConvocados(conv, selecionadas) {
+    if (!selecionadas.length) return;
+    for (const p of selecionadas) aoChamarStaff(p, conv.titulo, conv.id);
+    const marca = {};
+    const agora = new Date();
+    for (const p of selecionadas) marca[p.uid] = { nome: p.nome || '', em: agora };
+    if (!CONFIGURADO) {
+      setConvocacoes(cs => cs.map(c => c.id === conv.id ? { ...c, chamados: { ...c.chamados, ...marca } } : c));
+      return;
+    }
+    const { doc, setDoc } = fb.fns;
+    setDoc(doc(fb.db, 'convocacoes', conv.id), { chamados: marca }, { merge: true }).catch(() => {});
+  }
+  function excluirConvocacao(c) {
+    setTela('convocacoes');
+    if (!CONFIGURADO) { setConvocacoes(cs => cs.filter(x => x.id !== c.id)); return; }
+    const { doc, deleteDoc } = fb.fns;
+    deleteDoc(doc(fb.db, 'convocacoes', c.id)).catch(() => {});
+  }
+
   if (tela === 'chamarStaff') return <TelaChamarStaff pessoas={pessoasChamaveis} aoChamar={aoChamarStaff} aoVoltar={() => setTela(null)} />;
+  if (tela?.convocacao) {
+    const c = convocacoes.find(x => x.id === tela.convocacao);
+    if (c) return <TelaConvocacao convocacao={c} pessoas={pessoasChamaveis} aoChamar={(sel) => chamarConvocados(c, sel)} aoExcluir={() => excluirConvocacao(c)} aoVoltar={() => setTela('convocacoes')} />;
+  }
+  if (tela === 'convocacoes' || tela?.convocacao) return <TelaConvocacoes convocacoes={convocacoes} aoCriar={criarConvocacao} aoAbrir={(c) => setTela({ convocacao: c.id })} aoExcluir={excluirConvocacao} aoVoltar={() => setTela(null)} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
@@ -1529,7 +1571,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
                 </>
               )}
               <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 6 }} onClick={() => setTela('chamarStaff')}>🔔 Chamar alguém da equipe</button>
-              <p className="dica" style={{ margin: '0 0 12px' }}>Escolha a pessoa e o celular dela toca na hora, como uma ligação.</p>
+              <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 6 }} onClick={() => setTela('convocacoes')}>📣 Chamada de grupo (ex.: almoço)</button>
+              <p className="dica" style={{ margin: '0 0 12px' }}>O sino chama uma pessoa; a chamada de grupo cria um título (ex.: "Almoço na cantina"), você marca as pessoas e o celular de cada uma toca como ligação — com a lista de quem já foi chamado.</p>
               <div className="titulo-com-botao"><h2>Voluntários</h2><button className="btn-mais" onClick={() => setTela('novoVoluntario')}>+ Adicionar</button></div>
               {(() => {
                 const semProc = equipe.filter(v => !(v.procedimentos || []).length).length;
@@ -1867,12 +1910,14 @@ function App() {
   });
 
   // Chamar alguém da equipe: mesma tela de ligação, mas só nos aparelhos da
-  // pessoa escolhida (paraUid)
-  function chamarStaff(pessoa) {
+  // pessoa escolhida (paraUid). Com "motivo" (chamada de grupo), o título
+  // aparece grande na tela de quem recebe: "Almoço na cantina"
+  function chamarStaff(pessoa, motivo = '', convocacaoId = '') {
     const dados = {
       tipo: 'staff', paraUid: pessoa.uid, paraNome: pessoa.nome || '', paraFoto: pessoa.foto || '',
       chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '',
       chamadoPorFoto: usuario?.foto || '', chamadoPorAparelho: idAparelho(), ativa: true,
+      ...(motivo ? { motivo, convocacaoId } : {}),
     };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
     const { collection, addDoc, serverTimestamp } = fb.fns;
