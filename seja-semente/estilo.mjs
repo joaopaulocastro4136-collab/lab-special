@@ -142,6 +142,8 @@ export const CSS = `
   .opcao-dente { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 7px; border: 1.5px solid #DBE3D8; border-radius: 15px; background: #fff; cursor: pointer; font-size: 10.5px; font-weight: 800; color: #55645A; }
   .opcao-dente.marcada { border-color: #2F7D4E; background: #E9F5EE; box-shadow: 0 0 0 3px rgba(47,125,78,0.14); }
 
+  .btn-acao.chamar { background: linear-gradient(135deg, #37935B, #226343); color: #fff; border: none; box-shadow: 0 4px 10px rgba(47,125,78,0.3); }
+
   /* ── Autoria: quem fez o quê ── */
   .autoria { margin-top: 8px !important; background: #F2F5EF; border-radius: 10px; padding: 7px 10px; line-height: 1.6; }
   .foto-mini { position: relative; }

@@ -126,7 +126,7 @@ async function gerarFolhaA4(paciente, arquivos) {
   return c.toDataURL('image/png');
 }
 
-export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem }) {
+export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem, aoChamar, atendimentoAberto, aoEncerrar }) {
   const [novaFoto, setNovaFoto] = useState(null);
   const [legenda, setLegenda] = useState('');
   const [vendo, setVendo] = useState(null);
@@ -270,6 +270,8 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
       )}
 
       <div className="linha-acoes">
+        {aoChamar && !atendimentoAberto && <button className="btn-acao chamar" onClick={aoChamar}>🔔 Chamar paciente</button>}
+        {atendimentoAberto && aoEncerrar && <button className="btn-acao vermelho" onClick={aoEncerrar}>⏱ Em atendimento — encerrar</button>}
         {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', cpf: paciente.cpf || '', endereco: paciente.endereco || '', observacoes: paciente.observacoes || '', prioridade: !!paciente.prioridade })}><Pencil size={16} /> Editar</button>}
         {podeEditar && aoEditarTriagem && <button className="btn-acao" onClick={aoEditarTriagem}><Pencil size={16} /> Triagem</button>}
         <button className="btn-acao" onClick={compartilharA4}><Printer size={16} /> Ficha A4</button>
