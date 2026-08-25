@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {
+      "source": "carteiro",
+      "codebase": "carteiro",
+      "runtime": "nodejs22"
+    }
+  ]
+}

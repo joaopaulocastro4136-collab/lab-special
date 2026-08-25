@@ -1,0 +1,11 @@
+{
+  "name": "carteiro-seja-semente",
+  "description": "Função que dispara notificação push (APNs) quando nasce uma chamada",
+  "type": "commonjs",
+  "engines": { "node": "22" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}

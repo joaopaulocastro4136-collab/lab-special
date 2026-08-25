@@ -4,6 +4,23 @@
 // abre (com um plano B embutido para quando estiver sem internet), então as
 // novidades publicadas chegam no aplicativo instalado instantaneamente.
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import { PushNotifications } from '@capacitor/push-notifications';
+
+// ─── Notificação de chamada (push): o app chama __registrarPush depois do
+// login; o token do aparelho volta pelo evento 'token-push' e o app grava
+// no banco (aparelhos/{token}) para o carteiro saber quem avisar ───
+window.__registrarPush = async () => {
+  try {
+    let perm = await PushNotifications.checkPermissions();
+    if (perm.receive !== 'granted') perm = await PushNotifications.requestPermissions();
+    if (perm.receive !== 'granted') return;
+    await PushNotifications.addListener('registration', (t) => {
+      window.__tokenPush = t.value;
+      window.dispatchEvent(new CustomEvent('token-push', { detail: t.value }));
+    });
+    await PushNotifications.register();
+  } catch (e) { /* aparelho sem push — segue sem */ }
+};
 
 // Detecta quando foi a própria pessoa que fechou a tela de contas
 function foiCancelado(e) {

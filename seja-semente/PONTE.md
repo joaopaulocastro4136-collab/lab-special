@@ -192,24 +192,59 @@ guardadas como `dataUrl` dentro do documento (limite ~900 KB por foto).
 | `autorNome` | string    | `"Lucas Andrade"`                      |
 | `criadoEm`  | timestamp | data/hora                              |
 
-### `chamadas/{id}` — chamada de paciente (toca em todos os celulares)
+### `chamadas/{id}` — chamada de paciente ou de staff (toca como ligação)
 Quem escreve: **qualquer ponta** (central, Semeador ou o programa Windows).
-Enquanto `ativa` for `true` e a chamada tiver menos de 3 minutos, todos os
-aparelhos logados mostram uma TELA CHEIA estilo ligação (nome e foto do
-paciente pulsando, com toque e vibração) até alguém tocar em atender —
-que grava `ativa: false` e derruba a chamada em todo mundo.
+Enquanto `ativa` for `true` e a chamada tiver menos de 3 minutos, os
+aparelhos alvo mostram uma TELA CHEIA estilo ligação (nome e foto pulsando,
+com toque e vibração) até alguém tocar em atender — que grava
+`ativa: false` e derruba a chamada em todo mundo.
+
+Dois tipos:
+- **Paciente** (sem `tipo`): toca em TODOS os aparelhos logados, menos no
+  aparelho que chamou (`chamadoPorAparelho`). No Semeador, o botão
+  "🔔 Chamar paciente" da ficha só aparece para o voluntário que tem o
+  paciente **agendado com ele** (algum `agendamentos` com o
+  `profissionalUid` dele); na central não há restrição.
+- **Staff** (`tipo: "staff"`): toca SÓ nos aparelhos da conta escolhida
+  (`paraUid`) — a tela mostra quem está chamando e o botão "Estou indo".
+  Pode ser chamado qualquer um com conta: voluntários ativos
+  (`voluntarios`) e usuários da central (`central-usuarios`).
 
 | Campo            | Tipo      | Exemplo                          |
 |------------------|-----------|----------------------------------|
-| `pacienteId`     | string    | id do doc em `pacientes`         |
-| `pacienteNome`   | string    | `"José da Silva"`               |
-| `pacienteCodigo` | string    | `"SS-0001"`                     |
+| `tipo`           | string    | ausente (paciente) ou `"staff"`  |
+| `pacienteId`     | string    | id do doc em `pacientes` (paciente) |
+| `pacienteNome`   | string    | `"José da Silva"` (paciente)    |
+| `pacienteCodigo` | string    | `"SS-0001"` (paciente)          |
 | `pacienteFoto`   | string    | dataUrl/URL da foto (opcional)   |
+| `paraUid`        | string    | uid da pessoa chamada (staff)    |
+| `paraNome`       | string    | `"Maria Souza"` (staff)         |
+| `paraFoto`       | string    | foto mini da pessoa (staff)      |
 | `chamadoPorUid`  | string    | uid de quem chamou               |
 | `chamadoPorNome` | string    | `"João Paulo"`                  |
+| `chamadoPorFoto` | string    | foto mini de quem chamou (staff) |
+| `chamadoPorAparelho` | string | id local do aparelho que chamou |
 | `ativa`          | boolean   | `true` enquanto está tocando     |
 | `atendidaPorUid` / `atendidaPorNome` / `atendidaEm` | — | preenchidos por quem atendeu |
 | `criadoEm`       | timestamp | data/hora da chamada             |
+
+### `aparelhos/{token}` — iPhones registrados para notificação push
+Quem escreve: **os apps** (central e Semeador, na versão nativa). O `{token}`
+é o token APNs do aparelho. O "carteiro" (Cloud Function `carteiroChamadas`,
+pasta `carteiro/`) lê esta coleção quando nasce um doc em `chamadas` e manda
+o push: chamada de paciente → todos os aparelhos; `tipo: "staff"` → só os
+aparelhos com `uid === paraUid`. O aparelho de quem chamou
+(`aparelho === chamadoPorAparelho`) nunca é avisado. Token recusado pela
+Apple (app removido) é apagado da coleção pelo próprio carteiro.
+
+| Campo         | Tipo      | Exemplo                              |
+|---------------|-----------|--------------------------------------|
+| `uid`         | string    | uid do dono logado no app            |
+| `nome`        | string    | `"Maria Souza"`                     |
+| `app`         | string    | `"central"` ou `"semeador"`         |
+| `aparelho`    | string    | o `idAparelho()` local (ss-aparelho) |
+| `voipToken`   | string    | token de LIGAÇÃO (CallKit, app 6.10+) — com ele o carteiro faz o iPhone tocar a tela de chamada de verdade; sem ele, cai na notificação comum repetida |
+| `atualizadoEm`| timestamp | último registro                      |
 
 ### `central-usuarios/{uid}` — quem tem acesso à central
 Quem escreve: **Central**. Cada pessoa autorizada a usar a central (app Seja

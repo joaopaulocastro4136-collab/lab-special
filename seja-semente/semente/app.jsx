@@ -21,7 +21,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
-import { TelaChamada } from '../chamada.jsx';
+import { TelaChamada, TelaChamarStaff } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
@@ -176,7 +176,7 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(true);
     // O Google deve sempre PERGUNTAR qual conta usar — sem isso, depois de
     // sair ele entra de novo direto na última conta
-    const provedor = () => { const p = provedor(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
+    const provedor = () => { const p = new fb.fns.GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); return p; };
     try {
       if (window.__loginGoogleNativo) {
         // Ponte nova (casca viva): ela devolve os tokens do Google e a
@@ -699,7 +699,7 @@ function NovoProcedimento({ aoAdicionar }) {
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEncerrarChamada }) {
+function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
   const [aba, setAba] = useState('cadastro');
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -722,6 +722,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   const [chatVisto, setChatVisto] = useState(lerLocal('ss-chat-visto', 0)); // quantas mensagens já foram vistas
   // Foto/dentinho do MEU perfil (fica em central-usuarios/{uid})
   const [meuPerfil, setMeuPerfil] = useState(CONFIGURADO ? {} : lerLocal('ss-perfil', {}));
+  // Todas as contas da central — junto com os voluntários, é quem pode ser
+  // chamado pelo sino "Chamar staff"
+  const [centralUsuarios, setCentralUsuarios] = useState([]);
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-perfil', meuPerfil); }, [meuPerfil]);
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -799,6 +802,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       escuta('voluntarios', ['nome'], setVoluntarios),
       escuta('atendimentos', ['inicio', 'desc'], setAtendimentos),
       escuta('chat', ['criadoEm'], setMensagens),
+      escuta('central-usuarios', ['nome'], setCentralUsuarios),
     ];
     return () => soltar.forEach(s => s());
   }, []);
@@ -1045,6 +1049,14 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   }
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
+  // Todo mundo com conta no Seja Semente (voluntários + central), menos eu
+  const pessoasChamaveis = (() => {
+    const mapa = new Map();
+    for (const v of profissionais) mapa.set(v.id, { uid: v.id, nome: v.nome || '', avatar: v.avatar || '', foto: v.fotoMini || (String(v.foto || '').startsWith('http') ? v.foto : ''), detalhe: v.ministerio || 'Voluntário' });
+    for (const u of centralUsuarios) if (!mapa.has(u.id)) mapa.set(u.id, { uid: u.id, nome: u.nome || '', avatar: u.avatar || '', foto: u.fotoMini || '', detalhe: 'Central Seja Semente' });
+    mapa.delete(usuario.uid);
+    return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+  })();
 
   // ─── Ficha do paciente (dados + fotos do que foi feito) ───
   const [fichaId, setFichaId] = useState(null);
@@ -1117,6 +1129,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })} />;
   if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
+  if (tela === 'chamarStaff') return <TelaChamarStaff pessoas={pessoasChamaveis} aoChamar={aoChamarStaff} aoVoltar={() => setTela(null)} />;
   if (tela === 'novoVoluntario') return <FormVoluntario aoCancelar={() => setTela(null)} aoSalvar={async f => { await salvar('voluntarios', f, { status: 'ativo', ativo: true, criadoPelaCentral: true, criadoEm: new Date() }, setVoluntarios); setTela(null); setAba('voluntarios'); }} />;
   if (tela === 'novoAviso') return <FormAviso aoCancelar={() => setTela('avisos')} aoSalvar={async f => { await salvar('avisos', f, { autor: usuario.nome, criadoEm: new Date() }, setAvisos); setTela('avisos'); }} />;
 
@@ -1498,6 +1511,8 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
                   ))}
                 </>
               )}
+              <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 6 }} onClick={() => setTela('chamarStaff')}>🔔 Chamar alguém da equipe</button>
+              <p className="dica" style={{ margin: '0 0 12px' }}>Escolha a pessoa e o celular dela toca na hora, como uma ligação.</p>
               <div className="titulo-com-botao"><h2>Voluntários</h2><button className="btn-mais" onClick={() => setTela('novoVoluntario')}>+ Adicionar</button></div>
               {(() => {
                 const semProc = equipe.filter(v => !(v.procedimentos || []).length).length;
@@ -1784,10 +1799,56 @@ function App() {
       ? { ativa: false, atendidaPorUid: usuario?.uid, atendidaPorNome: usuario?.nome || '', atendidaEm: serverTimestamp() }
       : { ativa: false }).catch(() => {});
   }
-  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id) && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true));
+  // Chamada de paciente toca em todo mundo; chamada de staff só na pessoa
+  // escolhida (fora do modo teste, onde ela aparece aqui para experimentar)
+  const chamadaNaTela = chamadas.find(c => c.ativa !== false && c.nova && !chamadasVistas.includes(c.id)
+    && (CONFIGURADO ? c.chamadoPorAparelho !== idAparelho() : true)
+    && (!CONFIGURADO || c.tipo !== 'staff' || c.paraUid === usuario?.uid));
   // Chamar um paciente (aba Pacientes): cria a chamada que toca em todo mundo
   function chamarPaciente(p) {
     const dados = { pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '', chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '', chamadoPorAparelho: idAparelho(), ativa: true };
+    if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
+    const { collection, addDoc, serverTimestamp } = fb.fns;
+    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+  // ─── Push: no aplicativo instalado, registra este iPhone para receber a
+  // chamada mesmo com o app fechado (a casca expõe __registrarPush; o token
+  // vai para aparelhos/{token} e o carteiro na nuvem faz o resto) ───
+  useEffect(() => {
+    if (!CONFIGURADO || !usuario || !window.__registrarPush) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    const grava = (token) => {
+      if (!token) return;
+      setDoc(doc(fb.db, 'aparelhos', token), {
+        uid: usuario.uid, nome: usuario.nome || '', app: 'central',
+        aparelho: idAparelho(), atualizadoEm: serverTimestamp(),
+        // token da LIGAÇÃO (CallKit) — quando a casca já entregou
+        ...(window.__tokenVoip ? { voipToken: window.__tokenVoip } : {}),
+      }, { merge: true }).catch(() => {});
+    };
+    grava(window.__tokenPush);
+    const ouve = (e) => grava(e.detail);
+    const ouveVoip = () => grava(window.__tokenPush);
+    window.addEventListener('token-push', ouve);
+    window.addEventListener('token-voip', ouveVoip);
+    window.__registrarPush();
+    return () => { window.removeEventListener('token-push', ouve); window.removeEventListener('token-voip', ouveVoip); };
+  }, [usuario?.uid]);
+  // A tela de ligação nativa (CallKit) chama isto quando a pessoa ATENDE
+  // com o app fechado — marca a chamada como atendida para todo mundo
+  useEffect(() => {
+    window.__atenderChamada = (id) => encerrarChamada({ id }, true);
+    return () => { delete window.__atenderChamada; };
+  });
+
+  // Chamar alguém da equipe: mesma tela de ligação, mas só nos aparelhos da
+  // pessoa escolhida (paraUid)
+  function chamarStaff(pessoa) {
+    const dados = {
+      tipo: 'staff', paraUid: pessoa.uid, paraNome: pessoa.nome || '', paraFoto: pessoa.foto || '',
+      chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '',
+      chamadoPorFoto: usuario?.foto || '', chamadoPorAparelho: idAparelho(), ativa: true,
+    };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
     const { collection, addDoc, serverTimestamp } = fb.fns;
     addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
@@ -1809,7 +1870,7 @@ function App() {
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
   return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 
