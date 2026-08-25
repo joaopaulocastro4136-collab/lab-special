@@ -287,11 +287,18 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
     saude: inicial?.saude || [],
     outrasCondicoes: inicial?.outrasCondicoes || '',
     dentes: inicial?.dentes || [],
+    gengiva: inicial?.gengiva || [],
+    semMarcacao: !!inicial?.semMarcacao,
   });
   // Odontograma: toca no dente para marcar/desmarcar os dentes do tratamento
   const alternaDente = n => setF(atual => ({
     ...atual,
     dentes: atual.dentes.includes(n) ? atual.dentes.filter(x => x !== n) : [...atual.dentes, n].sort((a, b) => a - b),
+  }));
+  const [modoDente, setModoDente] = useState('dentes'); // o seletor Dentes | Gengiva
+  const alternaGengiva = n => setF(atual => ({
+    ...atual,
+    gengiva: atual.gengiva.includes(n) ? atual.gengiva.filter(x => x !== n) : [...atual.gengiva, n].sort((a, b) => a - b),
   }));
   const [novoTipo, setNovoTipo] = useState('');
   const alternaArea = a => setF({ ...f, areas: f.areas.includes(a) ? f.areas.filter(x => x !== a) : [...f.areas, a] });
@@ -341,17 +348,28 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
           <button className="btn-mais" onClick={adicionarCondicao} disabled={!novaCondicao.trim()}>+ Add</button>
         </div>
       </div>
-      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
-        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
-      </div>
-      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
-        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
+      <div className="campo"><span>Marcação do tratamento (obrigatória){f.dentes.length ? ` · ${f.dentes.length} dente${f.dentes.length === 1 ? '' : 's'}` : ''}{f.gengiva.length ? ` · gengiva em ${f.gengiva.length}` : ''}</span>
+        <div className="seletor" style={{ margin: '2px 0 0' }}>
+          <button type="button" className={modoDente === 'dentes' ? 'ativo' : ''} onClick={() => setModoDente('dentes')}>🦷 Dentes{f.dentes.length ? ` (${f.dentes.length})` : ''}</button>
+          <button type="button" className={modoDente === 'gengiva' ? 'ativo' : ''} onClick={() => setModoDente('gengiva')}>🌸 Gengiva{f.gengiva.length ? ` (${f.gengiva.length})` : ''}</button>
+        </div>
+        <p className="dica" style={{ margin: 0 }}>{modoDente === 'dentes'
+          ? 'Toque nos DENTES do tratamento (ficam verdes).'
+          : 'Toque no dente para marcar a GENGIVA daquela região (capinha rosa).'}</p>
+        <Arcada marcados={f.dentes} gengiva={f.gengiva} aoAlternar={n => (modoDente === 'dentes' ? alternaDente(n) : alternaGengiva(n))} />
+        <label className={f.semMarcacao ? 'caixa marcada' : 'caixa'} style={{ alignSelf: 'flex-start' }}>
+          <input type="checkbox" checked={f.semMarcacao} onChange={() => setF(atual => ({ ...atual, semMarcacao: !atual.semMarcacao }))} />
+          Sem marcação neste caso (não se aplica)
+        </label>
+        {!f.semMarcacao && f.dentes.length === 0 && f.gengiva.length === 0 && (
+          <p className="erro" style={{ margin: 0 }}>Marque os dentes ou a gengiva do tratamento — ou toque em “Sem marcação”.</p>
+        )}
       </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
       <p className="dica">Depois da triagem, o paciente entra nas caixinhas dos procedimentos marcados e já pode ser agendado com um voluntário.</p>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={f.areas.length === 0} onClick={() => aoSalvar(f)}>Concluir triagem</button>
+        <button className="btn-principal" disabled={f.areas.length === 0 || (!f.semMarcacao && f.dentes.length === 0 && f.gengiva.length === 0)} onClick={() => aoSalvar(f)}>Concluir triagem</button>
       </div>
     </div>
   );

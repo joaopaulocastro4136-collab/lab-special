@@ -107,6 +107,7 @@ async function gerarFolhaA4(paciente, arquivos) {
   linha('Situação', paciente.status);
   linha('Procedimentos', areasDaTriagem(t).join(', '));
   linha('Dentes do tratamento', (t?.dentes || []).join(', '));
+  linha('Gengiva marcada', (t?.gengiva || []).join(', '));
   linha('Saúde', t ? [...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ') : '');
   linha('Observações', paciente.observacoes);
   linha('Fotos registradas', arquivos.length ? `${arquivos.length} foto(s) no aplicativo` : '');
@@ -244,11 +245,12 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
         </div>
       </div>
 
-      {t?.dentes?.length > 0 && (
+      {(t?.dentes?.length > 0 || t?.gengiva?.length > 0) && (
         <div className="cartao">
-          <strong style={{ display: 'block', marginBottom: 8 }}>Dentes do tratamento ({t.dentes.length})</strong>
-          <Arcada marcados={t.dentes} compacta />
-          <p className="obs" style={{ marginTop: 8 }}>Dentes: {t.dentes.join(', ')}</p>
+          <strong style={{ display: 'block', marginBottom: 8 }}>Marcação do tratamento</strong>
+          <Arcada marcados={t.dentes || []} gengiva={t.gengiva || []} compacta />
+          {t.dentes?.length > 0 && <p className="obs" style={{ marginTop: 8 }}>Dentes: {t.dentes.join(', ')}</p>}
+          {t.gengiva?.length > 0 && <p className="obs" style={{ marginTop: 4 }}>Gengiva (capinha rosa): {t.gengiva.join(', ')}</p>}
         </div>
       )}
 
