@@ -8,12 +8,12 @@
 //  do tabuleiro leva o selo Seja Semente.
 //
 //  Regras (Ludo clássico, simplificado):
-//   · 6 no dado tira dentinho da base — e dá direito a jogar de novo
+//   · 1 ou 6 no dado tira dentinho da base — e o 6 dá direito a jogar de novo
 //   · cair em casa com dentinho adversário (fora das casas seguras ⚕)
 //     manda ele de volta pra base
 //   · vence quem levar os 4 dentinhos até o centro primeiro
 // ═══════════════════════════════════════════════════════════════════════════
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 
@@ -75,7 +75,7 @@ export function novaSalaLudo(usuario) {
 
 function podeMover(pos, valor) {
   if (pos === CHEGOU) return false;
-  if (pos === -1) return valor === 6;
+  if (pos === -1) return valor === 6 || valor === 1; // 1 ou 6 tiram da base (senão demora demais)
   return pos + valor <= CHEGOU;
 }
 function jogadasDe(estado, uid) {
@@ -142,12 +142,31 @@ function DenteSeguro({ x, y }) {
   );
 }
 
-function DadoFace({ valor, tamanho = 44 }) {
-  const P = { 1: [[24, 24]], 2: [[13, 13], [35, 35]], 3: [[13, 13], [24, 24], [35, 35]], 4: [[13, 13], [35, 13], [13, 35], [35, 35]], 5: [[13, 13], [35, 13], [24, 24], [13, 35], [35, 35]], 6: [[13, 12], [35, 12], [13, 24], [35, 24], [13, 36], [35, 36]] };
+// Dado de verdade: corpo branco com luz e sombra, pontinhos escuros afundados
+function DadoFace({ valor, tamanho = 46 }) {
+  const P = { 1: [[24, 24]], 2: [[14, 14], [34, 34]], 3: [[14, 14], [24, 24], [34, 34]], 4: [[14, 14], [34, 14], [14, 34], [34, 34]], 5: [[14, 14], [34, 14], [24, 24], [14, 34], [34, 34]], 6: [[14, 13], [34, 13], [14, 24], [34, 24], [14, 35], [34, 35]] };
   return (
     <svg viewBox="0 0 48 48" width={tamanho} height={tamanho}>
-      <rect x="2" y="2" width="44" height="44" rx="10" fill="#FFFFFF" stroke="#2F7D4E" strokeWidth="2.5" />
-      {(P[valor] || []).map(([x, y], i) => <circle key={i} cx={x} cy={y} r="4.4" fill="#2F7D4E" />)}
+      <defs>
+        <linearGradient id="dado-corpo" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" />
+          <stop offset="0.55" stopColor="#F4F7F3" />
+          <stop offset="1" stopColor="#DCE5DD" />
+        </linearGradient>
+        <radialGradient id="dado-ponto" cx="0.35" cy="0.3" r="1">
+          <stop offset="0" stopColor="#4A5A50" />
+          <stop offset="1" stopColor="#1C2620" />
+        </radialGradient>
+      </defs>
+      <rect x="2.5" y="4" width="43" height="43" rx="11" fill="#B9C6BB" opacity="0.55" />
+      <rect x="2" y="2" width="44" height="44" rx="11" fill="url(#dado-corpo)" stroke="#C2CFC4" strokeWidth="1.2" />
+      <rect x="4.5" y="4.5" width="39" height="17" rx="9" fill="#FFFFFF" opacity="0.5" />
+      {(P[valor] || []).map(([x, y], i) => (
+        <g key={i}>
+          <circle cx={x} cy={y + 0.8} r="4.6" fill="#FFFFFF" opacity="0.75" />
+          <circle cx={x} cy={y} r="4.3" fill="url(#dado-ponto)" />
+        </g>
+      ))}
     </svg>
   );
 }
@@ -232,13 +251,49 @@ function Tabuleiro({ estado, meuUid, minhaVez, aoTocarPeca }) {
   );
 }
 
+// Chuva de confete + fogos para festejar quem ganhou 🎆
+function Festa() {
+  const papeis = useMemo(() => Array.from({ length: 90 }, (_, i) => ({
+    esq: Math.random() * 100, atraso: Math.random() * 2.8, dur: 2.6 + Math.random() * 2.4,
+    cor: CORES_LUDO[i % 4].cor, tam: 7 + Math.random() * 7, gira: Math.floor(Math.random() * 360),
+  })), []);
+  return (
+    <div className="ludo-festa">
+      {papeis.map((p, i) => (
+        <i key={i} style={{ left: p.esq + '%', animationDelay: p.atraso + 's', animationDuration: p.dur + 's', background: p.cor, width: p.tam, height: p.tam * 0.45, rotate: p.gira + 'deg' }} />
+      ))}
+      <span className="ludo-fogo" style={{ left: '18%', top: '22%' }}>🎆</span>
+      <span className="ludo-fogo" style={{ left: '72%', top: '14%', animationDelay: '0.7s' }}>🎇</span>
+      <span className="ludo-fogo" style={{ left: '46%', top: '32%', animationDelay: '1.3s' }}>🎆</span>
+    </div>
+  );
+}
+
 // ─── A mesa: jogadores, dado e tabuleiro (funciona online e na demonstração) ───
 function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }) {
   const n = estado.jogadores.length;
   const daVez = estado.jogadores[estado.vez % Math.max(n, 1)];
   const minhaVez = estado.status === 'jogando' && daVez?.uid === meuUid;
   const jogaveis = minhaVez ? jogadasDe(estado, meuUid) : [];
-  const semJogada = minhaVez && estado.dado && !jogaveis.length;
+
+  // O dado "rola" na tela de todo mundo antes de mostrar o número que saiu
+  const [faceRolando, setFaceRolando] = useState(0);
+  const tinhaDado = useRef(false);
+  useEffect(() => {
+    const tem = !!estado.dado;
+    if (tem && !tinhaDado.current) {
+      tinhaDado.current = true;
+      let voltas = 0;
+      const gira = setInterval(() => {
+        setFaceRolando(1 + Math.floor(Math.random() * 6));
+        if (++voltas >= 9) { clearInterval(gira); setFaceRolando(0); }
+      }, 95);
+      return () => clearInterval(gira);
+    }
+    tinhaDado.current = tem;
+  }, [estado.dado]);
+  const rolando = faceRolando > 0 && !!estado.dado;
+  const semJogada = minhaVez && estado.dado && !rolando && !jogaveis.length;
 
   // Rolou e não tem jogada? A vez passa sozinha depois de mostrar o dado
   useEffect(() => {
@@ -252,7 +307,7 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }
     aoAtualizar({ ...estado, dado: { valor: 1 + Math.floor(Math.random() * 6), uid: meuUid } });
   }
   function tocarPeca(i) {
-    if (!minhaVez || !estado.dado) return;
+    if (!minhaVez || !estado.dado || rolando) return;
     aoAtualizar(moverPeca(estado, meuUid, i));
   }
 
@@ -278,27 +333,32 @@ function MesaLudo({ estado, meuUid, aoAtualizar, aoSair, aoJogarDeNovo, rotulo }
       </div>
 
       {estado.status === 'encerrado' ? (
-        <div className="ludo-banner">
-          🏆 <strong>{estado.vencedorUid === meuUid ? 'Você venceu!' : `${estado.vencedorNome} venceu!`}</strong>
-          {aoJogarDeNovo && <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 8 }} onClick={aoJogarDeNovo}>Jogar de novo</button>}
-        </div>
+        <>
+          <Festa />
+          <div className="ludo-banner">
+            <span className="ludo-trofeu">🏆</span>
+            <strong>{estado.vencedorUid === meuUid ? 'Você venceu!' : `${estado.vencedorNome} venceu!`}</strong> 🎉
+            {aoJogarDeNovo && <button className="btn-principal" style={{ maxWidth: 'none', marginTop: 8 }} onClick={aoJogarDeNovo}>Jogar de novo</button>}
+          </div>
+        </>
       ) : (
         <div className="ludo-controle">
           {estado.dado
-            ? <button className="ludo-dado" disabled><DadoFace valor={estado.dado.valor} /></button>
-            : <button className={'ludo-dado' + (minhaVez ? ' pulsa' : '')} onClick={rolar} disabled={!minhaVez}>🎲</button>}
+            ? <button className={'ludo-dado' + (rolando ? ' rolando' : '')} disabled><DadoFace valor={rolando ? faceRolando : estado.dado.valor} /></button>
+            : <button className={'ludo-dado' + (minhaVez ? ' pulsa' : '')} onClick={rolar} disabled={!minhaVez}><DadoFace valor={6} /></button>}
           <div className="ludo-fala">
-            {minhaVez
-              ? (semJogada ? 'Nenhuma jogada possível — passando a vez…'
-                : estado.dado ? (jogaveis.length ? `Deu ${estado.dado.valor}! Toque num dentinho brilhando para mover.` : '…')
-                : 'Sua vez! Toque no dado para jogar. 🎲')
-              : `Vez de ${(daVez?.nome || '').split(' ')[0]}…`}
-            {!estado.dado && minhaVez && <span className="obs" style={{ display: 'block' }}>Tirou 6? Sai da base e joga de novo!</span>}
+            {rolando ? 'Rolando o dado… 🎲'
+              : minhaVez
+                ? (semJogada ? 'Nenhuma jogada possível — passando a vez…'
+                  : estado.dado ? (jogaveis.length ? `Deu ${estado.dado.valor}! Toque num dentinho brilhando para mover.` : '…')
+                  : 'Sua vez! Toque no dado para jogar. 🎲')
+                : `Vez de ${(daVez?.nome || '').split(' ')[0]}…`}
+            {!estado.dado && minhaVez && <span className="obs" style={{ display: 'block' }}>1 ou 6 tiram o dentinho da base — e o 6 ainda dá outra jogada!</span>}
           </div>
         </div>
       )}
 
-      <Tabuleiro estado={estado} meuUid={meuUid} minhaVez={minhaVez && !!estado.dado} aoTocarPeca={tocarPeca} />
+      <Tabuleiro estado={estado} meuUid={meuUid} minhaVez={minhaVez && !!estado.dado && !rolando} aoTocarPeca={tocarPeca} />
       <p className="dica" style={{ marginTop: 8 }}>Casas com dentinho cinza são seguras — ali ninguém é capturado. 🛡</p>
     </div>
   );

@@ -459,8 +459,20 @@ export const CSS = `
   .ludo-tabuleiro { width: 100%; height: auto; display: block; border-radius: 20px; box-shadow: 0 10px 30px rgba(30,43,34,0.14); touch-action: manipulation; }
   .ludo-brilho { fill: rgba(255,255,255,0.55); stroke: #1E6B41; stroke-width: 2; animation: ludo-brilho 0.9s ease-in-out infinite; }
   @keyframes ludo-brilho { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.25; } }
-  .ludo-peca-vai { animation: ludo-vez 0.9s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
-  .ludo-banner { text-align: center; font-size: 18px; background: #E9F5EE; border: 1.5px solid #BFDCC9; border-radius: 16px; padding: 14px; margin-bottom: 10px; }
+  /* IMPORTANTE: nada de animar transform aqui — o transform do <g> é a POSIÇÃO
+     da peça no tabuleiro; animação de transform jogaria todas para o canto */
+  .ludo-peca-vai { animation: ludo-pisca 0.8s ease-in-out infinite; }
+  @keyframes ludo-pisca { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+  .ludo-dado.rolando { animation: ludo-treme 0.11s linear infinite; }
+  @keyframes ludo-treme { 0% { transform: translate(-1.5px, 1px) rotate(-4deg); } 50% { transform: translate(1.5px, -1px) rotate(4deg); } 100% { transform: translate(-1.5px, 1px) rotate(-4deg); } }
+  .ludo-banner { position: relative; text-align: center; font-size: 19px; background: #E9F5EE; border: 1.5px solid #BFDCC9; border-radius: 16px; padding: 14px; margin-bottom: 10px; animation: ludo-chega 0.5s ease-out; }
+  .ludo-trofeu { display: block; font-size: 42px; animation: ludo-vez 1.2s ease-in-out infinite; }
+  @keyframes ludo-chega { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .ludo-festa { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 60; }
+  .ludo-festa i { position: absolute; top: -24px; border-radius: 2px; animation: ludo-confete linear infinite; }
+  @keyframes ludo-confete { to { transform: translateY(108vh) rotate(720deg); } }
+  .ludo-fogo { position: absolute; font-size: 46px; opacity: 0; animation: ludo-estouro 2.1s ease-out infinite; }
+  @keyframes ludo-estouro { 0% { opacity: 0; transform: scale(0.3); } 18% { opacity: 1; transform: scale(1.25); } 55% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
 `;
 
 export function paginaHTML({ titulo, descricao }) {
