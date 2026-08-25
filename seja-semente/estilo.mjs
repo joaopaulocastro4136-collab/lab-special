@@ -62,6 +62,13 @@ export const CSS = `
     border-radius: 0 0 38px 110px / 0 0 30px 60px;
     box-shadow: 0 10px 26px rgba(17,58,36,0.30); }
   .header-titulo { display: flex; align-items: center; gap: 13px; }
+  /* Cabeçalho compacto (central): menor em cima, sobra mais tela para o resto */
+  header.compacta { padding: calc(env(safe-area-inset-top) + 9px) 16px 13px; border-radius: 0 0 24px 64px / 0 0 18px 34px; }
+  header.compacta .header-titulo { gap: 10px; }
+  header.compacta .logo-bolha { width: 38px; height: 38px; border-radius: 13px; }
+  header.compacta strong { font-size: 17px; }
+  header.compacta .status { font-size: 11.5px; margin-top: 0; }
+  header.compacta .btn-header { width: 37px; height: 37px; }
   .logo-bolha { width: 48px; height: 48px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.14); }
   .logo-mini { font-size: 26px; }
   header strong { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
@@ -134,7 +141,7 @@ export const CSS = `
      caixa de escrever fica presa embaixo, sempre visível — inclusive com o
      teclado do celular aberto (nada de caixa flutuante sumindo). */
   .chat { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 340px); height: calc(100dvh - 340px); min-height: 300px; }
-  .chat.cheio { height: calc(100vh - 250px); height: calc(100dvh - 250px); }
+  .chat.cheio { height: calc(100vh - 210px); height: calc(100dvh - 210px); }
   .chat-mensagens { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .msg { display: flex; gap: 10px; align-items: flex-start; }
   .msg-corpo { flex: 1; min-width: 0; background: #fff; border-radius: 4px 16px 16px 16px; padding: 10px 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
