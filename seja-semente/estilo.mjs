@@ -75,6 +75,8 @@ export const CSS = `
   .status { font-size: 12.5px; opacity: 0.88; margin-top: 1px; }
   .status.online { opacity: 1; color: #B9F0CD; font-weight: 700; }
   main { flex: 1; padding: 18px 16px 92px; max-width: 560px; width: 100%; margin: 0 auto; }
+  main.com-chat { display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 78px; height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow: hidden; }
+  main.com-chat .chat, main.com-chat .chat.cheio { height: auto; flex: 1; min-height: 0; }
   main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; margin: 10px 0 16px; letter-spacing: -0.4px; color: #1C3B27; }
   main h2::after { content: ''; display: block; width: 46px; height: 4px; border-radius: 2px; background: #2F7D4E; margin-top: 9px; }
   .titulo-com-botao h2::after { display: none; }
@@ -155,14 +157,14 @@ export const CSS = `
   .chip-aceito { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: #D6F1E0; color: #1E6B41; font-size: 12.5px; font-weight: 800; }
   .linha-sugestao { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #FFF6E3; border: 1.5px dashed #E4CD96; border-radius: 12px; padding: 8px 11px; font-size: 13.5px; }
   .btn-aceitar-chat { display: inline-flex; align-items: center; gap: 5px; border: none; border-radius: 999px; padding: 8px 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; }
-  .chat-caixa { display: flex; flex-direction: column; gap: 7px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 15px; padding: 7px; box-shadow: 0 8px 22px rgba(30,43,34,0.15); }
+  .chat-caixa { display: flex; flex-direction: column; gap: 6px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 14px; padding: 6px; box-shadow: 0 6px 16px rgba(30,43,34,0.12); }
   .chat-selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
   .chat-selecionados svg { cursor: pointer; }
   .chat-extras { display: flex; gap: 6px; }
   .chat-extras select { flex: 1; min-width: 0; padding: 8px 6px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 12.5px; background: #fff; font-weight: 700; color: #55645A; }
   .chat-envio { display: flex; gap: 7px; align-items: center; }
-  .chat-envio input { flex: 1; min-width: 0; padding: 9px 12px; border: 1.5px solid #DBE3D8; border-radius: 12px; font-size: 16px; background: #fff; }
-  .btn-redondo { width: 37px; height: 37px; flex: none; border: 1.5px solid #DBE3D8; border-radius: 50%; background: #fff; color: #55645A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .chat-envio input { flex: 1; min-width: 0; padding: 8px 11px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 16px; background: #fff; }
+  .btn-redondo { width: 34px; height: 34px; flex: none; border: 1.5px solid #DBE3D8; border-radius: 50%; background: #fff; color: #55645A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .btn-redondo.ligado { background: #226343; border-color: #226343; color: #fff; }
   .btn-foto-chat { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 1.5px dashed #9DBBA8; border-radius: 11px; background: #EAF4EE; color: #226343; font-size: 13px; font-weight: 800; cursor: pointer; flex: none; }
   .chat-emojis { display: flex; flex-wrap: wrap; gap: 4px; }

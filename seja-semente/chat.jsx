@@ -74,9 +74,9 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
         {mensagens.map(m => (
           <div key={m.id} className={'msg' + (m.autorUid === usuario.uid ? ' minha' : '')}>
             <Bolha nome={m.autorNome || '?'} foto={m.autorFotoMini} avatar={m.autorAvatar} />
-            {/* Cada pessoa tem a sua cor (nome e barrinha do balão) — dá para
-                reconhecer quem mandou só de bater o olho */}
-            <div className="msg-corpo" style={{ borderLeft: `4px solid ${corDoNome(m.autorNome)}` }}>
+            {/* Cada pessoa tem a sua cor (nome, barrinha E fundo do balão) —
+                dá para reconhecer quem mandou só de bater o olho */}
+            <div className="msg-corpo" style={{ borderLeft: `4px solid ${corDoNome(m.autorNome)}`, background: corDoNome(m.autorNome) + '16' }}>
               <div className="msg-topo">
                 <strong style={{ color: m.autorUid === usuario.uid ? '#1E6B41' : corDoNome(m.autorNome) }}>{m.autorUid === usuario.uid ? 'Você' : m.autorNome}</strong>
                 <span className="quando">{quandoBonito(m.criadoEm)}</span>
