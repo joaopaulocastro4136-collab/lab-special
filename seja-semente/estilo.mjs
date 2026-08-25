@@ -62,12 +62,19 @@ export const CSS = `
     border-radius: 0 0 38px 110px / 0 0 30px 60px;
     box-shadow: 0 10px 26px rgba(17,58,36,0.30); }
   .header-titulo { display: flex; align-items: center; gap: 13px; }
+  /* Cabeçalho compacto (central): menor em cima, sobra mais tela para o resto */
+  header.compacta { padding: calc(env(safe-area-inset-top) + 9px) 16px 13px; border-radius: 0 0 24px 64px / 0 0 18px 34px; }
+  header.compacta .header-titulo { gap: 10px; }
+  header.compacta .logo-bolha { width: 38px; height: 38px; border-radius: 13px; }
+  header.compacta strong { font-size: 17px; }
+  header.compacta .status { font-size: 11.5px; margin-top: 0; }
+  header.compacta .btn-header { width: 37px; height: 37px; }
   .logo-bolha { width: 48px; height: 48px; border-radius: 16px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.14); }
   .logo-mini { font-size: 26px; }
   header strong { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
   .status { font-size: 12.5px; opacity: 0.88; margin-top: 1px; }
   .status.online { opacity: 1; color: #B9F0CD; font-weight: 700; }
-  main { flex: 1; padding: 20px 16px 110px; max-width: 560px; width: 100%; margin: 0 auto; }
+  main { flex: 1; padding: 18px 16px 92px; max-width: 560px; width: 100%; margin: 0 auto; }
   main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; margin: 10px 0 16px; letter-spacing: -0.4px; color: #1C3B27; }
   main h2::after { content: ''; display: block; width: 46px; height: 4px; border-radius: 2px; background: #2F7D4E; margin-top: 9px; }
   .titulo-com-botao h2::after { display: none; }
@@ -134,7 +141,7 @@ export const CSS = `
      caixa de escrever fica presa embaixo, sempre visível — inclusive com o
      teclado do celular aberto (nada de caixa flutuante sumindo). */
   .chat { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 340px); height: calc(100dvh - 340px); min-height: 300px; }
-  .chat.cheio { height: calc(100vh - 250px); height: calc(100dvh - 250px); }
+  .chat.cheio { height: calc(100vh - 185px); height: calc(100dvh - 185px); }
   .chat-mensagens { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .msg { display: flex; gap: 10px; align-items: flex-start; }
   .msg-corpo { flex: 1; min-width: 0; background: #fff; border-radius: 4px 16px 16px 16px; padding: 10px 13px; box-shadow: 0 2px 8px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -148,14 +155,14 @@ export const CSS = `
   .chip-aceito { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: #D6F1E0; color: #1E6B41; font-size: 12.5px; font-weight: 800; }
   .linha-sugestao { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #FFF6E3; border: 1.5px dashed #E4CD96; border-radius: 12px; padding: 8px 11px; font-size: 13.5px; }
   .btn-aceitar-chat { display: inline-flex; align-items: center; gap: 5px; border: none; border-radius: 999px; padding: 8px 14px; background: linear-gradient(135deg, #37935B, #226343); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; }
-  .chat-caixa { display: flex; flex-direction: column; gap: 8px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 18px; padding: 10px; box-shadow: 0 10px 28px rgba(30,43,34,0.18); }
+  .chat-caixa { display: flex; flex-direction: column; gap: 7px; background: #FCFCF6; border: 1.5px solid #DBE3D8; border-radius: 15px; padding: 7px; box-shadow: 0 8px 22px rgba(30,43,34,0.15); }
   .chat-selecionados { display: flex; flex-wrap: wrap; gap: 6px; }
   .chat-selecionados svg { cursor: pointer; }
   .chat-extras { display: flex; gap: 6px; }
   .chat-extras select { flex: 1; min-width: 0; padding: 8px 6px; border: 1.5px solid #DBE3D8; border-radius: 11px; font-size: 12.5px; background: #fff; font-weight: 700; color: #55645A; }
   .chat-envio { display: flex; gap: 7px; align-items: center; }
-  .chat-envio input { flex: 1; min-width: 0; padding: 12px 14px; border: 1.5px solid #DBE3D8; border-radius: 14px; font-size: 16px; background: #fff; }
-  .btn-redondo { width: 42px; height: 42px; flex: none; border: 1.5px solid #DBE3D8; border-radius: 50%; background: #fff; color: #55645A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .chat-envio input { flex: 1; min-width: 0; padding: 9px 12px; border: 1.5px solid #DBE3D8; border-radius: 12px; font-size: 16px; background: #fff; }
+  .btn-redondo { width: 37px; height: 37px; flex: none; border: 1.5px solid #DBE3D8; border-radius: 50%; background: #fff; color: #55645A; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .btn-redondo.ligado { background: #226343; border-color: #226343; color: #fff; }
   .btn-foto-chat { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border: 1.5px dashed #9DBBA8; border-radius: 11px; background: #EAF4EE; color: #226343; font-size: 13px; font-weight: 800; cursor: pointer; flex: none; }
   .chat-emojis { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -308,12 +315,12 @@ export const CSS = `
   .foto-info span { font-size: 13px; opacity: 0.75; }
 
   /* ── Barra de abas flutuante ── */
-  nav { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 4px;
-    background: rgba(255,255,255,0.96); backdrop-filter: blur(10px); border-radius: 24px; padding: 8px;
+  nav { position: fixed; left: 12px; right: 12px; bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 3px;
+    background: rgba(255,255,255,0.96); backdrop-filter: blur(10px); border-radius: 20px; padding: 5px;
     box-shadow: 0 12px 34px rgba(30,43,34,0.20); max-width: 560px; margin: 0 auto; }
-  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 8px; border: none; background: none; color: #8A968D; cursor: pointer; border-radius: 17px; }
-  nav button svg { display: block; }
-  nav button span:last-child { font-size: 10.5px; font-weight: 800; }
+  nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; border: none; background: none; color: #8A968D; cursor: pointer; border-radius: 14px; }
+  nav button svg { display: block; width: 20px; height: 20px; }
+  nav button span:last-child { font-size: 10px; font-weight: 800; }
   nav button.ativo { color: #226343; background: #E5F3EA; }
   .icone-aba svg { display: block; }
 

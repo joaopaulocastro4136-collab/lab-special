@@ -1128,15 +1128,15 @@ function TelaPrincipal({ usuario, aoSair }) {
 
   return (
     <div className="tela-principal">
-      <header>
+      <header className="compacta">
         <div className="header-titulo">
-          <div className="logo-bolha"><LogoApp tamanho={40} /></div>
+          <div className="logo-bolha"><LogoApp tamanho={30} /></div>
           <div style={{ flex: 1 }}>
             <strong>Seja Semente</strong>
             <div className="status">{temInternet ? <>Central · {usuario.nome}</> : '📴 Sem internet — salvando no aparelho'}</div>
           </div>
-          <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Bell size={20} /></button>
-          <button className="btn-header" onClick={() => setTela('novoAviso')} title="Novo aviso"><Megaphone size={20} /></button>
+          <button className="btn-header" onClick={() => setTela('avisos')} title="Avisos"><Bell size={18} /></button>
+          <button className="btn-header" onClick={() => setTela('novoAviso')} title="Novo aviso"><Megaphone size={18} /></button>
         </div>
       </header>
 
