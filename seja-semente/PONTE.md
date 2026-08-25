@@ -220,6 +220,8 @@ Dois tipos:
 | `paraUid`        | string    | uid da pessoa chamada (staff)    |
 | `paraNome`       | string    | `"Maria Souza"` (staff)         |
 | `paraFoto`       | string    | foto mini da pessoa (staff)      |
+| `motivo`         | string    | título da chamada de grupo (ex.: `"Almoço na cantina"`) — aparece grande na tela de quem recebe |
+| `convocacaoId`   | string    | id do doc em `convocacoes` (quando veio de chamada de grupo) |
 | `chamadoPorUid`  | string    | uid de quem chamou               |
 | `chamadoPorNome` | string    | `"João Paulo"`                  |
 | `chamadoPorFoto` | string    | foto mini de quem chamou (staff) |
@@ -245,6 +247,20 @@ Apple (app removido) é apagado da coleção pelo próprio carteiro.
 | `aparelho`    | string    | o `idAparelho()` local (ss-aparelho) |
 | `voipToken`   | string    | token de LIGAÇÃO (CallKit, app 6.10+) — com ele o carteiro faz o iPhone tocar a tela de chamada de verdade; sem ele, cai na notificação comum repetida |
 | `atualizadoEm`| timestamp | último registro                      |
+
+### `convocacoes/{id}` — chamadas de GRUPO ("Almoço na cantina")
+Quem escreve: **Central**. Uma convocação tem um título e a lista de quem
+já foi chamado. Chamar pessoas cria um doc em `chamadas` (tipo `staff`,
+com `motivo` = título) para cada uma — o resto (tela de ligação, push)
+é o fluxo normal de chamadas. Quem já está em `chamados` não aparece mais
+na lista de seleção. A central pode excluir a convocação quando quiser.
+
+| Campo         | Tipo      | Exemplo                                 |
+|---------------|-----------|-----------------------------------------|
+| `titulo`      | string    | `"Almoço na cantina"`                  |
+| `criadaPorUid` / `criadaPorNome` | string | quem criou               |
+| `chamados`    | mapa      | `{ uid: { nome, em: timestamp } }`      |
+| `criadaEm`    | timestamp | data/hora                               |
 
 ### `central-usuarios/{uid}` — quem tem acesso à central
 Quem escreve: **Central**. Cada pessoa autorizada a usar a central (app Seja
