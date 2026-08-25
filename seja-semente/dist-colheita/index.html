@@ -99,6 +99,18 @@
   .titulo-com-botao h2::after { display: none; }
   .titulo-com-botao { display: flex; justify-content: space-between; align-items: center; }
 
+  /* ── A história do projeto (capa, cartões com foto) ── */
+  .capa-projeto { background: linear-gradient(150deg, #2F7D4E, #143D28); border-radius: 22px; padding: 22px 20px 20px; color: #fff; text-align: center; box-shadow: 0 10px 26px rgba(20,61,40,0.28); display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .capa-projeto h1 { font-family: 'Fraunces', Georgia, serif; font-size: 30px; margin: 4px 0 0; color: #fff; }
+  .capa-projeto h1::after { display: none; }
+  .capa-projeto p { margin: 0; font-size: 15.5px; line-height: 1.5; color: rgba(255,255,255,0.92); }
+  .capa-projeto .divisor-broto i { background: rgba(255,255,255,0.35); }
+  .cartao-foto { padding: 0; overflow: hidden; }
+  .cartao-foto img { display: block; width: 100%; height: 190px; object-fit: cover; background: #DDE6DC; }
+  .cartao-foto-corpo { padding: 14px 16px 16px; }
+  .tag-projeto { font-family: 'Fraunces', Georgia, serif; font-size: 20px; color: #226343; }
+  .chips-onde { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
   /* ── Painel do Palmar: os números do projeto em cartõezinhos ── */
   .grade-numeros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 10px 0; }
   .cartao-numero { background: #fff; border-radius: 16px; padding: 14px 14px 12px; box-shadow: 0 4px 14px rgba(30,43,34,0.06); display: flex; flex-direction: column; gap: 2px; }

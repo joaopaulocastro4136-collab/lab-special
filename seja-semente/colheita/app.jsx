@@ -14,7 +14,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
-import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, HeartHandshake } from 'lucide-react';
+import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, Home } from 'lucide-react';
+import { SobreOProjeto } from '../projeto.jsx';
 
 // Logo da Colheita: a mão dourada com o coração — a mesma do ecossistema
 function LogoApp({ tamanho = 120 }) {
@@ -218,7 +219,7 @@ function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal ───
 function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
-  const [aba, setAba] = useState('sorrisos');
+  const [aba, setAba] = useState('inicio');
   const [tela, setTela] = useState(null);
   const [soMinhaAcao, setSoMinhaAcao] = useState(!!investidor?.acaoId);
   const temInternet = usarTemInternet();
@@ -428,12 +429,14 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
       </header>
 
       <main>
-        {minhaAcao && (
+        {minhaAcao && aba !== 'inicio' && (
           <div className="seletor" style={{ margin: '0 0 12px' }}>
             <button className={soMinhaAcao ? 'ativo' : ''} onClick={() => setSoMinhaAcao(true)}>O que eu apoiei</button>
             <button className={!soMinhaAcao ? 'ativo' : ''} onClick={() => setSoMinhaAcao(false)}>O projeto todo</button>
           </div>
         )}
+
+        {aba === 'inicio' && <SobreOProjeto Logo={LogoApp} />}
 
         {aba === 'sorrisos' && (
           <>
@@ -567,6 +570,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
       </main>
 
       <nav>
+        <button className={aba === 'inicio' ? 'ativo' : ''} onClick={() => setAba('inicio')}><Home size={22} /><span>Projeto</span></button>
         <button className={aba === 'sorrisos' ? 'ativo' : ''} onClick={() => setAba('sorrisos')}><Sparkles size={22} /><span>Sorrisos</span></button>
         <button className={aba === 'acoes' ? 'ativo' : ''} onClick={() => setAba('acoes')}><Flag size={22} /><span>Ações</span></button>
         <button className={aba === 'contas' ? 'ativo' : ''} onClick={() => setAba('contas')}><Receipt size={22} /><span>Contas</span></button>

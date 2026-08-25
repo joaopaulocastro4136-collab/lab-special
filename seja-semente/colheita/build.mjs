@@ -1,6 +1,6 @@
 // Monta o aplicativo Colheita (investidores) em dist-colheita/ (rodar: node colheita/build.mjs)
 import esbuild from 'esbuild';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, copyFileSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { paginaHTML, manifesto, CSS } from '../estilo.mjs';
@@ -26,4 +26,9 @@ mkdirSync(join(raiz, 'dist-colheita'), { recursive: true });
 writeFileSync(join(raiz, 'dist-colheita/index.html'), paginaHTML({ titulo, descricao }));
 writeFileSync(join(raiz, 'dist-colheita/manifest.webmanifest'), JSON.stringify(manifesto({ nome: titulo, descricao }), null, 2));
 writeFileSync(join(raiz, 'dist-colheita/app.css'), CSS);
+// As fotos da história do projeto viajam junto (o Hosting publica a pasta
+// de forma plana, por isso ficam na raiz do dist)
+for (const nome of readdirSync(join(raiz, 'fotos-projeto'))) {
+  copyFileSync(join(raiz, 'fotos-projeto', nome), join(raiz, 'dist-colheita', nome));
+}
 console.log('dist-colheita pronto');
