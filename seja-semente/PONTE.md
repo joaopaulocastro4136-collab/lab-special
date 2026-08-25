@@ -228,6 +228,23 @@ Dois tipos:
 | `atendidaPorUid` / `atendidaPorNome` / `atendidaEm` | — | preenchidos por quem atendeu |
 | `criadoEm`       | timestamp | data/hora da chamada             |
 
+### `aparelhos/{token}` — iPhones registrados para notificação push
+Quem escreve: **os apps** (central e Semeador, na versão nativa). O `{token}`
+é o token APNs do aparelho. O "carteiro" (Cloud Function `carteiroChamadas`,
+pasta `carteiro/`) lê esta coleção quando nasce um doc em `chamadas` e manda
+o push: chamada de paciente → todos os aparelhos; `tipo: "staff"` → só os
+aparelhos com `uid === paraUid`. O aparelho de quem chamou
+(`aparelho === chamadoPorAparelho`) nunca é avisado. Token recusado pela
+Apple (app removido) é apagado da coleção pelo próprio carteiro.
+
+| Campo         | Tipo      | Exemplo                              |
+|---------------|-----------|--------------------------------------|
+| `uid`         | string    | uid do dono logado no app            |
+| `nome`        | string    | `"Maria Souza"`                     |
+| `app`         | string    | `"central"` ou `"semeador"`         |
+| `aparelho`    | string    | o `idAparelho()` local (ss-aparelho) |
+| `atualizadoEm`| timestamp | último registro                      |
+
 ### `central-usuarios/{uid}` — quem tem acesso à central
 Quem escreve: **Central**. Cada pessoa autorizada a usar a central (app Seja
 Semente / programa Windows) tem um doc aqui. O **primeiro** a entrar, quando a
