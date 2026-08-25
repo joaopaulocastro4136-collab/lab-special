@@ -495,6 +495,49 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('sd-agendamentos', DEMO.agendamentos));
   const [todosPacientes, setTodosPacientes] = useState(CONFIGURADO ? [] : lerLocal('sd-pacientes', DEMO.pacientes));
 
+  // ─── Chamar paciente + cronômetro: quando o dentista chama alguém, o
+  //     relógio começa; ao chamar o PRÓXIMO, o tempo do anterior é fechado e
+  //     registrado — a central vê os tempos no perfil do dentista ───
+  const [meusAtendimentos, setMeusAtendimentos] = useState(CONFIGURADO ? [] : lerLocal('sd-atendimentos', []));
+  useEffect(() => { if (!CONFIGURADO) gravarLocal('sd-atendimentos', meusAtendimentos); }, [meusAtendimentos]);
+  const atendimentoAberto = meusAtendimentos.find(a => !a.fim) || null;
+  const minutosDesde = v => Math.max(1, Math.round((Date.now() - (v?.toDate ? v.toDate() : new Date(v)).getTime()) / 60000));
+
+  async function chamarPaciente(p) {
+    if (!p) return;
+    const agora = new Date();
+    const area = (agendamentos.find(g => g.pacienteId === p.id)?.area) || areasDoPaciente(p)[0] || '';
+    const novo = { profissionalUid: usuario.uid, profissionalNome: usuario.nome || '', pacienteId: p.id, pacienteNome: p.nome, area, inicio: agora, fim: null };
+    if (!CONFIGURADO) {
+      setMeusAtendimentos(as => [
+        { id: 'at' + Math.floor(Math.random() * 1e9), ...novo },
+        ...as.map(a => !a.fim ? { ...a, fim: agora, duracaoMin: minutosDesde(a.inicio) } : a),
+      ]);
+    } else {
+      const { doc, updateDoc, collection, addDoc } = fb.fns;
+      if (atendimentoAberto) updateDoc(doc(fb.db, 'atendimentos', atendimentoAberto.id), { fim: agora, duracaoMin: minutosDesde(atendimentoAberto.inicio) }).catch(() => {});
+      addDoc(collection(fb.db, 'atendimentos'), novo).catch(() => {});
+    }
+    // aviso para a equipe no chat (com o paciente anexado)
+    enviarMensagem({
+      texto: `🔔 Estou chamando ${p.nome} para o atendimento${area ? ` (${area})` : ''} — equipe, por favor, encaminhar até a sala.`,
+      foto: '', pacienteId: p.id, pacienteNome: p.nome, pacienteCodigo: p.codigo || '',
+      paraUid: '', paraNome: '', sugestaoArea: '',
+    });
+  }
+
+  async function encerrarAtendimento() {
+    if (!atendimentoAberto) return;
+    const agora = new Date();
+    const dur = minutosDesde(atendimentoAberto.inicio);
+    if (!CONFIGURADO) {
+      setMeusAtendimentos(as => as.map(a => a.id === atendimentoAberto.id ? { ...a, fim: agora, duracaoMin: dur } : a));
+      return;
+    }
+    const { doc, updateDoc } = fb.fns;
+    updateDoc(doc(fb.db, 'atendimentos', atendimentoAberto.id), { fim: agora, duracaoMin: dur }).catch(() => {});
+  }
+
   // ─── Chat da equipe (mesma conversa da central, em tempo real) ───
   const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('sd-chat', DEMO.chat));
   const [equipe, setEquipe] = useState(CONFIGURADO ? [] : DEMO.equipe);
@@ -698,16 +741,24 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
       query(collection(fb.db, 'chat'), orderBy('criadoEm')),
       snap => setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
+    const paraAtendimentos = onSnapshot(
+      query(collection(fb.db, 'atendimentos'), orderBy('inicio', 'desc')),
+      snap => setMeusAtendimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(a => a.profissionalUid === usuario.uid))
+    );
     const paraEquipe = onSnapshot(
       query(collection(fb.db, 'voluntarios'), orderBy('nome')),
       snap => setEquipe(snap.docs.map(d => ({ id: d.id, ...d.data() }))
         .filter(v => v.status === 'ativo' || v.ativo === true))
     );
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); };
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); };
   }, [usuario.uid]);
 
 
-  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo} />;
+  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
+    aoChamar={() => chamarPaciente(fichaPaciente)}
+    atendimentoAberto={atendimentoAberto && atendimentoAberto.pacienteId === fichaId ? atendimentoAberto : null}
+    aoEncerrar={encerrarAtendimento} />;
 
   if (telaTriagem?.triagem) return <FormTriagem paciente={telaTriagem.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTelaTriagem(null)} aoSalvar={(t, fts) => salvarTriagem(telaTriagem.triagem, t, fts)} />;
 

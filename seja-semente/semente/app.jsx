@@ -709,6 +709,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const [agendamentos, setAgendamentos] = useState(CONFIGURADO ? [] : lerLocal('ss-agendamentos', DEMO.agendamentos));
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : lerLocal('ss-avisos', DEMO.avisos));
   const [voluntarios, setVoluntarios] = useState(CONFIGURADO ? [] : lerLocal('ss-voluntarios', DEMO.voluntarios));
+  const [atendimentos, setAtendimentos] = useState(CONFIGURADO ? [] : lerLocal('ss-atendimentos', []));
   const [mensagens, setMensagens] = useState(CONFIGURADO ? [] : lerLocal('ss-chat', DEMO.chat));
   const [chatVisto, setChatVisto] = useState(lerLocal('ss-chat-visto', 0)); // quantas mensagens já foram vistas
   // Foto/dentinho do MEU perfil (fica em central-usuarios/{uid})
@@ -788,6 +789,7 @@ function TelaPrincipal({ usuario, aoSair }) {
       escuta('agendamentos', ['hora'], setAgendamentos),
       escuta('avisos', ['criadoEm', 'desc'], setAvisos),
       escuta('voluntarios', ['nome'], setVoluntarios),
+      escuta('atendimentos', ['inicio', 'desc'], setAtendimentos),
       escuta('chat', ['criadoEm'], setMensagens),
     ];
     return () => soltar.forEach(s => s());
@@ -1251,6 +1253,27 @@ function TelaPrincipal({ usuario, aoSair }) {
           </div>
         </div>
         <EspecialidadesVoluntario key={v.id} voluntario={v} todasAreas={todasAreas} aoSalvar={p => salvarProcedimentosVoluntario(v, p)} />
+        {(() => {
+          // ⏱ Tempos de atendimento: alimentado pelo botão "Chamar paciente"
+          // do Semeador — chamou o próximo, fecha o tempo do anterior
+          const dele2 = atendimentos.filter(x => x.profissionalUid === v.id);
+          const aberto = dele2.find(x => !x.fim);
+          const fechados = dele2.filter(x => x.duracaoMin);
+          const porArea = {};
+          for (const x of fechados) { const k = x.area || 'Sem procedimento'; (porArea[k] = porArea[k] || []).push(x.duracaoMin); }
+          const minutosDesde2 = w => Math.max(1, Math.round((Date.now() - (w?.toDate ? w.toDate() : new Date(w)).getTime()) / 60000));
+          return (
+            <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <strong>⏱ Tempos de atendimento</strong>
+              {aberto && <p className="obs" style={{ margin: 0, color: '#B3402A', fontWeight: 800 }}>🔴 Agora: atendendo {aberto.pacienteNome} há {minutosDesde2(aberto.inicio)} min{aberto.area ? ` (${aberto.area})` : ''}</p>}
+              {Object.keys(porArea).length ? Object.entries(porArea).map(([area, ds]) => (
+                <p key={area} className="obs" style={{ margin: 0 }}>
+                  <b>{area}</b> — média {Math.round(ds.reduce((s, x) => s + x, 0) / ds.length)} min · {ds.length} atendimento{ds.length === 1 ? '' : 's'}
+                </p>
+              )) : !aberto && <p className="dica" style={{ margin: 0 }}>Quando {v.nome.split(' ')[0]} usar o botão "🔔 Chamar paciente" no Semeador, os tempos de cada procedimento aparecem aqui.</p>}
+            </div>
+          );
+        })()}
         <h2 style={{ fontSize: 20, margin: '8px 0 2px' }}>Agenda de {v.nome.split(' ')[0]}</h2>
         {dele.length ? dele.map(g => (
           <div className="cartao" key={g.id} onClick={() => g.pacienteId && setFichaId(g.pacienteId)} style={g.pacienteId ? { cursor: 'pointer' } : undefined}>
