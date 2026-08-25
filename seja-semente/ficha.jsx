@@ -4,6 +4,7 @@
 // COMPARTILHAR a ficha em folha A4 (imagem pronta para imprimir).
 import { useState } from 'react';
 import { Bolha } from './logo.jsx';
+import { Arcada } from './dentes.jsx';
 import { TriangleAlert, Camera, X, ChevronLeft, Pencil, Trash2, Printer } from 'lucide-react';
 
 // Reduz a foto para caber no banco (máx ~1000px, JPEG)
@@ -105,6 +106,7 @@ async function gerarFolhaA4(paciente, arquivos) {
   linha('Endereço', paciente.endereco);
   linha('Situação', paciente.status);
   linha('Procedimentos', areasDaTriagem(t).join(', '));
+  linha('Dentes do tratamento', (t?.dentes || []).join(', '));
   linha('Saúde', t ? [...(t.saude || []), t.outrasCondicoes].filter(Boolean).join(', ') : '');
   linha('Observações', paciente.observacoes);
   linha('Fotos registradas', arquivos.length ? `${arquivos.length} foto(s) no aplicativo` : '');
@@ -241,6 +243,14 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
           </div>
         </div>
       </div>
+
+      {t?.dentes?.length > 0 && (
+        <div className="cartao">
+          <strong style={{ display: 'block', marginBottom: 8 }}>Dentes do tratamento ({t.dentes.length})</strong>
+          <Arcada marcados={t.dentes} compacta />
+          <p className="obs" style={{ marginTop: 8 }}>Dentes: {t.dentes.join(', ')}</p>
+        </div>
+      )}
 
       <div className="linha-acoes">
         {podeEditar && <button className="btn-acao" onClick={() => setEditando({ nome: paciente.nome || '', idade: paciente.idade || '', telefone: paciente.telefone || '', cpf: paciente.cpf || '', endereco: paciente.endereco || '', observacoes: paciente.observacoes || '', prioridade: !!paciente.prioridade })}><Pencil size={16} /> Editar</button>}

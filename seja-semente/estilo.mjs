@@ -138,6 +138,18 @@ export const CSS = `
   .opcao-dente { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 4px 7px; border: 1.5px solid #DBE3D8; border-radius: 15px; background: #fff; cursor: pointer; font-size: 10.5px; font-weight: 800; color: #55645A; }
   .opcao-dente.marcada { border-color: #2F7D4E; background: #E9F5EE; box-shadow: 0 0 0 3px rgba(47,125,78,0.14); }
 
+  /* ── Odontograma (arcada de dentes da triagem/ficha) ── */
+  .arcada-caixa { background: #fff; border-radius: 18px; border: 1px solid rgba(30,43,34,0.06); box-shadow: 0 5px 16px rgba(30,43,34,0.06); padding: 12px 6px; }
+  .arcada { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
+  .arcada::before { content: ''; display: block; padding-top: 46%; }
+  .arcada.compacta { max-width: 270px; }
+  .dente { position: absolute; transform: translate(-50%, -50%); border: none; background: none; padding: 0; cursor: pointer; }
+  .dente.leitura { cursor: default; }
+  .dente.marcado svg { filter: drop-shadow(0 3px 6px rgba(47,125,78,0.4)); }
+  .arcada-divisor { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .arcada-divisor i { flex: 1; border-top: 1.5px dashed #D8E0D6; }
+  .arcada-divisor span { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #9DB2A3; }
+
   /* ── Chat da equipe ──
      O chat vive numa área de altura fixa: as mensagens rolam POR DENTRO e a
      caixa de escrever fica presa embaixo, sempre visível — inclusive com o

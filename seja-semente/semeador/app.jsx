@@ -14,6 +14,7 @@ import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, Ey
 import { FichaPaciente } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
+import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
@@ -363,7 +364,13 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
     areas: inicial ? (Array.isArray(inicial.areas) ? inicial.areas : (inicial.area ? [inicial.area] : [])) : [],
     saude: inicial?.saude || [],
     outrasCondicoes: inicial?.outrasCondicoes || '',
+    dentes: inicial?.dentes || [],
   });
+  // Odontograma: toca no dente para marcar/desmarcar os dentes do tratamento
+  const alternaDente = n => setF(atual => ({
+    ...atual,
+    dentes: atual.dentes.includes(n) ? atual.dentes.filter(x => x !== n) : [...atual.dentes, n].sort((a, b) => a - b),
+  }));
   const [novoTipo, setNovoTipo] = useState('');
   const alternaArea = a => setF({ ...f, areas: f.areas.includes(a) ? f.areas.filter(x => x !== a) : [...f.areas, a] });
   const alternaSaude = c => setF({ ...f, saude: f.saude.includes(c) ? f.saude.filter(x => x !== c) : [...f.saude, c] });
@@ -399,6 +406,9 @@ function FormTriagem({ paciente, areas, aoAdicionarTipo, aoSalvar, aoCancelar })
             </label>
           ))}
         </div>
+      </div>
+      <div className="campo"><span>Dentes do tratamento (toque para marcar — opcional){f.dentes.length ? ` · ${f.dentes.length} marcado${f.dentes.length === 1 ? '' : 's'}` : ''}</span>
+        <Arcada marcados={f.dentes} aoAlternar={alternaDente} />
       </div>
       <Campo rotulo="Outras condições de saúde"><input value={f.outrasCondicoes} onChange={e => setF({ ...f, outrasCondicoes: e.target.value })} placeholder="Ex.: cirurgia recente, asma…" /></Campo>
       <p className="dica">A triagem aparece na central Seja Semente na hora — de lá o paciente já pode ser agendado.</p>
