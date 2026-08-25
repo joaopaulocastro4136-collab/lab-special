@@ -58,6 +58,20 @@ function LeitorQR({ aoLer, aoFechar }) {
 }
 
 // Extrai a chave (44 dígitos) e, quando o QR traz, o valor da nota
+// Quantidade de um item do estoque, aceitando os dois nomes de campo
+// (`quantidade` daqui do Palmar e `qtd` da central/Semeador)
+function qtdEstoque(item) {
+  return Number(item?.quantidade ?? item?.qtd ?? 0);
+}
+
+// Variação de um movimento de estoque: o Palmar grava `delta` (±) e a
+// central/Semeador gravam `tipo` + `qtd` — esta função entende os dois
+function deltaMov(m) {
+  if (typeof m?.delta === 'number') return m.delta;
+  const q = Number(m?.qtd || 0);
+  return m?.tipo === 'entrada' ? q : -q;
+}
+
 function lerNotaDoQR(texto) {
   const chave = (String(texto).match(/(\d{44})/) || [])[1] || '';
   let valor = 0;
@@ -325,6 +339,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   const [configProc, setConfigProc] = useState(CONFIGURADO ? { personalizados: [], duracoes: {}, valores: {}, porDente: {} } : lerLocal('pm-config', DEMO.config));
   // Dados do próprio Palmar
   const [acoes, setAcoes] = useState(CONFIGURADO ? [] : lerLocal('pm-acoes', DEMO.acoes));
+  const [procedimentos, setProcedimentos] = useState(CONFIGURADO ? [] : (DEMO.procedimentos || []));
   const [estoque, setEstoque] = useState(CONFIGURADO ? [] : lerLocal('pm-estoque', DEMO.estoque));
   const [movimentos, setMovimentos] = useState(CONFIGURADO ? [] : lerLocal('pm-movimentos', DEMO.movimentos));
   const [convocacoes, setConvocacoes] = useState(CONFIGURADO ? [] : lerLocal('pm-convocacoes', []));
@@ -356,6 +371,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       escuta('convocacoes', ['criadaEm', 'desc'], setConvocacoes),
       escuta('investidores', ['nome'], setInvestidores),
       escuta('notas', ['criadaEm', 'desc'], setNotas),
+      // O que os dentistas registraram no Semeador (dentes tratados, o que
+      // foi feito e as fotos de antes/depois) — é isto que mostra, pessoa
+      // por pessoa, o trabalho de cada ação
+      escuta('procedimentos-feitos', ['em', 'desc'], setProcedimentos),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ personalizados: [], duracoes: {}, valores: {}, porDente: {}, ...snap.data() });
       }),
@@ -435,7 +454,12 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
 
   // ─── Ações (mutirões) ───
   async function criarAcao(f) {
-    const nova = { ...f, status: 'planejada', voluntariosUids: [], registros: [], criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '' };
+    // O formulário já pode trazer a escala e, na ação ANTIGA, os
+    // procedimentos lançados e o status encerrado
+    const nova = {
+      status: 'planejada', voluntariosUids: [], registros: [], retroativa: false,
+      ...f, criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '',
+    };
     if (!CONFIGURADO) {
       const id = 'ac' + Math.floor(Math.random() * 1e9);
       setAcoes(as => [{ id, ...nova, criadaEm: new Date() }, ...as]);
@@ -460,13 +484,18 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   }
 
   // ─── Estoque ───
+  // O Palmar chama a quantidade de `quantidade`; a central e o Semeador
+  // chamam de `qtd`. Toda gravação daqui grava OS DOIS, e toda leitura aceita
+  // os dois — assim os três aplicativos veem exatamente o mesmo estoque.
   async function criarItem(f) {
-    if (!CONFIGURADO) { setEstoque(es => [...es, { id: 'e' + Math.floor(Math.random() * 1e9), ...f }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
+    const dados = { ...f, qtd: Number(f.quantidade || 0) };
+    if (!CONFIGURADO) { setEstoque(es => [...es, { id: 'e' + Math.floor(Math.random() * 1e9), ...dados }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'estoque'), { ...f, criadoEm: serverTimestamp() }).catch(() => {});
+    addDoc(collection(fb.db, 'estoque'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
     setTela(null);
   }
   async function salvarItem(item, campos) {
+    if (campos.quantidade !== undefined) campos = { ...campos, qtd: Number(campos.quantidade || 0) };
     if (!CONFIGURADO) { setEstoque(es => es.map(x => x.id === item.id ? { ...x, ...campos } : x)); return; }
     const { doc, updateDoc } = fb.fns;
     updateDoc(doc(fb.db, 'estoque', item.id), campos).catch(() => {});
@@ -483,19 +512,22 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     const acao = acoes.find(a => a.id === acaoId);
     const registro = {
       itemId: item.id, itemNome: item.nome, delta, motivo: motivo || '',
+      // dialeto da central/Semeador (eles mostram tipo + qtd no extrato)
+      tipo: delta < 0 ? 'saida' : 'entrada', qtd: Math.abs(delta), unidade: item.unidade || 'un',
       acaoId: acaoId || '', acaoTitulo: acao?.titulo || '', valorUnit: Number(item.valor || 0),
+      autorUid: usuario.uid, autorNome: usuario.nome || '',
     };
-    const novaQtd = Math.max(0, Number(item.quantidade || 0) + delta);
+    const novaQtd = Math.max(0, qtdEstoque(item) + delta);
     if (!CONFIGURADO) {
-      setEstoque(es => es.map(x => x.id === item.id ? { ...x, quantidade: novaQtd } : x));
+      setEstoque(es => es.map(x => x.id === item.id ? { ...x, quantidade: novaQtd, qtd: novaQtd } : x));
       setMovimentos(ms => [{ id: 'm' + Math.floor(Math.random() * 1e9), ...registro, em: new Date() }, ...ms]);
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: novaQtd }).catch(() => {});
-    addDoc(collection(fb.db, 'estoque-movimentos'), { ...registro, em: serverTimestamp() }).catch(() => {});
+    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: novaQtd, qtd: novaQtd }).catch(() => {});
+    addDoc(collection(fb.db, 'estoque-movimentos'), { ...registro, em: serverTimestamp(), criadoEm: serverTimestamp() }).catch(() => {});
   }
-  const emFalta = estoque.filter(i => Number(i.quantidade || 0) <= Number(i.minimo || 0));
+  const emFalta = estoque.filter(i => qtdEstoque(i) <= Number(i.minimo || 0));
 
   // ─── Investidores (patrocinadores — a Colheita vai ler isto depois) ───
   async function criarInvestidor(f) {
@@ -586,7 +618,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     }}
     aoVoltar={() => setTela(null)} />;
 
-  if (tela === 'novaAcao') return <FormAcao aoCancelar={() => setTela(null)} aoSalvar={criarAcao} />;
+  if (tela === 'novaAcao' || tela === 'acaoAntiga') return <FormAcao
+    antiga={tela === 'acaoAntiga'} equipe={equipeAtiva} todasAreas={todasAreas}
+    valorDe={valorDe} ehPorDente={ehPorDente}
+    aoCancelar={() => setTela(null)} aoSalvar={criarAcao} />;
   if (tela?.novaNota !== undefined) return <FormNota acoes={acoes} acaoInicial={tela.novaNota || ''} aoCancelar={() => setTela(tela.novaNota ? { acao: tela.novaNota } : 'notas')} aoSalvar={criarNota} />;
   if (tela === 'notas') return (
     <div className="folha">
@@ -667,7 +702,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   if (tela?.acao) {
     const a = acoes.find(x => x.id === tela.acao);
     if (a) return <TelaAcao acao={a} equipe={equipeAtiva} pacientes={pacientes} atendimentos={atendimentos} movimentos={movimentos}
-      todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente} custoAtendimento={custoAtendimento}
+      todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente} custoAtendimento={custoAtendimento} procedimentos={procedimentos}
       notas={notas.filter(n => n.acaoId === a.id)} aoNovaNota={() => setTela({ novaNota: a.id })} aoExcluirNota={excluirNota}
       aoSalvar={(campos) => salvarAcao(a, campos)} aoExcluir={() => excluirAcao(a)} aoVoltar={() => setTela(null)} />;
   }
@@ -692,11 +727,11 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       {movimentos.length ? movimentos.slice(0, 80).map(m => (
         <div className="cartao" key={m.id}>
           <div className="cartao-topo">
-            <strong>{m.delta > 0 ? '📥' : '📤'} {m.itemNome}</strong>
-            <span className={'chip ' + (m.delta > 0 ? 'concluído' : 'em-atendimento')}>{m.delta > 0 ? '+' : ''}{m.delta}</span>
+            <strong>{deltaMov(m) > 0 ? '📥' : '📤'} {m.itemNome}</strong>
+            <span className={'chip ' + (deltaMov(m) > 0 ? 'concluído' : 'em-atendimento')}>{deltaMov(m) > 0 ? '+' : ''}{deltaMov(m)}</span>
           </div>
           <p className="obs" style={{ margin: 0 }}>
-            {[m.motivo, m.acaoTitulo && `ação: ${m.acaoTitulo}`, m.valorUnit ? dinheiro(Math.abs(m.delta) * m.valorUnit) : ''].filter(Boolean).join(' · ')}
+            {[m.motivo, m.autorNome && `por ${String(m.autorNome).split(' ')[0]}`, m.acaoTitulo && `ação: ${m.acaoTitulo}`, m.valorUnit ? dinheiro(Math.abs(deltaMov(m)) * m.valorUnit) : ''].filter(Boolean).join(' · ')}
           </p>
         </div>
       )) : <Vazio texto="Nenhuma movimentação registrada ainda." />}
@@ -755,14 +790,15 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
         {aba === 'acoes' && (
           <>
             <div className="titulo-com-botao"><h2>Ações</h2><button className="btn-mais" onClick={() => setTela('novaAcao')}>+ Nova ação</button></div>
-            <p className="dica" style={{ marginTop: 0 }}>Cada ação (mutirão) tem data, equipe escalada e o relatório completo — pacientes, custos e materiais.</p>
+            <p className="dica" style={{ marginTop: 0 }}>Cada ação (mutirão) tem data, local, equipe e o relatório completo — pacientes, custos e materiais.</p>
+            <button className="btn-secundario" style={{ width: '100%', marginBottom: 10 }} onClick={() => setTela('acaoAntiga')}>📚 Adicionar ação antiga (antes do aplicativo)</button>
             {acoes.length ? acoes.map(a => (
               <div className="cartao" key={a.id} onClick={() => setTela({ acao: a.id })} style={{ cursor: 'pointer' }}>
                 <div className="cartao-topo">
-                  <strong>🌱 {a.titulo}</strong>
-                  <span className={'chip ' + (a.status === 'iniciada' ? 'em-atendimento' : a.status === 'encerrada' ? 'concluído' : 'aguardando')}>{a.status}</span>
+                  <strong>{a.retroativa ? '📚' : '🌱'} {a.titulo}</strong>
+                  <span className={'chip ' + (a.status === 'iniciada' ? 'em-atendimento' : a.status === 'encerrada' ? 'concluído' : 'aguardando')}>{a.retroativa ? 'antiga' : a.status}</span>
                 </div>
-                <p className="obs" style={{ margin: 0 }}>{dataBonita(a.data)}{a.local ? ` · ${a.local}` : ''} · {(a.voluntariosUids || []).length} escalado(s)</p>
+                <p className="obs" style={{ margin: 0 }}>{dataBonita(a.data)}{a.local ? ` · ${a.local}` : ''} · {(a.voluntariosUids || []).length} pessoa(s){(a.registros || []).length ? ` · ${(a.registros || []).length} lançamento(s)` : ''}</p>
               </div>
             )) : <Vazio texto="Nenhuma ação criada ainda — toque em + Nova ação." />}
           </>
@@ -855,12 +891,12 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
               </div>
             )}
             {estoque.length ? estoque.map(i => {
-              const falta = Number(i.quantidade || 0) <= Number(i.minimo || 0);
+              const falta = qtdEstoque(i) <= Number(i.minimo || 0);
               return (
                 <div className="cartao" key={i.id} onClick={() => setTela({ item: i.id })} style={{ cursor: 'pointer', ...(falta ? { border: '1.5px solid #E8A08C' } : {}) }}>
                   <div className="cartao-topo">
                     <strong>{i.nome}</strong>
-                    <span className={'chip ' + (falta ? 'aguardando' : 'concluído')}>{i.quantidade} {i.unidade}{falta ? ' · FALTA' : ''}</span>
+                    <span className={'chip ' + (falta ? 'aguardando' : 'concluído')}>{qtdEstoque(i)} {i.unidade}{falta ? ' · FALTA' : ''}</span>
                   </div>
                   <p className="obs" style={{ margin: 0 }}>{dinheiro(i.valor)} por {i.unidade} · mínimo {i.minimo} {i.unidade}</p>
                 </div>
@@ -890,6 +926,16 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           const linhas = Object.entries(porArea).sort((a, b) => b[1].total - a[1].total);
           const total = linhas.reduce((s, [, v]) => s + v.total, 0);
           const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
+  // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
+  const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
+  const dentesTratados = procsDoDia.reduce((s, r) => s + (r.dentes || []).length, 0)
+    + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
+  const porEspecialidade = (() => {
+    const m = {};
+    for (const a of doDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
+    for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  })();
           return (
             <>
               <h2>Financeiro</h2>
@@ -970,37 +1016,172 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
 }
 
 // ─── Nova ação ───
-function FormAcao({ aoCancelar, aoSalvar }) {
+function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCancelar, aoSalvar }) {
   const [f, setF] = useState({ titulo: '', data: hojeISO(), local: '' });
+  const [escalados, setEscalados] = useState([]);
+  // Ação ANTIGA: vai empilhando o que foi feito, especialidade por
+  // especialidade (o valor sai da tabela de Valores, por dente quando marcado)
+  const [itens, setItens] = useState([]);
+  const [item, setItem] = useState({ area: todasAreas?.[0] || 'Profilaxia', quantos: 1, dentes: 1, descricao: '', quemUid: '' });
+
+  const porDente = ehPorDente?.(item.area);
+  const unidades = porDente ? Math.max(1, Number(item.dentes || 1)) : Math.max(1, Number(item.quantos || 1));
+  const valorItem = (valorDe?.(item.area) || 0) * unidades;
+
+  function adicionar() {
+    const quem = equipe.find(v => v.id === item.quemUid);
+    setItens(is => [...is, {
+      id: 'r' + Math.floor(Math.random() * 1e9),
+      area: item.area,
+      quantos: porDente ? 1 : Math.max(1, Number(item.quantos || 1)),
+      dentes: porDente ? Math.max(1, Number(item.dentes || 1)) : 0,
+      descricao: item.descricao.trim(),
+      profissionalUid: quem?.id || '', profissionalNome: quem?.nome || '',
+      pacienteNome: item.descricao.trim() || item.area,
+      valor: valorItem,
+    }]);
+    setItem({ ...item, quantos: 1, dentes: 1, descricao: '' });
+  }
+
+  const totalValor = itens.reduce((s, r) => s + Number(r.valor || 0), 0);
+  const totalProc = itens.reduce((s, r) => s + (r.dentes > 0 ? 1 : Number(r.quantos || 1)), 0);
+  const totalDentes = itens.reduce((s, r) => s + Number(r.dentes || 0), 0);
+  const porArea = {};
+  for (const r of itens) porArea[r.area] = (porArea[r.area] || 0) + (r.dentes > 0 ? Number(r.dentes) : Number(r.quantos || 1));
+
+  const alternaEscala = (id) => setEscalados(es => es.includes(id) ? es.filter(x => x !== id) : [...es, id]);
+  const podeSalvar = f.titulo.trim() && f.data && (!antiga || itens.length > 0);
+
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
-      <h2>Nova ação</h2>
+      <h2>{antiga ? '📚 Ação antiga' : 'Nova ação'}</h2>
+      <p className="dica" style={{ marginTop: 0 }}>
+        {antiga
+          ? 'Para registrar mutirões que aconteceram ANTES do aplicativo: preencha data e local e vá lançando o que foi feito em cada especialidade. Ao salvar, o Palmar já monta o balanço.'
+          : 'Preencha os dados, marque a equipe e crie — depois o relatório vai se enchendo sozinho com o que os aplicativos registrarem no dia.'}
+      </p>
       <Campo rotulo="Nome da ação"><input value={f.titulo} onChange={e => setF({ ...f, titulo: e.target.value })} placeholder="Ex.: Mutirão da Comunidade" /></Campo>
       <Campo rotulo="Data"><input type="date" value={f.data} onChange={e => setF({ ...f, data: e.target.value })} /></Campo>
-      <Campo rotulo="Local (opcional)"><input value={f.local} onChange={e => setF({ ...f, local: e.target.value })} placeholder="Ex.: Igreja Central" /></Campo>
-      <p className="dica">Depois de criar, você escala os voluntários e acompanha o relatório em tempo real.</p>
-      <div className="linha-botoes">
+      <Campo rotulo={antiga ? 'Local' : 'Local (opcional)'}><input value={f.local} onChange={e => setF({ ...f, local: e.target.value })} placeholder="Ex.: Igreja Central" /></Campo>
+
+      <h3 style={{ margin: '14px 0 6px' }}>Quem participou ({escalados.length})</h3>
+      <p className="dica" style={{ margin: '0 0 8px' }}>Marque as pessoas — depois dá para abrir cada uma e ver o que ela fez.</p>
+      {equipe.length ? equipe.map(v => (
+        <label key={v.id} className={escalados.includes(v.id) ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
+          <input type="checkbox" checked={escalados.includes(v.id)} onChange={() => alternaEscala(v.id)} />
+          <Bolha nome={v.nome} />
+          <span style={{ flex: 1 }}><strong>{v.nome}</strong>{v.ministerio && <span className="obs" style={{ display: 'block' }}>{v.ministerio}</span>}</span>
+        </label>
+      )) : <p className="dica">Nenhum voluntário ativo cadastrado ainda.</p>}
+
+      {antiga && (
+        <>
+          <h3 style={{ margin: '16px 0 6px' }}>O que foi feito</h3>
+          <p className="dica" style={{ margin: '0 0 8px' }}>Escolha a especialidade, diga quantos (ou quantos dentes) e vá adicionando. Pode repetir a mesma especialidade quantas vezes precisar.</p>
+          <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Campo rotulo="Especialidade">
+              <select value={item.area} onChange={e => setItem({ ...item, area: e.target.value })}>
+                {(todasAreas || []).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </Campo>
+            <Campo rotulo={porDente ? 'Quantos dentes' : 'Quantos procedimentos'}>
+              <input type="number" min="1" value={porDente ? item.dentes : item.quantos}
+                onChange={e => setItem(porDente ? { ...item, dentes: e.target.value } : { ...item, quantos: e.target.value })} />
+            </Campo>
+            <Campo rotulo="Quem fez (opcional)">
+              <select value={item.quemUid} onChange={e => setItem({ ...item, quemUid: e.target.value })}>
+                <option value="">— não informado —</option>
+                {equipe.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+              </select>
+            </Campo>
+            <Campo rotulo="Observação (paciente, detalhe do que foi feito)">
+              <input value={item.descricao} onChange={e => setItem({ ...item, descricao: e.target.value })} placeholder="Ex.: José da Silva — extração do 36" />
+            </Campo>
+            <div className="cartao-topo">
+              <span className="obs">{porDente ? `${unidades} dente(s)` : `${unidades} procedimento(s)`}</span>
+              <strong>{dinheiro(valorItem)}</strong>
+            </div>
+            <button className="btn-mais" onClick={adicionar}>+ Adicionar</button>
+          </div>
+
+          {itens.length > 0 && (
+            <>
+              <h3 style={{ margin: '14px 0 8px' }}>Lançados ({itens.length})</h3>
+              {itens.map(r => (
+                <div className="cartao" key={r.id}>
+                  <div className="cartao-topo"><strong>{r.area}</strong>
+                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <strong>{dinheiro(r.valor)}</strong>
+                      <button className="btn-remover" onClick={() => setItens(is => is.filter(x => x.id !== r.id))}>✕</button>
+                    </span>
+                  </div>
+                  <p className="obs" style={{ margin: 0 }}>
+                    {r.dentes > 0 ? `${r.dentes} dente(s)` : `${r.quantos} procedimento(s)`}
+                    {r.profissionalNome ? ` · ${r.profissionalNome}` : ''}{r.descricao ? ` · ${r.descricao}` : ''}
+                  </p>
+                </div>
+              ))}
+              <h3 style={{ margin: '14px 0 8px' }}>Balanço desta ação</h3>
+              <div className="grade-numeros">
+                <div className="cartao-numero"><strong>{totalProc}</strong><span>procedimentos</span></div>
+                <div className="cartao-numero"><strong>{totalDentes}</strong><span>dentes tratados</span></div>
+                <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas</span></div>
+                <div className="cartao-numero destaque"><strong>{dinheiro(totalValor)}</strong><span>valor produzido</span></div>
+              </div>
+              <div className="cartao">
+                <strong style={{ display: 'block', marginBottom: 4 }}>Por especialidade</strong>
+                {Object.entries(porArea).map(([a, n]) => (
+                  <p className="obs" key={a} style={{ margin: '2px 0' }}>{a}: <b>{n}</b></p>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      <div className="linha-botoes" style={{ marginTop: 10 }}>
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.titulo.trim() || !f.data} onClick={() => aoSalvar(f)}>Criar ação</button>
+        <button className="btn-principal" disabled={!podeSalvar} onClick={() => aoSalvar({
+          ...f, voluntariosUids: escalados,
+          ...(antiga ? { registros: itens, retroativa: true, status: 'encerrada' } : {}),
+        })}>{antiga ? 'Salvar ação antiga' : 'Criar ação'}</button>
       </div>
+      {antiga && !itens.length && <p className="dica">Adicione pelo menos um procedimento para salvar.</p>}
     </div>
   );
 }
 
 // ─── A ação aberta: escala, status e relatório em tempo real ───
-function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], aoNovaNota, aoExcluirNota, aoSalvar, aoExcluir, aoVoltar }) {
+function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], procedimentos = [], aoNovaNota, aoExcluirNota, aoSalvar, aoExcluir, aoVoltar }) {
   const escalados = acao.voluntariosUids || [];
   const alternaEscala = (id) => aoSalvar({ voluntariosUids: escalados.includes(id) ? escalados.filter(x => x !== id) : [...escalados, id] });
+  // Quem está aberto na "ficha da pessoa" (o que ela fez nesta ação)
+  const [vendoPessoa, setVendoPessoa] = useState(null);
+  // Os procedimentos registrados pelos dentistas no dia desta ação
+  const procsDoDia = procedimentos.filter(r => (r.data || isoDe(r.em || r.criadoEm)) === acao.data);
 
   // Relatório do dia da ação (em tempo real, vindo do Semeador/central)
   const doDia = atendimentos.filter(a => isoDe(a.inicio) === acao.data);
   const registros = acao.registros || [];
   const custoAtend = doDia.reduce((s, a) => s + custoAtendimento(a), 0);
   const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
-  const gastosMateriais = movimentos.filter(m => m.acaoId === acao.id && m.delta < 0);
-  const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(m.delta) * Number(m.valorUnit || 0), 0);
+  // Materiais gastos na ação: os vinculados a ela E, para quem retirou sem
+  // vínculo, os do MESMO DIA da ação (é o mutirão daquele dia)
+  const gastosMateriais = movimentos.filter(m => deltaMov(m) < 0
+    && (m.acaoId === acao.id || (!m.acaoId && isoDe(m.em || m.criadoEm) === acao.data)));
+  const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
   const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
+  // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
+  const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
+  const dentesTratados = procsDoDia.reduce((s, r) => s + (r.dentes || []).length, 0)
+    + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
+  const porEspecialidade = (() => {
+    const m = {};
+    for (const a of doDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
+    for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  })();
 
   // Registro manual (para ações passadas ou pacientes fora do fluxo)
   const [novo, setNovo] = useState({ pacienteNome: '', area: todasAreas[0] || '', dentes: 1 });
@@ -1012,37 +1193,150 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
     setNovo({ pacienteNome: '', area: todasAreas[0] || '', dentes: 1 });
   }
 
+  // ── Ficha da pessoa: tudo o que ela fez nesta ação ──
+  if (vendoPessoa) {
+    const v = vendoPessoa;
+    const doDele = doDia.filter(a => a.profissionalUid === v.id);
+    const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
+    const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
+    const materiaisDele = gastosMateriais.filter(m => m.autorUid === v.id);
+    const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
+    const dentesDele = procsDele.reduce((sm, r) => sm + (r.dentes || []).length, 0);
+    const minutos = doDele.reduce((sm, a) => sm + Number(a.duracaoMin || 0), 0);
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={() => setVendoPessoa(null)}><ChevronLeft size={18} /> Voltar</button>
+        <div className="cartao">
+          <div className="cartao-linha">
+            <Bolha nome={v.nome} />
+            <div style={{ flex: 1 }}>
+              <strong>{v.nome}</strong>
+              <p className="obs" style={{ margin: 0 }}>na ação {acao.titulo} · {dataBonita(acao.data)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="grade-numeros">
+          <div className="cartao-numero"><strong>{doDele.length + manuaisDele.length}</strong><span>atendimentos</span></div>
+          <div className="cartao-numero"><strong>{dentesDele}</strong><span>dentes tratados</span></div>
+          <div className="cartao-numero"><strong>{minutos ? `${minutos} min` : '—'}</strong><span>tempo na cadeira</span></div>
+          <div className="cartao-numero destaque"><strong>{dinheiro(valorDele)}</strong><span>valor produzido</span></div>
+        </div>
+
+        {procsDele.length > 0 && (
+          <>
+            <h3 style={{ margin: '14px 0 8px' }}>O que ele(a) registrou</h3>
+            {procsDele.map(r => (
+              <div className="cartao" key={r.id}>
+                <div className="cartao-topo"><strong>{r.pacienteNome}</strong>{r.area && <span className="chip concluído">{r.area}</span>}</div>
+                {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
+                <p className="obs" style={{ margin: '2px 0 0' }}>
+                  {(r.dentes || []).length ? `Dentes: ${r.dentes.join(', ')}` : 'sem dentes marcados'}
+                  {(r.fotoAntesId && r.fotoDepoisId) ? ' · 📷 antes e depois' : ''}
+                </p>
+              </div>
+            ))}
+          </>
+        )}
+        {doDele.length > 0 && (
+          <>
+            <h3 style={{ margin: '14px 0 8px' }}>Atendimentos cronometrados</h3>
+            {doDele.map(a => (
+              <div className="cartao" key={a.id}>
+                <div className="cartao-topo"><strong>{a.pacienteNome}</strong><strong>{dinheiro(custoAtendimento(a))}</strong></div>
+                <p className="obs" style={{ margin: 0 }}>{a.area}{a.duracaoMin ? ` · ${a.duracaoMin} min` : ' · em andamento'}</p>
+              </div>
+            ))}
+          </>
+        )}
+        {manuaisDele.length > 0 && (
+          <>
+            <h3 style={{ margin: '14px 0 8px' }}>Lançamentos manuais</h3>
+            {manuaisDele.map(r => (
+              <div className="cartao" key={r.id}>
+                <div className="cartao-topo"><strong>{r.pacienteNome}</strong><strong>{dinheiro(r.valor)}</strong></div>
+                <p className="obs" style={{ margin: 0 }}>{r.area}{r.dentes > 1 ? ` · ${r.dentes} dentes` : ''}{r.descricao ? ` · ${r.descricao}` : ''}</p>
+              </div>
+            ))}
+          </>
+        )}
+        {materiaisDele.length > 0 && (
+          <>
+            <h3 style={{ margin: '14px 0 8px' }}>Materiais que retirou</h3>
+            {materiaisDele.map(m => (
+              <div className="cartao" key={m.id}>
+                <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+                <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s)</p>
+              </div>
+            ))}
+          </>
+        )}
+        {!doDele.length && !procsDele.length && !manuaisDele.length && (
+          <Vazio texto="Esta pessoa ainda não registrou nada nesta ação." />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
-      <div className="titulo-com-botao"><h2>🌱 {acao.titulo}</h2>
-        <span className={'chip ' + (acao.status === 'iniciada' ? 'em-atendimento' : acao.status === 'encerrada' ? 'concluído' : 'aguardando')}>{acao.status}</span>
+      <div className="titulo-com-botao"><h2>{acao.retroativa ? '📚' : '🌱'} {acao.titulo}</h2>
+        <span className={'chip ' + (acao.status === 'iniciada' ? 'em-atendimento' : acao.status === 'encerrada' ? 'concluído' : 'aguardando')}>{acao.retroativa ? 'antiga' : acao.status}</span>
       </div>
-      <p className="dica" style={{ marginTop: 0 }}>{dataBonita(acao.data)}{acao.local ? ` · ${acao.local}` : ''}</p>
-      <div className="linha-botoes" style={{ marginBottom: 12 }}>
-        {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
-        {acao.status === 'iniciada' && <button className="btn-secundario" onClick={() => aoSalvar({ status: 'encerrada', encerradaEm: new Date() })}>⏹ Encerrar ação</button>}
-      </div>
+      <p className="dica" style={{ marginTop: 0 }}>{dataBonita(acao.data)}{acao.local ? ` · ${acao.local}` : ''}{acao.retroativa ? ' · registro de mutirão anterior ao aplicativo' : ''}</p>
+      {!acao.retroativa && (
+        <div className="linha-botoes" style={{ marginBottom: 12 }}>
+          {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
+          {acao.status === 'iniciada' && <button className="btn-secundario" onClick={() => aoSalvar({ status: 'encerrada', encerradaEm: new Date() })}>⏹ Encerrar ação</button>}
+        </div>
+      )}
 
-      <h3 style={{ margin: '10px 0 8px' }}>Equipe escalada ({escalados.length})</h3>
-      <p className="dica" style={{ margin: '0 0 8px' }}>Marque quem participa desta ação.</p>
-      {equipe.length ? equipe.map(v => (
-        <label key={v.id} className={escalados.includes(v.id) ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
-          <input type="checkbox" checked={escalados.includes(v.id)} onChange={() => alternaEscala(v.id)} />
-          <Bolha nome={v.nome} />
-          <span style={{ flex: 1 }}><strong>{v.nome}</strong>{v.ministerio && <span className="obs" style={{ display: 'block' }}>{v.ministerio}</span>}</span>
-        </label>
-      )) : <p className="dica">Nenhum voluntário ativo para escalar.</p>}
+      <h3 style={{ margin: '10px 0 8px' }}>Equipe da ação ({escalados.length})</h3>
+      <p className="dica" style={{ margin: '0 0 8px' }}>Marque quem participa. Toque no nome de quem está marcado para ver <b>o que essa pessoa fez</b> nesta ação.</p>
+      {equipe.length ? equipe.map(v => {
+        const marcado = escalados.includes(v.id);
+        const doDele = doDia.filter(a => a.profissionalUid === v.id);
+        const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
+        const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
+        const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
+        const quantos = doDele.length + procsDele.length + manuaisDele.length;
+        return (
+          <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
+            <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
+            <Bolha nome={v.nome} />
+            <button type="button" onClick={() => marcado && setVendoPessoa(v)}
+              style={{ flex: 1, textAlign: 'left', border: 'none', background: 'none', font: 'inherit', cursor: marcado ? 'pointer' : 'default', padding: 0, minWidth: 0 }}>
+              <strong>{v.nome}</strong>
+              <span className="obs" style={{ display: 'block' }}>
+                {marcado ? `${quantos} atendimento(s) · ${dinheiro(valorDele)} — toque para ver` : (v.ministerio || 'marque para incluir na ação')}
+              </span>
+            </button>
+            {marcado && <ChevronRight size={18} strokeWidth={2.6} style={{ opacity: 0.5, flex: 'none' }} />}
+          </div>
+        );
+      }) : <p className="dica">Nenhum voluntário ativo para escalar.</p>}
 
-      <h3 style={{ margin: '16px 0 8px' }}>Relatório em tempo real</h3>
+      <h3 style={{ margin: '16px 0 8px' }}>{acao.retroativa ? 'Balanço da ação' : 'Relatório em tempo real'}</h3>
       <div className="grade-numeros">
-        <div className="cartao-numero"><strong>{doDia.length + registros.length}</strong><span>atendimentos</span></div>
-        <div className="cartao-numero"><strong>{dinheiro(custoAtend + custoRegistros)}</strong><span>valor produzido</span></div>
-        <div className="cartao-numero"><strong>{gastosMateriais.length}</strong><span>materiais usados</span></div>
+        <div className="cartao-numero"><strong>{doDia.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
+        <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na ação</span></div>
+        <div className="cartao-numero destaque"><strong>{dinheiro(custoAtend + custoRegistros)}</strong><span>valor produzido</span></div>
         <div className="cartao-numero"><strong>{dinheiro(custoMateriais)}</strong><span>custo de materiais</span></div>
-        <div className="cartao-numero"><strong>{notas.length}</strong><span>notas fiscais</span></div>
-        <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>gasto em notas</span></div>
+        <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>gasto em notas ({notas.length})</span></div>
       </div>
+      <div className="cartao" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px' }}>
+        <strong>💰 Resultado (produzido − gastos)</strong>
+        <b style={{ fontSize: 18, color: (custoAtend + custoRegistros - custoMateriais - gastoNotas) >= 0 ? '#226343' : '#B3402A' }}>
+          {dinheiro(custoAtend + custoRegistros - custoMateriais - gastoNotas)}
+        </b>
+      </div>
+      {porEspecialidade.length > 0 && (
+        <div className="cartao">
+          <strong style={{ display: 'block', marginBottom: 4 }}>Por especialidade</strong>
+          {porEspecialidade.map(([a, n]) => <p className="obs" key={a} style={{ margin: '2px 0' }}>{a}: <b>{n}</b></p>)}
+        </div>
+      )}
 
       {doDia.length > 0 && (
         <>
@@ -1056,7 +1350,24 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         </>
       )}
 
-      <h3 style={{ margin: '14px 0 8px' }}>Adicionar atendimento manual</h3>
+      {procsDoDia.length > 0 && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>Registrado pelos dentistas ({procsDoDia.length})</h3>
+          {procsDoDia.map(r => (
+            <div className="cartao" key={r.id}>
+              <div className="cartao-topo"><strong>{r.pacienteNome}</strong>{r.area && <span className="chip concluído">{r.area}</span>}</div>
+              {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
+              <p className="obs" style={{ margin: '2px 0 0' }}>
+                {r.autorNome ? `por ${r.autorNome}` : ''}
+                {(r.dentes || []).length ? ` · dentes ${r.dentes.join(', ')}` : ''}
+                {(r.fotoAntesId && r.fotoDepoisId) ? ' · 📷 antes e depois' : ''}
+              </p>
+            </div>
+          ))}
+        </>
+      )}
+
+      <h3 style={{ margin: '14px 0 8px' }}>{acao.retroativa ? 'Lançar mais um procedimento' : 'Adicionar atendimento manual'}</h3>
       <p className="dica" style={{ margin: '0 0 8px' }}>Para registrar ações passadas ou algo feito fora do fluxo — o valor sai da tabela de Valores (por dente, quando marcado).</p>
       <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input value={novo.pacienteNome} onChange={e => setNovo({ ...novo, pacienteNome: e.target.value })} placeholder="Nome do paciente" />
@@ -1102,8 +1413,8 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
           <h3 style={{ margin: '14px 0 8px' }}>Materiais usados nesta ação</h3>
           {gastosMateriais.map(m => (
             <div className="cartao" key={m.id}>
-              <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(m.delta) * m.valorUnit)}</strong></div>
-              <p className="obs" style={{ margin: 0 }}>{Math.abs(m.delta)} unidade(s){m.motivo ? ` · ${m.motivo}` : ''}</p>
+              <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+              <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s){m.autorNome ? ` · ${String(m.autorNome).split(' ')[0]}` : ''}{m.motivo ? ` · ${m.motivo}` : ''}</p>
             </div>
           ))}
         </>
@@ -1308,12 +1619,12 @@ function FormItem({ aoCancelar, aoSalvar }) {
 
 function TelaItem({ item, acoes, movimentos, aoSalvar, aoMovimentar, aoExcluir, aoVoltar }) {
   const [mov, setMov] = useState({ qtd: 1, motivo: '', acaoId: '' });
-  const falta = Number(item.quantidade || 0) <= Number(item.minimo || 0);
+  const falta = qtdEstoque(item) <= Number(item.minimo || 0);
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
       <div className="titulo-com-botao"><h2>{item.nome}</h2>
-        <span className={'chip ' + (falta ? 'aguardando' : 'concluído')}>{item.quantidade} {item.unidade}{falta ? ' · FALTA' : ''}</span>
+        <span className={'chip ' + (falta ? 'aguardando' : 'concluído')}>{qtdEstoque(item)} {item.unidade}{falta ? ' · FALTA' : ''}</span>
       </div>
       <p className="dica" style={{ marginTop: 0 }}>{dinheiro(item.valor)} por {item.unidade} · alerta abaixo de {item.minimo} {item.unidade}</p>
 
@@ -1342,7 +1653,7 @@ function TelaItem({ item, acoes, movimentos, aoSalvar, aoMovimentar, aoExcluir, 
       <h3 style={{ margin: '14px 0 8px' }}>Últimas movimentações</h3>
       {movimentos.length ? movimentos.slice(0, 15).map(m => (
         <div className="cartao" key={m.id}>
-          <div className="cartao-topo"><strong>{m.delta > 0 ? '📥 Entrada' : '📤 Saída'}</strong><span className={'chip ' + (m.delta > 0 ? 'concluído' : 'em-atendimento')}>{m.delta > 0 ? '+' : ''}{m.delta}</span></div>
+          <div className="cartao-topo"><strong>{deltaMov(m) > 0 ? '📥 Entrada' : '📤 Saída'}</strong><span className={'chip ' + (deltaMov(m) > 0 ? 'concluído' : 'em-atendimento')}>{deltaMov(m) > 0 ? '+' : ''}{deltaMov(m)}</span></div>
           <p className="obs" style={{ margin: 0 }}>{[m.motivo, m.acaoTitulo && `ação: ${m.acaoTitulo}`].filter(Boolean).join(' · ') || '—'}</p>
         </div>
       )) : <p className="dica">Nenhuma movimentação ainda.</p>}

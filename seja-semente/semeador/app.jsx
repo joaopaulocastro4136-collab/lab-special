@@ -554,6 +554,13 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     const fotoAntesId = await arq(fotoAntes, `Antes — ${rotuloArea}`);
     const fotoDepoisId = await arq(fotoDepois, `Depois — ${rotuloArea}`);
     await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos'), { ...registro, fotoAntesId, fotoDepoisId, criadoEm: serverTimestamp() });
+    // Espelho na coleção RAIZ: é por aqui que o PALMAR (e depois a Colheita)
+    // enxerga o que cada voluntário fez, sem precisar abrir paciente por
+    // paciente. Vai só o resumo — as fotos ficam nos arquivos do paciente.
+    addDoc(collection(fb.db, 'procedimentos-feitos'), {
+      ...registro, pacienteId: t.pacienteId, fotoAntesId, fotoDepoisId,
+      data: dataISO(), criadoEm: serverTimestamp(), em: serverTimestamp(),
+    }).catch(() => {});
     if (t.atendimentoId) updateDoc(doc(fb.db, 'atendimentos', t.atendimentoId), { registrado: true }).catch(() => {});
   }
 
@@ -707,6 +714,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const [telaTriagem, setTelaTriagem] = useState(null); // {triagem:p} | 'entrada' | {area}
   const [telaJogos, setTelaJogos] = useState(false);    // caixinha de Jogos do Perfil
   const [telaProtese, setTelaProtese] = useState(false); // pasta da Prótese
+  const [acoes, setAcoes] = useState([]);                // mutirões (vêm do Palmar)
 
   // O dentista da prótese agenda ele mesmo, na própria agenda
   async function agendarProtese(p, data, hora) {
@@ -777,6 +785,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     setTelaTriagem(null);
   }
   const semTriagem = todosPacientes.filter(p => !p.triagem);
+  // A ação (mutirão) marcada para hoje no Palmar — o que for retirado do
+  // estoque hoje entra no relatório de custos dela
+  const acaoDoDia = acoes.find(a => a.data === dataISO() && a.status !== 'encerrada') || null;
 
   // Agenda do dia: o que a central mandou para hoje, e o que vem depois
   const hojeISO = dataISO();
@@ -852,6 +863,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       query(collection(fb.db, 'chat'), orderBy('criadoEm')),
       snap => setMensagens(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
+    // Ações (mutirões) criadas no Palmar — para vincular a retirada de
+    // material do dia ao relatório de custos daquela ação
+    const paraAcoes = onSnapshot(collection(fb.db, 'acoes'), snap => setAcoes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const paraAtendimentos = onSnapshot(
       query(collection(fb.db, 'atendimentos'), orderBy('inicio', 'desc')),
       snap => setMeusAtendimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -867,7 +881,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       query(collection(fb.db, 'central-usuarios'), orderBy('nome')),
       snap => setCentralGente(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); };
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); paraAcoes(); };
   }, [usuario.uid]);
 
 
@@ -1096,7 +1110,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
             areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
         {aba === 'estoque' && (
-          <Estoque usuario={usuario} fb={CONFIGURADO ? fb : null} />
+          <Estoque usuario={usuario} fb={CONFIGURADO ? fb : null} acaoDoDia={acaoDoDia} />
         )}
         {aba === 'perfil' && (
           <>
