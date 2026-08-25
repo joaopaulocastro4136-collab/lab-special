@@ -77,6 +77,10 @@ export const CSS = `
   main { flex: 1; padding: 18px 16px 92px; max-width: 560px; width: 100%; margin: 0 auto; }
   main.com-chat { display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 78px; flex: 1; min-height: 0; overflow: hidden; }
   main.com-chat .chat, main.com-chat .chat.cheio { height: auto; flex: 1; min-height: 0; }
+  /* Com o chat aberto a tela TODA trava na altura visível: a página não rola
+     nunca — só as mensagens, por dentro. A caixa de escrever fica sempre ali. */
+  .tela-principal.trava-chat { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  .chat-mensagens { min-height: 0; }
   main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; margin: 10px 0 16px; letter-spacing: -0.4px; color: #1C3B27; }
   main h2::after { content: ''; display: block; width: 46px; height: 4px; border-radius: 2px; background: #2F7D4E; margin-top: 9px; }
   .titulo-com-botao h2::after { display: none; }

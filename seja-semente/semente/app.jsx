@@ -1271,7 +1271,7 @@ function TelaPrincipal({ usuario, aoSair }) {
   const semTriagem = pacientes.filter(p => !p.triagem);
 
   return (
-    <div className="tela-principal">
+    <div className={'tela-principal' + (aba === 'chat' ? ' trava-chat' : '')}>
       <header className="compacta">
         <div className="header-titulo">
           <div className="logo-bolha"><LogoApp tamanho={30} /></div>

@@ -766,7 +766,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil }) {
   }
 
   return (
-    <div className="tela-principal">
+    <div className={'tela-principal' + (aba === 'chat' ? ' trava-chat' : '')}>
       <header className="compacta">
         <div className="header-titulo">
           <div className="logo-bolha"><LogoApp tamanho={30} /></div>
