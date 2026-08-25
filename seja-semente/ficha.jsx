@@ -275,21 +275,31 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
             <strong>🦷 O que já foi feito ({procedimentosFeitos.length})</strong>
             {aoRegistrar && <button className="btn-triagem" onClick={aoRegistrar}>+ Registrar</button>}
           </div>
-          {procedimentosFeitos.map(r => (
-            <div key={r.id} className="registro-feito">
-              <div className="registro-topo">
-                {r.area && <span className="chip concluído">{r.area}</span>}
-                <span className="obs">por <b>{(r.autorNome || '').split(' ')[0]}</b>{quandoCurto(r.criadoEm)}</span>
+          {procedimentosFeitos.map(r => {
+            const antes = arquivos.find(a => a.id === r.fotoAntesId);
+            const depois = arquivos.find(a => a.id === r.fotoDepoisId);
+            return (
+              <div key={r.id} className="registro-feito">
+                <div className="registro-topo">
+                  {r.area && <span className="chip concluído">{r.area}</span>}
+                  <span className="obs">por <b>{(r.autorNome || '').split(' ')[0]}</b>{quandoCurto(r.criadoEm)}</span>
+                </div>
+                {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
+                {(antes || depois) && (
+                  <div className="antes-depois-par ver">
+                    {antes && <button className="foto-ad-mini" onClick={() => setVendo(antes)}><img src={antes.dataUrl} alt="Antes" /><span>ANTES</span></button>}
+                    {depois && <button className="foto-ad-mini" onClick={() => setVendo(depois)}><img src={depois.dataUrl} alt="Depois" /><span>DEPOIS</span></button>}
+                  </div>
+                )}
+                {r.dentes?.length > 0 && (
+                  <>
+                    <Arcada marcados={r.dentes} compacta />
+                    <p className="obs" style={{ margin: '2px 0 0' }}>Dentes: {r.dentes.join(', ')}</p>
+                  </>
+                )}
               </div>
-              {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
-              {r.dentes?.length > 0 && (
-                <>
-                  <Arcada marcados={r.dentes} compacta />
-                  <p className="obs" style={{ margin: '2px 0 0' }}>Dentes: {r.dentes.join(', ')}</p>
-                </>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {!procedimentosFeitos.length && <p className="dica" style={{ margin: '6px 0 0' }}>Depois do atendimento, registre aqui o que foi feito — vira o histórico do paciente.</p>}
         </div>
       )}

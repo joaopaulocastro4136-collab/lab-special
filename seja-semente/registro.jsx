@@ -1,40 +1,94 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  REGISTRO DO ATENDIMENTO — a "pasta" do que foi feito com o paciente
 //
-//  Depois que o dentista atende alguém, ele registra aqui: marca os dentes
-//  trabalhados no quadro (mesma arcada da triagem), escolhe o procedimento e
-//  escreve o que foi feito. Vira um cartão na ficha do paciente, com autor e
-//  data. Se o dentista tentar CHAMAR o próximo paciente sem registrar o
-//  anterior, o app lembra na hora (dá para deixar para depois).
-//  Guardado em pacientes/{id}/procedimentos.
+//  Depois que o dentista atende alguém, ele registra aqui: FOTO DO ANTES e
+//  FOTO DO DEPOIS, os dentes trabalhados no quadro (mesma arcada da triagem),
+//  o tipo de procedimento e o que foi feito. Quando o registro vem de um
+//  atendimento, é OBRIGATÓRIO completo — o dentista só consegue chamar o
+//  próximo paciente depois de preencher tudo (o app avisa na tela).
+//  Esses dados alimentam a ficha do paciente e, mais pra frente, os
+//  aplicativos Palmar e Colheita (resultados e gastos para quem investe).
+//  Guardado em pacientes/{id}/procedimentos (fotos entram nos arquivos).
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Camera } from 'lucide-react';
 import { Arcada } from './dentes.jsx';
+import { comprimirImagem } from './ficha.jsx';
 
-export function FormRegistro({ paciente, areas, areaInicial, motivo, aoCancelar, aoSalvar }) {
+function FotoAntesDepois({ rotulo, foto, aoTrocar, aoLimpar }) {
+  return (
+    <div className="foto-ad">
+      <span className="foto-ad-rotulo">{rotulo}</span>
+      {foto ? (
+        <div className="foto-ad-tem">
+          <img src={foto} alt={rotulo} />
+          <button type="button" className="btn-remover" onClick={aoLimpar}>✕</button>
+        </div>
+      ) : (
+        <label className="foto-ad-botao">
+          <Camera size={20} />
+          <span>Tirar / escolher</span>
+          <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              try {
+                let dataUrl = await comprimirImagem(file);
+                if (dataUrl.length > 900000) dataUrl = await comprimirImagem(file, 0.5, 800);
+                aoTrocar(dataUrl);
+              } catch (err) { /* imagem ilegível: ignora */ }
+            }} />
+        </label>
+      )}
+    </div>
+  );
+}
+
+export function FormRegistro({ paciente, areas, areaInicial, motivo, obrigatorio, aoCancelar, aoSalvar }) {
   const [dentes, setDentes] = useState([]);
   const [area, setArea] = useState(areaInicial || '');
   const [descricao, setDescricao] = useState('');
+  const [fotoAntes, setFotoAntes] = useState('');
+  const [fotoDepois, setFotoDepois] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
   const alternar = n => setDentes(ds => ds.includes(n) ? ds.filter(x => x !== n) : [...ds, n]);
-  const podeSalvar = !salvando && (descricao.trim() || dentes.length || area);
+
+  // Obrigatório (veio de um atendimento): antes + depois + tipo + descrição
+  const faltando = [];
+  if (obrigatorio) {
+    if (!fotoAntes) faltando.push('foto do ANTES');
+    if (!fotoDepois) faltando.push('foto do DEPOIS');
+    if (!area) faltando.push('tipo de procedimento');
+    if (!descricao.trim()) faltando.push('o que foi feito');
+  }
+  const podeSalvar = !salvando && (obrigatorio
+    ? faltando.length === 0
+    : (descricao.trim() || dentes.length || area || fotoAntes || fotoDepois));
 
   return (
     <div className="folha">
-      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> {motivo === 'chamar' ? 'Deixar para depois' : 'Voltar'}</button>
+      <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
       <h2>O que foi feito</h2>
       <p className="dica" style={{ marginTop: 0 }}>Paciente: <strong>{paciente?.nome}</strong></p>
       {motivo === 'chamar' && (
-        <div className="faixa-demo" style={{ maxWidth: 'none', textAlign: 'left' }}>
-          ✍️ Antes de chamar o próximo paciente, registre o atendimento de <strong>{paciente?.nome}</strong> — leva um minutinho e fica na pasta dele. (Se preferir, toque em "Deixar para depois".)
+        <div className="erro" style={{ background: '#FBE3DA', border: '1.5px solid #E8A08C', borderRadius: 14, padding: '11px 14px' }}>
+          ⚠️ Para chamar o próximo paciente, primeiro registre o atendimento de <strong>{paciente?.nome}</strong>: foto do antes, foto do depois e o que foi feito.
         </div>
       )}
       {motivo === 'fim' && (
-        <p className="dica">Atendimento encerrado — aproveite para registrar o que foi feito enquanto está fresquinho. 🙂</p>
+        <p className="dica">Atendimento encerrado — registre agora, enquanto está fresquinho. Sem esse registro o app não deixa chamar o próximo paciente. 🙂</p>
       )}
+
+      <div className="cartao">
+        <strong style={{ display: 'block', marginBottom: 6 }}>📷 Antes e depois{obrigatorio ? ' (obrigatório)' : ''}</strong>
+        <div className="antes-depois-par">
+          <FotoAntesDepois rotulo="ANTES" foto={fotoAntes} aoTrocar={setFotoAntes} aoLimpar={() => setFotoAntes('')} />
+          <FotoAntesDepois rotulo="DEPOIS" foto={fotoDepois} aoTrocar={setFotoDepois} aoLimpar={() => setFotoDepois('')} />
+        </div>
+      </div>
 
       <div className="cartao">
         <strong style={{ display: 'block', marginBottom: 6 }}>Dentes trabalhados (toque para marcar)</strong>
@@ -58,13 +112,16 @@ export function FormRegistro({ paciente, areas, areaInicial, motivo, aoCancelar,
           placeholder="Ex.: Restauração em resina no dente 26. Anestesia local. Paciente orientado sobre os cuidados…" />
       </label>
 
+      {obrigatorio && faltando.length > 0 && (
+        <div className="erro">Falta preencher: {faltando.join(' · ')}</div>
+      )}
       {erro && <div className="erro">{erro}</div>}
       <div className="linha-botoes">
-        <button className="btn-secundario" onClick={aoCancelar}>{motivo === 'chamar' ? 'Deixar para depois' : 'Cancelar'}</button>
+        <button className="btn-secundario" onClick={aoCancelar}>Voltar</button>
         <button className="btn-principal" disabled={!podeSalvar} onClick={async () => {
           setSalvando(true); setErro('');
           try {
-            await aoSalvar({ dentes: [...dentes].sort((a, b) => a - b), area, descricao: descricao.trim() });
+            await aoSalvar({ dentes: [...dentes].sort((a, b) => a - b), area, descricao: descricao.trim(), fotoAntes, fotoDepois });
           } catch (e) {
             setErro('Não consegui salvar: ' + (e?.message || e));
             setSalvando(false);

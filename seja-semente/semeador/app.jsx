@@ -526,18 +526,34 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   }
 
   async function salvarRegistro(t, dados) {
+    const { fotoAntes, fotoDepois, ...resto } = dados;
     const registro = {
-      ...dados, pacienteNome: t.pacienteNome || '',
+      ...resto, pacienteNome: t.pacienteNome || '',
       autorUid: usuario.uid, autorNome: usuario.nome || '',
       ...(t.atendimentoId ? { atendimentoId: t.atendimentoId } : {}),
     };
+    const rotuloArea = resto.area || 'atendimento';
     if (!CONFIGURADO) {
-      setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registro, criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
+      const novosArq = [];
+      if (fotoAntes) novosArq.push({ id: 'fa' + Math.floor(Math.random() * 1e9), dataUrl: fotoAntes, legenda: `Antes — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
+      if (fotoDepois) novosArq.push({ id: 'fd' + Math.floor(Math.random() * 1e9), dataUrl: fotoDepois, legenda: `Depois — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
+      if (novosArq.length) setDemoArquivos(a => ({ ...a, [t.pacienteId]: [...novosArq, ...(a[t.pacienteId] || [])] }));
+      setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registro, fotoAntesId: novosArq[0]?.id || '', fotoDepoisId: novosArq[1]?.id || '', criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
       if (t.atendimentoId) setMeusAtendimentos(as => as.map(a => a.id === t.atendimentoId ? { ...a, registrado: true } : a));
       return;
     }
     const { collection, addDoc, doc, updateDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos'), { ...registro, criadoEm: serverTimestamp() });
+    // As fotos do antes/depois entram nos ARQUIVOS do paciente (aparecem na
+    // galeria e na ficha A4); o registro guarda só a referência — assim o
+    // documento nunca estoura o limite do Firestore
+    const arq = async (dataUrl, legenda) => {
+      if (!dataUrl) return '';
+      const ref = await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'arquivos'), { dataUrl, legenda, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: serverTimestamp() });
+      return ref.id;
+    };
+    const fotoAntesId = await arq(fotoAntes, `Antes — ${rotuloArea}`);
+    const fotoDepoisId = await arq(fotoDepois, `Depois — ${rotuloArea}`);
+    await addDoc(collection(fb.db, 'pacientes', t.pacienteId, 'procedimentos'), { ...registro, fotoAntesId, fotoDepoisId, criadoEm: serverTimestamp() });
     if (t.atendimentoId) updateDoc(doc(fb.db, 'atendimentos', t.atendimentoId), { registrado: true }).catch(() => {});
   }
 
@@ -850,7 +866,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   if (telaRegistro) return <FormRegistro
     paciente={todosPacientes.find(p => p.id === telaRegistro.pacienteId) || { nome: telaRegistro.pacienteNome }}
     areas={todasAreas.map(a => a.nome)} areaInicial={telaRegistro.area} motivo={telaRegistro.motivo}
-    aoCancelar={() => { const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }}
+    obrigatorio={!!telaRegistro.atendimentoId}
+    aoCancelar={() => setTelaRegistro(null)}
     aoSalvar={async dados => { await salvarRegistro(telaRegistro, dados); const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }} />;
 
   // Pasta da Prótese: só destrava para quem tem Prótese nos procedimentos
@@ -949,6 +966,14 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       <main className={aba === 'chat' ? 'com-chat' : undefined}>
         {aba === 'inicio' && (
           <>
+            {(() => {
+              const pend = atendimentoSemRegistro();
+              return pend && (
+                <button className="faixa-registro" onClick={() => setTelaRegistro({ pacienteId: pend.pacienteId, pacienteNome: pend.pacienteNome, area: pend.area || '', atendimentoId: pend.id, motivo: 'chamar', depois: null })}>
+                  ⚠️ <b>Falta registrar o atendimento de {pend.pacienteNome}</b> — foto do antes e do depois + o que foi feito. Toque aqui para preencher (sem isso não dá para chamar o próximo paciente).
+                </button>
+              );
+            })()}
             <button className="caixa-entrada" style={{ marginBottom: 10 }} onClick={() => setTelaProtese(true)}>
               <span className="entrada-icone" style={{ background: '#FCEFD2', color: '#C4880C' }}><Crown size={23} strokeWidth={2.2} /></span>
               <span className="entrada-texto">
