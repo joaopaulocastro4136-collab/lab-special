@@ -17,6 +17,7 @@
     "@capacitor/push-notifications": "^8.1.2",
     "esbuild": "^0.28.1",
     "firebase": "^12.16.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

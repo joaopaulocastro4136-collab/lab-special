@@ -331,6 +331,19 @@ Materiais: `{nome, quantidade, unidade, valor, minimo}` — quando
 um movimento `{itemId, itemNome, delta, motivo, acaoId, acaoTitulo,
 valorUnit, em}` (histórico e custo por ação).
 
+### `investidores/{id}` — patrocinadores (a Colheita vai ler)
+`{nome, empresa, telefone, email, acaoId, acaoTitulo, observacoes,
+criadaEm}` — cadastrados no Palmar (aba Equipe). O `email` é o que vai
+identificar o investidor quando o app Colheita nascer, para ele
+acompanhar o que foi feito com o apoio dele.
+
+### `notas/{id}` — notas fiscais (a Colheita vai ler)
+`{acaoId, acaoTitulo, valor, descricao, chave, url, foto, origem,
+criadaPorUid/Nome, criadaEm}` — registradas no Palmar por FOTO (valor
+manual) ou pelo QR da nota (`origem: "qr"`): a `chave` de 44 dígitos
+prova que a nota é real, e quando o QR traz o valor ele entra sozinho.
+O gasto soma no relatório da ação vinculada.
+
 ### `config/procedimentos` (campos novos do Palmar)
 `valores: {nome: número}` — valor de cada procedimento em R$;
 `porDente: {nome: bool}` — quando true, o valor multiplica pelos dentes
