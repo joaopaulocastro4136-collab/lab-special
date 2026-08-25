@@ -349,3 +349,25 @@ O gasto soma no relatório da ação vinculada.
 `porDente: {nome: bool}` — quando true, o valor multiplica pelos dentes
 marcados na triagem do paciente. O financeiro soma os `atendimentos`
 concluídos por esses valores.
+
+## Colheita (aplicativo de quem investiu)
+
+A Colheita (https://seja-semente-colheita.web.app) é SÓ LEITURA: mostra ao
+investidor o que a doação dele virou. Quem entra: e-mail cadastrado em
+`investidores` (pelo Palmar) ou gestor (`palmar-usuarios`).
+
+O que ela lê:
+- `pacientes/{id}/procedimentos/{id}` (via *collection group*) — cada
+  procedimento registrado é um "sorriso": `area`, `descricao`, `dentes`,
+  `pacienteNome`, `autorNome`, `fotoAntesId`, `fotoDepoisId`, `criadoEm`
+- `pacientes/{id}/arquivos/{fotoAntesId|fotoDepoisId}` — as fotos do antes
+  e depois, buscadas sob demanda (o documento do procedimento guarda só a
+  referência)
+- `acoes`, `notas`, `estoque-movimentos` e `config/procedimentos` (valores)
+
+O valor de cada sorriso sai da tabela de `config/procedimentos`
+(`valores` × dentes quando `porDente`). A ação de um sorriso é encontrada
+pela DATA (`acoes.data === dia do procedimento`).
+
+**Privacidade:** a Colheita mostra apenas o PRIMEIRO NOME do paciente — o
+cadastro completo fica com a equipe de saúde.
