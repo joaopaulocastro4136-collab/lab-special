@@ -49,7 +49,7 @@ export const CSS = `
   .separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: #DBE3D8; }
 
   /* ── Estrutura principal ── */
-  .tela-principal { min-height: 100vh; display: flex; flex-direction: column;
+  .tela-principal { min-height: 100vh; min-height: 100dvh; max-height: none; display: flex; flex-direction: column;
     background-color: #F2F4EF;
     background-image:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='%231E4D33' fill-opacity='0.05'%3E%3Cpath d='M50 62 C34 62 22 52 20 34 C38 36 50 44 50 62 Z'/%3E%3Cpath d='M50 48 C50 28 62 16 82 14 C80 34 68 48 50 48 Z'/%3E%3C/g%3E%3Cpath d='M50 92 C50 74 50 60 50 46' stroke='%231E4D33' stroke-opacity='0.05' stroke-width='6' stroke-linecap='round' fill='none'/%3E%3C/svg%3E"),
@@ -75,7 +75,7 @@ export const CSS = `
   .status { font-size: 12.5px; opacity: 0.88; margin-top: 1px; }
   .status.online { opacity: 1; color: #B9F0CD; font-weight: 700; }
   main { flex: 1; padding: 18px 16px 92px; max-width: 560px; width: 100%; margin: 0 auto; }
-  main.com-chat { display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 78px; height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow: hidden; }
+  main.com-chat { display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 78px; flex: 1; min-height: 0; overflow: hidden; }
   main.com-chat .chat, main.com-chat .chat.cheio { height: auto; flex: 1; min-height: 0; }
   main h2 { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; margin: 10px 0 16px; letter-spacing: -0.4px; color: #1C3B27; }
   main h2::after { content: ''; display: block; width: 46px; height: 4px; border-radius: 2px; background: #2F7D4E; margin-top: 9px; }
