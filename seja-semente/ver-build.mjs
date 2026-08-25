@@ -7,7 +7,7 @@ const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const sem = b64({ alg: 'ES256', kid: KEY_ID, typ: 'JWT' }) + '.' + b64({ iss: ISSUER, iat: agora, exp: agora + 1200, aud: 'appstoreconnect-v1' });
 const JWT = sem + '.' + crypto.sign('sha256', Buffer.from(sem), { key: P8, dsaEncoding: 'ieee-p1363' }).toString('base64url');
 const api = async (c) => (await fetch('https://api.appstoreconnect.apple.com' + c, { headers: { Authorization: 'Bearer ' + JWT } })).json();
-for (const [nome, id] of [['Palmar', '6805159974'], ['Colheita', '6805244353']]) {
+for (const [nome, id] of [['Seja semente', '6792989095'], ['Semeador', '6792989190'], ['Palmar', '6805159974'], ['Colheita', '6805244353']]) {
   console.log(`\n══ ${nome} ══`);
   const r = await api(`/v1/builds?filter[app]=${id}&sort=-uploadedDate&limit=3&include=preReleaseVersion`);
   const versoes = Object.fromEntries((r.included || []).map(i => [i.id, i.attributes.version]));
