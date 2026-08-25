@@ -708,7 +708,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           const abrivel = !!x.pacienteId && pacientes.some(p => p.id === x.pacienteId);
           const Tag = abrivel ? 'button' : 'div';
           return (
-            <Tag className="cartao" key={i} onClick={abrivel ? () => setTela({ paciente: x.pacienteId }) : undefined}
+            <Tag className="cartao" key={i} onClick={abrivel ? () => setTela({ paciente: x.pacienteId, voltarPara: { especialidade: area } }) : undefined}
               style={abrivel ? { width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', font: 'inherit' } : undefined}>
               <div className="cartao-topo">
                 <strong>{x.nome || 'Paciente'}</strong>
@@ -740,6 +740,9 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     const v = voluntarios.find(x => x.id === tela.voluntario);
     if (v) return <TelaVoluntario voluntario={v} agendamentos={agendamentos.filter(g => g.profissionalUid === v.id)}
       tempos={temposDo(v)} todasAreas={todasAreas}
+      atendimentos={atendimentos} procedimentos={procedimentos} pacientes={pacientes}
+      custoAtendimento={custoAtendimento}
+      aoAbrirPaciente={(id) => setTela({ paciente: id, voltarPara: { voluntario: v.id } })}
       aoSalvar={(campos) => salvarVoluntario(v, campos)} aoRemover={() => removerVoluntario(v)}
       aoChamar={() => aoChamarStaff({ uid: v.id, nome: v.nome || '' })} aoVoltar={() => setTela(null)} />;
   }
@@ -838,21 +841,35 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
           <>
             {(() => {
               const ranking = equipeAtiva
-                .map(v => ({ v, n: atendimentos.filter(a => a.profissionalUid === v.id && a.fim).length }))
+                .map(v => {
+                  const meus = atendimentos.filter(a => a.profissionalUid === v.id && a.fim);
+                  const procs = procedimentos.filter(r => r.autorUid === v.id);
+                  return {
+                    v, n: meus.length,
+                    valor: meus.reduce((s2, a) => s2 + custoAtendimento(a), 0),
+                    dentes: procs.reduce((s2, r) => s2 + (r.dentes || []).length, 0),
+                  };
+                })
                 .filter(x => x.n > 0)
                 .sort((a, b) => b.n - a.n);
               return ranking.length > 0 && (
                 <>
                   <h2>🏆 Ranking de atendimentos</h2>
+                  <p className="dica" style={{ marginTop: 0 }}>Toque em alguém para ver os pacientes que atendeu e quanto produziu.</p>
                   {ranking.slice(0, 10).map((x, i) => (
-                    <div className="cartao" key={x.v.id} style={i === 0 ? { border: '1.5px solid #F0A912' } : undefined}>
+                    <button className="cartao" key={x.v.id} onClick={() => setTela({ voluntario: x.v.id })}
+                      style={{ width: '100%', textAlign: 'left', font: 'inherit', cursor: 'pointer', border: i === 0 ? '1.5px solid #F0A912' : 'none' }}>
                       <div className="cartao-linha" style={{ alignItems: 'center' }}>
                         <span style={{ fontSize: 22, width: 34, textAlign: 'center' }}>{['🥇', '🥈', '🥉'][i] || `${i + 1}º`}</span>
                         <Bolha nome={x.v.nome} />
-                        <strong style={{ flex: 1 }}>{x.v.nome}</strong>
-                        <span className="chip concluído">{x.n} atendimento{x.n === 1 ? '' : 's'}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ display: 'block' }}>{x.v.nome}</strong>
+                          <span className="obs">{dinheiro(x.valor)} produzido{x.dentes ? ` · ${x.dentes} dente(s)` : ''}</span>
+                        </span>
+                        <span className="chip concluído" style={{ flex: 'none' }}>{x.n} atend.</span>
+                        <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F', flex: 'none' }} />
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </>
               );
@@ -1590,7 +1607,7 @@ function FichaGestao({ paciente: p, fb, procedimentos = [], atendimentos = [], a
 }
 
 // ─── O voluntário aberto: editar, agenda, tempos, remover ───
-function TelaVoluntario({ voluntario: v, agendamentos, tempos, todasAreas, aoSalvar, aoRemover, aoChamar, aoVoltar }) {
+function TelaVoluntario({ voluntario: v, agendamentos, tempos, todasAreas, atendimentos = [], procedimentos = [], pacientes = [], custoAtendimento, aoAbrirPaciente, aoSalvar, aoRemover, aoChamar, aoVoltar }) {
   const [f, setF] = useState({ nome: v.nome || '', telefone: v.telefone || '', ministerio: v.ministerio || '', email: v.email || '' });
   const [editando, setEditando] = useState(false);
   const procs = v.procedimentos || [];
@@ -1598,6 +1615,44 @@ function TelaVoluntario({ voluntario: v, agendamentos, tempos, todasAreas, aoSal
   const porData = {};
   for (const g of agendamentos) (porData[g.data] = porData[g.data] || []).push(g);
   const datas = Object.keys(porData).sort();
+
+  // ── Os números e os pacientes deste voluntário ──
+  const meusAtend = atendimentos.filter(a => a.profissionalUid === v.id && a.fim);
+  const meusProcs = procedimentos.filter(r => r.autorUid === v.id);
+  const valorProduzido = meusAtend.reduce((s2, a) => s2 + (custoAtendimento ? custoAtendimento(a) : 0), 0);
+  const dentesTratados = meusProcs.reduce((s2, r) => s2 + (r.dentes || []).length, 0);
+  const porArea = (() => {
+    const m = {};
+    for (const a of meusAtend) {
+      const k = a.area || 'Outros';
+      m[k] = m[k] || { quantos: 0, total: 0 };
+      m[k].quantos++; m[k].total += custoAtendimento ? custoAtendimento(a) : 0;
+    }
+    return Object.entries(m).sort((a, b) => b[1].total - a[1].total);
+  })();
+  // Junta atendimentos e registros: uma linha por paciente
+  const listaPacientes = (() => {
+    const m = new Map();
+    const poe = (id, nome, area, valor, dentes) => {
+      const chave = id || nome;
+      if (!chave) return;
+      const atual = m.get(chave) || { id, nome, quantos: 0, valor: 0, dentes: 0, areas: [] };
+      atual.quantos++; atual.valor += valor; atual.dentes += dentes;
+      if (area && !atual.areas.includes(area)) atual.areas.push(area);
+      if (!atual.id && id) atual.id = id;
+      m.set(chave, atual);
+    };
+    for (const a of meusAtend) poe(a.pacienteId, a.pacienteNome, a.area, custoAtendimento ? custoAtendimento(a) : 0, 0);
+    for (const r of meusProcs) {
+      const chave = r.pacienteId || r.pacienteNome;
+      if (m.has(chave)) {
+        const atual = m.get(chave);
+        atual.dentes += (r.dentes || []).length;
+        if (r.area && !atual.areas.includes(r.area)) atual.areas.push(r.area);
+      } else poe(r.pacienteId, r.pacienteNome, r.area, 0, (r.dentes || []).length);
+    }
+    return [...m.values()].sort((a, b) => b.valor - a.valor);
+  })();
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
@@ -1628,7 +1683,59 @@ function TelaVoluntario({ voluntario: v, agendamentos, tempos, todasAreas, aoSal
         <button className="btn-secundario" style={{ width: '100%', marginBottom: 10 }} onClick={() => setEditando(true)}><Pencil size={15} /> Editar dados</button>
       )}
 
-      <h3 style={{ margin: '10px 0 8px' }}>Procedimentos que faz</h3>
+      {/* Os números daquele voluntário: quanto ele já produziu para o
+          projeto e quantas pessoas passaram pela cadeira dele */}
+      <div className="grade-numeros">
+        <div className="cartao-numero"><strong>{meusAtend.length}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{listaPacientes.length}</strong><span>pacientes atendidos</span></div>
+        <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
+        <div className="cartao-numero destaque"><strong>{dinheiro(valorProduzido)}</strong><span>valor produzido</span></div>
+      </div>
+      {porArea.length > 0 && (
+        <div className="cartao">
+          <strong style={{ display: 'block', marginBottom: 4 }}>Por especialidade</strong>
+          {porArea.map(([area, x]) => (
+            <p className="obs" key={area} style={{ margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: corDoNome(area), fontWeight: 700 }}>{area}</span>
+              <span>{x.quantos} atend. · <b>{dinheiro(x.total)}</b></span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      <h3 style={{ margin: '14px 0 8px' }}>🧑‍🤝‍🧑 Pacientes que ele(a) atendeu ({listaPacientes.length})</h3>
+      {listaPacientes.length ? (
+        <>
+          <p className="dica" style={{ margin: '0 0 8px' }}>Toque num paciente para abrir a ficha dele — o que foi feito, as fotos e tudo mais.</p>
+          {listaPacientes.map(x => {
+            const p = pacientes.find(y => y.id === x.id);
+            const abrivel = !!p && !!aoAbrirPaciente;
+            const Tag = abrivel ? 'button' : 'div';
+            return (
+              <Tag className="cartao" key={x.id || x.nome}
+                onClick={abrivel ? () => aoAbrirPaciente(x.id) : undefined}
+                style={abrivel ? { width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', font: 'inherit' } : undefined}>
+                <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                  <Bolha nome={x.nome} foto={p?.foto} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{x.nome}</strong>
+                    <p className="obs" style={{ margin: 0 }}>
+                      {x.quantos} atendimento(s){x.areas.length ? ` · ${x.areas.join(', ')}` : ''}
+                      {x.dentes ? ` · ${x.dentes} dente(s)` : ''}
+                    </p>
+                  </div>
+                  <span style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
+                    <strong>{dinheiro(x.valor)}</strong>
+                    {abrivel && <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />}
+                  </span>
+                </div>
+              </Tag>
+            );
+          })}
+        </>
+      ) : <p className="dica">Nenhum paciente atendido por este voluntário ainda.</p>}
+
+      <h3 style={{ margin: '14px 0 8px' }}>Procedimentos que faz</h3>
       <div className="caixas">
         {todasAreas.map(nome => (
           <label key={nome} className={procs.includes(nome) ? 'caixa marcada' : 'caixa'}>
