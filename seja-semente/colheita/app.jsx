@@ -116,7 +116,7 @@ const dinheiro = (v) => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 // aparece pelo PRIMEIRO NOME — a identificação completa fica com a equipe
 const primeiroNome = (n) => String(n || 'Paciente').trim().split(/\s+/)[0];
 // Registro novo já vem com o primeiro nome; registro antigo é cortado aqui
-const nomeDoSorriso = (s) => s.pacientePrimeiro || nomeDoSorriso(s);
+const nomeDoSorriso = (s) => s.pacientePrimeiro || primeiroNome(s.pacienteNome);
 const nomeDeQuemFez = (s) => s.autorPrimeiro || primeiroNome(s.autorNome);
 
 // ─── Modo demonstração ───

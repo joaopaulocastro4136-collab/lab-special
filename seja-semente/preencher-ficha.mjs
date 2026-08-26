@@ -210,19 +210,29 @@ for (const app of APPS) {
     kidsAgeBand: null,
     seventeenPlus: false,
   };
-  const decl = await api('GET', `/v1/apps/${appId}/ageRatingDeclaration`);
-  const declId = decl.json.data?.id;
+  // 3. Categoria, subtítulo e política de privacidade (ficha do app)
+  const infos = await api('GET', `/v1/apps/${appId}/appInfos`);
+  const info = infos.json.data?.[0];
+
+  // O formulário da faixa etária fica pendurado na FICHA (appInfo), não no
+  // aplicativo. Pelo caminho antigo a Apple devolve vazio e nada é gravado.
+  let declId = null;
+  if (info) {
+    const d1 = await api('GET', `/v1/appInfos/${info.id}/ageRatingDeclaration`);
+    declId = d1.json.data?.id || null;
+  }
+  if (!declId) {
+    const d2 = await api('GET', `/v1/apps/${appId}/ageRatingDeclaration`);
+    declId = d2.json.data?.id || null;
+  }
   if (declId) {
     conta(await api('PATCH', `/v1/ageRatingDeclarations/${declId}`, {
       data: { type: 'ageRatingDeclarations', id: declId, attributes: idade },
     }), 'faixa etária');
   } else {
-    console.log('  ✗ faixa etária: a Apple não devolveu o formulário');
+    console.log('  ✗ faixa etária: a Apple não devolveu o formulário por nenhum caminho');
   }
 
-  // 3. Categoria, subtítulo e política de privacidade (ficha do app)
-  const infos = await api('GET', `/v1/apps/${appId}/appInfos`);
-  const info = infos.json.data?.[0];
   if (info) {
     conta(await api('PATCH', `/v1/appInfos/${info.id}`, {
       data: {
