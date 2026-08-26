@@ -261,8 +261,10 @@ export const CSS = `
   .caixa input { accent-color: #2F7D4E; margin: 0; }
   .caixa.marcada { border-color: #2F7D4E; background: #E5F3EA; box-shadow: 0 2px 8px rgba(47,125,78,0.18); }
   .saude { margin-top: 9px !important; font-size: 14px; color: #8A5A16; background: #FFF3D9; border-radius: 11px; padding: 8px 12px; }
-  .linha-botoes { display: flex; gap: 10px; margin-top: 10px; }
+  .linha-botoes { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
   .linha-botoes .btn-principal { flex: 1; max-width: none; }
+  .linha-botoes > .campo { flex: 1 1 150px; min-width: 0; }
+  .linha-botoes > .campo input, .linha-botoes > .campo select { min-width: 0; }
   .btn-secundario { flex: 1; padding: 15px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #55645A; cursor: pointer; }
 
   /* ── Agenda por dia (estilo Google Agenda) ── */
@@ -629,6 +631,14 @@ export const CSS = `
   .caixa-menu-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .caixa-menu-texto strong { font-size: 16px; }
   .caixa-menu-valor { flex: none; font-size: 15.5px; font-weight: 800; color: #226343; }
+
+  /* Número com setinhas (− valor +) */
+  .contador { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .contador input { flex: 1 1 0; min-width: 0; width: 100%; text-align: center; font-weight: 800; font-size: 17px;
+    padding: 13px 4px; border: 1.5px solid #DBE3D8; border-radius: 12px; background: #fff; }
+  .contador-passo { flex: none; width: 40px; height: 48px; border: 1.5px solid #DBE3D8; border-radius: 12px;
+    background: #fff; font-size: 21px; font-weight: 800; color: #226343; cursor: pointer; line-height: 1; padding: 0; }
+  .contador-passo:active { background: #E5F3EA; }
 
   /* Foto do material no estoque e nos relatórios */
   .estoque-foto { flex: none; width: 46px; height: 46px; object-fit: cover; border-radius: 12px; display: block; }

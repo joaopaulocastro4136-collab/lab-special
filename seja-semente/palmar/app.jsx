@@ -17,6 +17,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2, Camera, Images } from 'lucide-react';
 import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { comprimirImagem } from '../ficha.jsx';
+import { SeletorUnidade, Contador } from '../estoque.jsx';
 import { Arcada } from '../dentes.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
 
@@ -2082,20 +2083,62 @@ function FormInvestidor({ investidor, acoes, aoCancelar, aoSalvar, aoExcluir }) 
 }
 
 // ─── Estoque: novo material e material aberto ───
-function FormItem({ aoCancelar, aoSalvar }) {
-  const [f, setF] = useState({ nome: '', quantidade: 0, unidade: 'un', valor: 0, minimo: 0 });
+function FormItem({ item, aoCancelar, aoSalvar }) {
+  const [f, setF] = useState({
+    nome: item?.nome || '', quantidade: item ? qtdEstoque(item) : 0,
+    unidade: item?.unidade || 'un', valor: Number(item?.valor || 0),
+    minimo: Number(item?.minimo || 0), foto: item?.foto || '',
+  });
+  const muda = (k) => (v) => setF(x => ({ ...x, [k]: v }));
+
+  async function pegarFoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let d = await comprimirImagem(file, 0.7, 700);
+      if (d.length > 700000) d = await comprimirImagem(file, 0.5, 500);
+      setF(x => ({ ...x, foto: d }));
+    } catch (err) { /* imagem ilegível */ }
+  }
+
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
-      <h2>Novo material</h2>
+      <h2>{item ? 'Editar material' : 'Novo material'}</h2>
       <Campo rotulo="Nome"><input value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} placeholder="Ex.: Luvas de procedimento" /></Campo>
-      <Campo rotulo="Quantidade atual"><input type="number" min="0" value={f.quantidade} onChange={e => setF({ ...f, quantidade: Number(e.target.value || 0) })} /></Campo>
-      <Campo rotulo="Unidade (un, caixa, tubete…)"><input value={f.unidade} onChange={e => setF({ ...f, unidade: e.target.value })} /></Campo>
-      <Campo rotulo="Valor por unidade (R$)"><input type="number" min="0" step="0.5" value={f.valor} onChange={e => setF({ ...f, valor: Number(e.target.value || 0) })} /></Campo>
-      <Campo rotulo="Quantidade mínima (alerta de falta)"><input type="number" min="0" value={f.minimo} onChange={e => setF({ ...f, minimo: Number(e.target.value || 0) })} /></Campo>
+      <div className="linha-botoes">
+        <Campo rotulo="Quantidade atual"><Contador valor={f.quantidade} aoMudar={muda('quantidade')} /></Campo>
+        <Campo rotulo="Unidade"><SeletorUnidade valor={f.unidade} aoMudar={muda('unidade')} /></Campo>
+      </div>
+      <div className="linha-botoes">
+        <Campo rotulo="Valor por unidade (R$)"><Contador valor={f.valor} aoMudar={muda('valor')} passo={0.5} decimal /></Campo>
+        <Campo rotulo="Repor quando restar"><Contador valor={f.minimo} aoMudar={muda('minimo')} /></Campo>
+      </div>
+      <div className="campo">
+        <span>Foto do material (opcional)</span>
+        {f.foto ? (
+          <div className="foto-item-tem">
+            <img src={f.foto} alt="material" />
+            <button type="button" className="btn-remover" onClick={() => setF({ ...f, foto: '' })}>✕</button>
+          </div>
+        ) : (
+          <div className="foto-ad-vazia">
+            <label className="foto-ad-botao">
+              <Camera size={18} /><span>Tirar foto</span>
+              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pegarFoto} />
+            </label>
+            <label className="foto-ad-botao secundario">
+              <Images size={18} /><span>Da galeria</span>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pegarFoto} />
+            </label>
+          </div>
+        )}
+        <p className="dica" style={{ margin: '6px 0 0' }}>A foto aparece na lista, na retirada e na Colheita — quem apoia vê o que foi gasto.</p>
+      </div>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>Adicionar</button>
+        <button className="btn-principal" disabled={!f.nome.trim()} onClick={() => aoSalvar(f)}>{item ? 'Salvar' : 'Adicionar'}</button>
       </div>
     </div>
   );
@@ -2110,12 +2153,13 @@ function TelaItem({ item, acoes, movimentos, aoSalvar, aoMovimentar, aoExcluir, 
       <div className="titulo-com-botao"><h2>{item.nome}</h2>
         <span className={'chip ' + (falta ? 'aguardando' : 'concluído')}>{qtdEstoque(item)} {item.unidade}{falta ? ' · FALTA' : ''}</span>
       </div>
+      {item.foto && <img src={item.foto} alt={item.nome} style={{ width: '100%', maxWidth: 220, borderRadius: 16, display: 'block', marginBottom: 10 }} />}
       <p className="dica" style={{ marginTop: 0 }}>{dinheiro(item.valor)} por {item.unidade} · alerta abaixo de {item.minimo} {item.unidade}</p>
 
       <h3 style={{ margin: '10px 0 8px' }}>Movimentar</h3>
       <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input type="number" min="1" style={{ width: 90 }} value={mov.qtd} onChange={e => setMov({ ...mov, qtd: Math.max(1, Number(e.target.value || 1)) })} />
+          <Contador valor={mov.qtd} aoMudar={v => setMov({ ...mov, qtd: Math.max(1, Number(v || 1)) })} minimo={1} />
           <input style={{ flex: 1 }} value={mov.motivo} onChange={e => setMov({ ...mov, motivo: e.target.value })} placeholder="Motivo (ex.: mutirão, compra…)" />
         </div>
         <select value={mov.acaoId} onChange={e => setMov({ ...mov, acaoId: e.target.value })}>
