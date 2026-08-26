@@ -67,6 +67,47 @@ function lerValor(texto) {
   return isNaN(n) ? 0 : n;
 }
 
+// ─── Peças compartilhadas dos formulários de material ───
+// As unidades que aparecem no seletor (dá para digitar outra também)
+export const UNIDADES = ['un', 'caixa', 'pacote', 'tubete', 'frasco', 'rolo', 'par', 'kit', 'ampola', 'seringa', 'kg', 'litro'];
+
+// Unidade: uma listinha com setinha, em vez de campo em branco
+export function SeletorUnidade({ valor, aoMudar }) {
+  const [outra, setOutra] = useState(valor && !UNIDADES.includes(valor));
+  if (outra) return (
+    <span style={{ display: 'flex', gap: 6 }}>
+      <input style={{ flex: 1, minWidth: 0 }} value={valor} onChange={e => aoMudar(e.target.value)} placeholder="digite a unidade" autoFocus />
+      <button type="button" className="btn-remover" onClick={() => { setOutra(false); aoMudar('un'); }}>✕</button>
+    </span>
+  );
+  return (
+    <select value={valor || 'un'} onChange={e => {
+      if (e.target.value === '__outra') { setOutra(true); aoMudar(''); return; }
+      aoMudar(e.target.value);
+    }}>
+      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+      <option value="__outra">outra…</option>
+    </select>
+  );
+}
+
+// Número com setinhas: toca no − e no + ou digita direto
+export function Contador({ valor, aoMudar, passo = 1, minimo = 0, decimal }) {
+  const n = Number(valor || 0);
+  const arruma = (x) => decimal ? Math.round(Math.max(minimo, x) * 100) / 100 : Math.max(minimo, Math.round(x));
+  return (
+    <span className="contador">
+      <button type="button" className="contador-passo" onClick={() => aoMudar(arruma(n - passo))} aria-label="Diminuir">−</button>
+      <input value={valor} inputMode={decimal ? 'decimal' : 'numeric'}
+        onChange={e => {
+          const t = e.target.value.replace(decimal ? /[^\d.,]/g : /\D/g, '').replace(',', '.');
+          aoMudar(t === '' ? 0 : (decimal ? Number(t) || 0 : Number(t)));
+        }} />
+      <button type="button" className="contador-passo" onClick={() => aoMudar(arruma(n + passo))} aria-label="Aumentar">+</button>
+    </span>
+  );
+}
+
 // Formulário de item novo — a central preenche tudo; o voluntário só o básico
 function NovoItem({ central, aoAdicionar }) {
   const [aberto, setAberto] = useState(false);
@@ -82,13 +123,13 @@ function NovoItem({ central, aoAdicionar }) {
       <strong style={{ display: 'block', marginBottom: 8 }}>Novo item</strong>
       <label className="campo"><span>Nome do material</span><input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Luva de procedimento M" /></label>
       <div className="linha-botoes">
-        <label className="campo" style={{ flex: 1 }}><span>Quantidade</span><input value={qtd} onChange={e => setQtd(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="0" /></label>
-        <label className="campo" style={{ flex: 1 }}><span>Unidade</span><input value={unidade} onChange={e => setUnidade(e.target.value)} placeholder="caixa, un, pacote…" /></label>
+        <div className="campo" style={{ flex: 1 }}><span>Quantidade</span><Contador valor={qtd || 0} aoMudar={v => setQtd(String(v))} /></div>
+        <div className="campo" style={{ flex: 1 }}><span>Unidade</span><SeletorUnidade valor={unidade || 'un'} aoMudar={setUnidade} /></div>
       </div>
       {central && (
         <div className="linha-botoes">
-          <label className="campo" style={{ flex: 1 }}><span>Valor por unidade (R$)</span><input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="Ex.: 24,90" /></label>
-          <label className="campo" style={{ flex: 1 }}><span>Repor quando restar</span><input value={minimo} onChange={e => setMinimo(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ex.: 5" /></label>
+          <div className="campo" style={{ flex: 1 }}><span>Valor por unidade (R$)</span><Contador valor={valor || 0} aoMudar={v => setValor(String(v))} passo={0.5} decimal /></div>
+          <div className="campo" style={{ flex: 1 }}><span>Repor quando restar</span><Contador valor={minimo || 0} aoMudar={v => setMinimo(String(v))} /></div>
         </div>
       )}
       <div className="campo">
@@ -117,9 +158,9 @@ function EditarItem({ item, aoSalvar, aoFechar }) {
     <div className="estoque-mexe" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
       <label className="campo"><span>Nome</span><input value={nome} onChange={e => setNome(e.target.value)} /></label>
       <div className="linha-botoes">
-        <label className="campo" style={{ flex: 1 }}><span>Unidade</span><input value={unidade} onChange={e => setUnidade(e.target.value)} placeholder="caixa, un…" /></label>
-        <label className="campo" style={{ flex: 1 }}><span>Valor (R$)</span><input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="24,90" /></label>
-        <label className="campo" style={{ flex: 1 }}><span>Mínimo</span><input value={minimo} onChange={e => setMinimo(e.target.value.replace(/\D/g, ''))} inputMode="numeric" /></label>
+        <div className="campo" style={{ flex: 1 }}><span>Unidade</span><SeletorUnidade valor={unidade || 'un'} aoMudar={setUnidade} /></div>
+        <div className="campo" style={{ flex: 1 }}><span>Valor (R$)</span><Contador valor={valor || 0} aoMudar={v => setValor(String(v))} passo={0.5} decimal /></div>
+        <div className="campo" style={{ flex: 1 }}><span>Mínimo</span><Contador valor={minimo || 0} aoMudar={v => setMinimo(String(v))} /></div>
       </div>
       <div className="campo">
         <span>Foto do material (opcional)</span>
