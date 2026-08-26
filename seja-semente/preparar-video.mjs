@@ -54,6 +54,22 @@ console.log(baldes.length ? `  Já ligados ao Firebase: ${baldes.join(', ')}` : 
 const BALDE = baldes.find(b => b.startsWith(PROJETO)) || `${PROJETO}.firebasestorage.app`;
 
 if (!baldes.includes(BALDE)) {
+  // O depósito em si pode nem existir ainda — cria antes de ligar
+  const existe = await pedir('GET', `https://storage.googleapis.com/storage/v1/b/${BALDE}`);
+  if (existe.status !== 200) {
+    const cria = await pedir('POST', `https://storage.googleapis.com/storage/v1/b?project=${PROJETO}`, {
+      name: BALDE,
+      location: 'SOUTHAMERICA-EAST1',
+      storageClass: 'STANDARD',
+      iamConfiguration: { uniformBucketLevelAccess: { enabled: true } },
+    });
+    console.log(cria.status === 200
+      ? `  ✓ ${BALDE} criado`
+      : `  ✗ não deu para criar (${cria.status}): ${JSON.stringify(cria.json.error?.message || cria.json).slice(0, 250)}`);
+    await new Promise(r => setTimeout(r, 5000));
+  } else {
+    console.log(`  ${BALDE} já existe`);
+  }
   const liga = await pedir('POST', `https://firebasestorage.googleapis.com/v1beta/projects/${PROJETO}/buckets/${BALDE}:addFirebase`);
   console.log(liga.status === 200
     ? `  ✓ ${BALDE} ligado ao Firebase`
