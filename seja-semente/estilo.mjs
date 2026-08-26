@@ -619,6 +619,24 @@ export const CSS = `
   .linha-conta > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .linha-conta-valor { flex: none; display: flex; align-items: center; gap: 6px; font-size: 17px; font-weight: 800; color: #226343; }
 
+  /* ─── Menu da ação: cada assunto numa caixinha que abre a sua página ─── */
+  .menu-acao { display: flex; flex-direction: column; gap: 10px; }
+  .caixa-menu { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit;
+    border: 1.5px solid #EAEFE8; cursor: pointer; padding: 14px; }
+  .caixa-menu:active { transform: scale(0.985); }
+  .caixa-menu-icone { flex: none; width: 44px; height: 44px; border-radius: 14px; background: #E9F5EE;
+    display: flex; align-items: center; justify-content: center; font-size: 21px; }
+  .caixa-menu-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .caixa-menu-texto strong { font-size: 16px; }
+  .caixa-menu-valor { flex: none; font-size: 15.5px; font-weight: 800; color: #226343; }
+
+  /* Foto do material no estoque e nos relatórios */
+  .estoque-foto { flex: none; width: 46px; height: 46px; object-fit: cover; border-radius: 12px; display: block; }
+  .mov-foto { flex: none; width: 30px; height: 30px; object-fit: cover; border-radius: 8px; display: block; }
+  .foto-item-tem { position: relative; display: inline-block; }
+  .foto-item-tem img { width: 110px; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
+  .foto-item-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+
   /* Dia de mutirão (ação criada no Palmar): a agenda abre nele */
   .sem-dia.de-acao { background: #E9F5EE; box-shadow: inset 0 -3px 0 #37935B; }
   .sem-dia.de-acao::after { content: '🌱'; display: block; font-size: 10px; line-height: 1; margin-top: 1px; }

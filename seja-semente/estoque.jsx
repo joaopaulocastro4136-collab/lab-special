@@ -11,6 +11,42 @@
 //  Coleções: estoque/{item} e estoque-movimentos (o extrato).
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect } from 'react';
+import { Camera, Images } from 'lucide-react';
+import { comprimirImagem } from './ficha.jsx';
+
+// Foto do material (opcional): dá para tirar na hora ou pegar da galeria.
+// Ela aparece na lista, na retirada e nos relatórios da Colheita — assim
+// quem apoia o projeto vê o que foi comprado e gasto.
+function FotoDoItem({ foto, aoTrocar, aoLimpar }) {
+  const pegar = async e => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let d = await comprimirImagem(file, 0.7, 700);
+      if (d.length > 700000) d = await comprimirImagem(file, 0.5, 500);
+      aoTrocar(d);
+    } catch (err) { /* imagem ilegível */ }
+  };
+  if (foto) return (
+    <div className="foto-item-tem">
+      <img src={foto} alt="material" />
+      <button type="button" className="btn-remover" onClick={aoLimpar}>✕</button>
+    </div>
+  );
+  return (
+    <div className="foto-ad-vazia">
+      <label className="foto-ad-botao">
+        <Camera size={18} /><span>Tirar foto</span>
+        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pegar} />
+      </label>
+      <label className="foto-ad-botao secundario">
+        <Images size={18} /><span>Da galeria</span>
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pegar} />
+      </label>
+    </div>
+  );
+}
 
 function quando(v) {
   const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null);
@@ -39,6 +75,7 @@ function NovoItem({ central, aoAdicionar }) {
   const [minimo, setMinimo] = useState('');
   const [unidade, setUnidade] = useState('');
   const [valor, setValor] = useState('');
+  const [foto, setFoto] = useState('');
   if (!aberto) return <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setAberto(true)}>+ Adicionar item ao estoque</button>;
   return (
     <div className="cartao" style={{ marginBottom: 10 }}>
@@ -54,11 +91,15 @@ function NovoItem({ central, aoAdicionar }) {
           <label className="campo" style={{ flex: 1 }}><span>Repor quando restar</span><input value={minimo} onChange={e => setMinimo(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Ex.: 5" /></label>
         </div>
       )}
+      <div className="campo">
+        <span>Foto do material (opcional)</span>
+        <FotoDoItem foto={foto} aoTrocar={setFoto} aoLimpar={() => setFoto('')} />
+      </div>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={() => setAberto(false)}>Cancelar</button>
         <button className="btn-principal" disabled={!nome.trim()} onClick={() => {
-          aoAdicionar({ nome: nome.trim(), qtd: Number(qtd || 0), minimo: Number(minimo || 0), unidade: unidade.trim(), valor: central ? lerValor(valor) : 0 });
-          setNome(''); setQtd(''); setMinimo(''); setUnidade(''); setValor(''); setAberto(false);
+          aoAdicionar({ nome: nome.trim(), qtd: Number(qtd || 0), minimo: Number(minimo || 0), unidade: unidade.trim(), valor: central ? lerValor(valor) : 0, foto });
+          setNome(''); setQtd(''); setMinimo(''); setUnidade(''); setValor(''); setFoto(''); setAberto(false);
         }}>Adicionar</button>
       </div>
     </div>
@@ -71,6 +112,7 @@ function EditarItem({ item, aoSalvar, aoFechar }) {
   const [unidade, setUnidade] = useState(item.unidade || '');
   const [valor, setValor] = useState(item.valor ? String(item.valor).replace('.', ',') : '');
   const [minimo, setMinimo] = useState(item.minimo ? String(item.minimo) : '');
+  const [foto, setFoto] = useState(item.foto || '');
   return (
     <div className="estoque-mexe" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
       <label className="campo"><span>Nome</span><input value={nome} onChange={e => setNome(e.target.value)} /></label>
@@ -79,10 +121,14 @@ function EditarItem({ item, aoSalvar, aoFechar }) {
         <label className="campo" style={{ flex: 1 }}><span>Valor (R$)</span><input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" placeholder="24,90" /></label>
         <label className="campo" style={{ flex: 1 }}><span>Mínimo</span><input value={minimo} onChange={e => setMinimo(e.target.value.replace(/\D/g, ''))} inputMode="numeric" /></label>
       </div>
+      <div className="campo">
+        <span>Foto do material (opcional)</span>
+        <FotoDoItem foto={foto} aoTrocar={setFoto} aoLimpar={() => setFoto('')} />
+      </div>
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoFechar}>Cancelar</button>
         <button className="btn-principal" style={{ maxWidth: 'none', flex: 1 }} disabled={!nome.trim()} onClick={() => {
-          aoSalvar({ nome: nome.trim(), unidade: unidade.trim(), valor: lerValor(valor), minimo: Number(minimo || 0) });
+          aoSalvar({ nome: nome.trim(), unidade: unidade.trim(), valor: lerValor(valor), minimo: Number(minimo || 0), foto });
           aoFechar();
         }}>Salvar</button>
       </div>
@@ -146,7 +192,7 @@ export function Estoque({ usuario, fb, central, acaoDoDia }) {
       itemId: item.id, itemNome: item.nome, unidade: un, tipo, qtd,
       // `delta` e `motivo` são o dialeto do Palmar (ele soma Math.abs(delta))
       delta, motivo: tipo === 'saida' ? 'retirada pelo voluntário' : 'entrada',
-      valorUnit: Number(item.valor || 0),
+      valorUnit: Number(item.valor || 0), itemFoto: item.foto || '',
       // vincula à ação (mutirão) do dia, quando houver — assim o material
       // entra no relatório de custos daquela ação lá no Palmar
       acaoId: acaoDoDia?.id || '', acaoTitulo: acaoDoDia?.titulo || '',
@@ -220,7 +266,8 @@ export function Estoque({ usuario, fb, central, acaoDoDia }) {
         return (
           <div className="cartao estoque-item" key={i.id}>
             <div className="estoque-topo">
-              <div>
+              {i.foto && <img className="estoque-foto" src={i.foto} alt={i.nome} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <strong>{i.nome}</strong>
                 <p className="obs" style={{ margin: 0 }}>
                   <b className={baixo ? 'estoque-qtd baixo' : 'estoque-qtd'}>{qtdDe(i)}</b> {i.unidade || 'un'} em estoque
@@ -259,6 +306,7 @@ export function Estoque({ usuario, fb, central, acaoDoDia }) {
           <strong style={{ display: 'block', marginBottom: 6 }}>📜 Últimas movimentações</strong>
           {movimentos.map(m => (
             <div key={m.id} className="estoque-mov">
+              {m.itemFoto && <img className="mov-foto" src={m.itemFoto} alt={m.itemNome} />}
               <span className={m.tipo === 'saida' ? 'mov-sinal saida' : 'mov-sinal entrada'}>{m.tipo === 'saida' ? '−' : '+'}{m.qtd}</span>
               <span className="mov-texto"><b>{m.itemNome}</b> · {(m.autorNome || '').split(' ')[0]}{central && (m.valorUnit || 0) > 0 && m.tipo === 'saida' ? ` · ${reais(m.qtd * m.valorUnit)}` : ''}</span>
               <span className="mov-quando">{quando(m.criadoEm)}</span>
