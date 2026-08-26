@@ -12,6 +12,9 @@ on:
       so_conferir:
         description: 'So conferir, sem mexer em nada (1 = sim)'
         default: ''
+      so_listar:
+        description: 'So listar o que a Apple aceita (1 = sim)'
+        default: ''
 
 jobs:
   ativar:
@@ -28,4 +31,5 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           SO_CONFERIR: ${{ github.event.inputs.so_conferir }}
+          SO_LISTAR: ${{ github.event.inputs.so_listar }}
         run: node ${{ github.event.inputs.script || 'ativar-apple.mjs' }}
