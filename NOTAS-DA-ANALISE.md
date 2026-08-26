@@ -3,13 +3,29 @@
 O que colar em **App Store Connect → a versão → App Review Information → Notes**,
 um texto por aplicativo. Está em inglês porque é a língua da análise.
 
-Antes de enviar, confira:
+**A maior parte disto já está preenchida por robô.** Os textos abaixo são o
+que o robô `seja-semente/preencher-ficha.mjs` grava nas notas da análise — estão
+aqui para consulta e para editar quando mudar alguma coisa.
 
-- [ ] Conta de demonstração preenchida (**Sign-in required** ligado) — as contas abaixo já estão criadas e com o papel liberado
-- [ ] Vídeo curto anexado mostrando: entrar → chamar alguém → o outro aparelho tocando bloqueado → atender e **falar** → apagar a conta
-- [ ] Preço **Free** nos quatro
-- [ ] Faixa etária respondida
-- [ ] Link da política de privacidade preenchido
+O que o robô já deixou pronto nos quatro:
+
+- [x] Conta de demonstração (**Sign-in required** ligado), já criada e com o papel liberado
+- [x] Categoria, direitos de conteúdo e faixa etária
+- [x] Subtítulo, descrição, palavras de busca, endereço de suporte
+- [x] Política de privacidade
+- [x] Fotos de tela (5 por aplicativo, 1290×2796)
+- [x] Preço **Free** nos quatro
+- [x] Versão **8.0** — acima de tudo o que já foi para o TestFlight
+
+O que ainda depende de gente:
+
+- [ ] **Telefone de contato da análise** — a Apple exige um número de verdade
+- [ ] Vídeo curto mostrando: entrar → chamar alguém → o outro aparelho tocando bloqueado → atender e **falar** → apagar a conta (opcional, mas ajuda muito na regra da ligação)
+
+**Sobre a categoria:** os quatro entram como ferramenta de trabalho
+(Produtividade, Negócios, Estilo de Vida), não como "Medicina". É o que eles de
+fato são, e evita a regra 5.1.1(ix), que exige pessoa jurídica para aplicativo
+de área regulada — o envio é por conta pessoal.
 
 ---
 
