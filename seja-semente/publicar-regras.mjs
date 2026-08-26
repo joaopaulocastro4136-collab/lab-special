@@ -93,7 +93,13 @@ service cloud.firestore {
     match /acoes/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
     match /notas/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
     match /estoque-movimentos/{doc}   { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
-    match /depoimentos/{doc}          { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
+    // Depoimento é vídeo de gente. A equipe vê todos; quem apoia o projeto só
+    // vê os que o paciente AUTORIZOU — e tem que ser autorizado == true: um
+    // depoimento antigo, sem o campo, não vale como permissão.
+    match /depoimentos/{doc} {
+      allow read: if ehEquipe() || (ehApoiador() && resource.data.autorizado == true);
+      allow write: if ehEquipe();
+    }
     match /config/{doc}               { allow read: if entrou(); allow write: if ehCentral() || ehGestor(); }
 
     // ─── Quem é da casa ───

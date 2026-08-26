@@ -343,13 +343,20 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta, a
   // Escutas em tempo real (só leitura)
   useEffect(() => {
     if (!CONFIGURADO) return;
-    const { collection, collectionGroup, doc, onSnapshot, query, orderBy, getDoc } = fb.fns;
+    const { collection, collectionGroup, doc, onSnapshot, query, orderBy, where, getDoc } = fb.fns;
     const escuta = (col, ord, poe) => onSnapshot(query(collection(fb.db, col), orderBy(...ord)), s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    // Depoimento é vídeo de gente. Só pede ao banco os AUTORIZADOS: antes o
+    // aplicativo baixava todos e escondia os outros na tela — quem soubesse
+    // olhar o tráfego via o vídeo de quem nunca autorizou. Sem ordenar aqui
+    // (ordenar junto com o filtro exigiria um índice novo); a ordem sai na tela.
+    const escutaAutorizados = (poe) => onSnapshot(
+      query(collection(fb.db, 'depoimentos'), where('autorizado', '==', true)),
+      s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const soltar = [
       escuta('acoes', ['data', 'desc'], setAcoes),
       escuta('notas', ['criadaEm', 'desc'], setNotas),
       // A voz de quem foi atendido — o que abre o Plante Sorriso
-      escuta('depoimentos', ['criadoEm', 'desc'], setDepoimentos),
+      escutaAutorizados(setDepoimentos),
       escuta('estoque-movimentos', ['em', 'desc'], setMovimentos),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ valores: {}, porDente: {}, ...snap.data() });
@@ -424,7 +431,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta, a
   // Só depoimentos AUTORIZADOS aparecem para quem apoia o projeto. Tem que
   // ser === true: um depoimento antigo, sem o campo, não vale como permissão.
   const depoimentosVisiveis = depoimentos.filter(d => d.autorizado === true)
-    .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)));
+    .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)))
+    .sort((a, b) => String(isoDe(b.criadoEm)).localeCompare(String(isoDe(a.criadoEm))));
 
   const pessoas = new Set(sorrisosVisiveis.map(s => s.pacienteId)).size;
   const produzido = sorrisosVisiveis.reduce((s, x) => s + valorDoSorriso(x), 0);
