@@ -11,7 +11,7 @@
 import crypto from 'crypto';
 
 const APPS = [
-  { bundle: 'com.sejasemente.central',  perfil: 'SpecialClinic AppStore', pasta: 'nativo-central' },
+  { bundle: 'com.sejasemente.central',  perfil: 'SejaSemente AppStore', pasta: 'nativo-central' },
   { bundle: 'com.sejasemente.semeador', perfil: 'Semeador AppStore',      pasta: 'nativo-semeador' },
   { bundle: 'com.sejasemente.palmar',   perfil: 'Palmar AppStore',        pasta: 'nativo-palmar' },
   { bundle: 'com.sejasemente.colheita', perfil: 'Colheita AppStore',      pasta: 'nativo-colheita' },
@@ -36,7 +36,7 @@ const api = async (metodo, caminho, corpo) => {
 };
 
 console.log('══ 1. Permissão na Apple ══');
-const certRef = await api('GET', `/profiles?filter[name]=${encodeURIComponent('SpecialClinic AppStore')}&include=certificates&fields[certificates]=serialNumber`);
+const certRef = await api('GET', '/profiles?filter[profileType]=IOS_APP_STORE&include=certificates&fields[certificates]=serialNumber&limit=1');
 const certIds = ((certRef.json.data || [])[0]?.relationships?.certificates?.data || []).map(c => c.id);
 if (!certIds.length) { console.log('✗ certificado de distribuição não encontrado'); process.exit(1); }
 
