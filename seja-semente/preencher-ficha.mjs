@@ -16,7 +16,7 @@ const VERSAO = process.env.VERSAO || '8.0';
 const ONG = {
   cnpj: '34.296.342/0001-12',
   email: 'sejasemente@gmail.com',
-  telefone: '+55 11 99999-9999',
+  telefone: '+55 74 98100-4444',
   nome: 'Joao Paulo',
   sobrenome: 'Castro',
   site: 'https://www.sejasemente.org',

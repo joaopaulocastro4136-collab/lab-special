@@ -227,7 +227,10 @@ function TelaLogin({ aoEntrarDemo }) {
       setCarregando(false);
       const m = String(e?.message || e);
       if (m.includes('cancel')) return;
-      setErro('A Apple não entrou — código: ' + (e?.code || '?'));
+      // Mostrar o motivo INTEIRO. Só o código não dizia nada: erro de plugin
+      // costuma vir sem código, e aparecia "código: ?" na tela — sem isso não
+      // dá para saber se o problema é a permissão, o provedor ou o aparelho.
+      setErro('A Apple não entrou. Motivo: ' + (e?.code ? e.code + ' · ' : '') + m.slice(0, 220));
     }
   }
 
