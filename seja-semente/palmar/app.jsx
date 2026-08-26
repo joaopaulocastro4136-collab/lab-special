@@ -585,21 +585,44 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
   }
   const emFalta = estoque.filter(i => qtdEstoque(i) <= Number(i.minimo || 0));
 
-  // ─── Investidores (patrocinadores — a Colheita vai ler isto depois) ───
+  // ─── Investidores (patrocinadores — é a Colheita que lê isto) ───
+  // O e-mail é a chave da porta da Colheita. Um espaço a mais ou uma letra
+  // maiúscula deixava a pessoa trancada para sempre no "Quase lá", pedindo
+  // justamente o e-mail que já estava cadastrado. Por isso: sempre limpo e
+  // em minúsculas, aqui e lá.
+  const emailLimpo = (e) => String(e || '').trim().toLowerCase();
+
+  // A chave de entrada fica num documento com o nome do e-mail. É esse
+  // documento que a Colheita consegue ler (e só o dela), sem precisar
+  // vasculhar a lista inteira de investidores.
+  function abrirPorta(email, dados) {
+    if (!CONFIGURADO || !email) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'apoiadores', email), { nome: dados?.nome || '', desde: serverTimestamp() }, { merge: true }).catch(() => {});
+  }
+  function fecharPorta(email) {
+    if (!CONFIGURADO || !email) return;
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'apoiadores', email)).catch(() => {});
+  }
+
   async function criarInvestidor(f) {
     const acao = acoes.find(a => a.id === f.acaoId);
-    const dados = { ...f, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...f, email: emailLimpo(f.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => [...is, { id: 'i' + Math.floor(Math.random() * 1e9), ...dados, criadaEm: new Date() }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'investidores'), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(collection(fb.db, 'investidores')), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function salvarInvestidor(i, campos) {
     const acao = acoes.find(a => a.id === campos.acaoId);
-    const dados = { ...campos, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...campos, email: emailLimpo(campos.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => is.map(x => x.id === i.id ? { ...x, ...dados } : x)); setTela(null); return; }
     const { doc, updateDoc } = fb.fns;
     updateDoc(doc(fb.db, 'investidores', i.id), dados).catch(() => {});
+    // Trocou o e-mail? A porta antiga fecha e a nova abre
+    if (emailLimpo(i.email) && emailLimpo(i.email) !== dados.email) fecharPorta(emailLimpo(i.email));
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function excluirInvestidor(i) {
@@ -607,6 +630,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
     if (!CONFIGURADO) { setInvestidores(is => is.filter(x => x.id !== i.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'investidores', i.id)).catch(() => {});
+    fecharPorta(emailLimpo(i.email));
   }
 
   // ─── Notas fiscais (foto ou QR — a Colheita vai ler isto depois) ───
@@ -624,14 +648,28 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
   }
 
-  // ─── Código de acesso ao Palmar (gerado no Perfil) ───
+  // ─── Códigos de convite (gerados no Perfil) ───
+  //   PM- abre o PALMAR (outro gestor)
+  //   CH- abre a COLHEITA (quem apoia o projeto e quer ver a prestação
+  //       de contas sem precisar ser cadastrado pelo e-mail)
   const [codigoGerado, setCodigoGerado] = useState('');
+  const [codigoColheita, setCodigoColheita] = useState('');
+  function sorteia(prefixo) {
+    return prefixo + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+  }
   async function gerarCodigo() {
-    const cod = 'PM-' + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    const cod = sorteia('PM-');
     setCodigoGerado(cod);
     if (!CONFIGURADO) return;
     const { doc, setDoc, serverTimestamp } = fb.fns;
-    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
+    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+  async function gerarCodigoColheita() {
+    const cod = sorteia('CH-');
+    setCodigoColheita(cod);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'colheita-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // ═══ TELAS CHEIAS ═══
@@ -1087,6 +1125,18 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
                 </>
               ) : (
                 <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigo}>Gerar código de acesso</button>
+              )}
+            </div>
+            <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <strong>Convidar quem apoia o projeto</strong>
+              <p className="dica" style={{ margin: 0 }}>Gere um código e passe para quem doou. Ele entra na Colheita com a conta dele e vê a prestação de contas — sem precisar estar cadastrado pelo e-mail. Cada código serve uma vez.</p>
+              {codigoColheita ? (
+                <>
+                  <div className="codigo-grande">{codigoColheita}</div>
+                  <button className="btn-secundario" onClick={() => { navigator.clipboard?.writeText(codigoColheita); }}>Copiar</button>
+                </>
+              ) : (
+                <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigoColheita}>Gerar convite da Colheita</button>
               )}
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>

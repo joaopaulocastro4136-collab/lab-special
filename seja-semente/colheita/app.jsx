@@ -233,16 +233,32 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaSemAcesso({ usuario, aoSair, aoApagarConta }) {
+function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta }) {
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState('');
+  const [tentando, setTentando] = useState(false);
   return (
     <div className="tela-login">
       <LogoApp tamanho={104} />
       <h1>Quase lá</h1>
       <p className="missao">
         Olá, {usuario.nome?.split(' ')[0] || 'tudo bem'}! A Colheita é para quem apoia o projeto.
-        Peça à coordenação para cadastrar o e-mail <b>{usuario.email}</b> na lista de investidores — aí o
-        seu acesso abre sozinho, sem precisar de senha nova.
+        Se você recebeu um <b>código de convite</b>, digite abaixo. Ou peça à coordenação para cadastrar
+        o e-mail <b>{usuario.email}</b> — aí o seu acesso abre sozinho, sem código nenhum.
       </p>
+      <div className="campo" style={{ width: '100%', maxWidth: 330 }}>
+        <span>Código de convite</span>
+        <input value={codigo} onChange={e => { setCodigo(e.target.value); setErro(''); }}
+          placeholder="CH-XXXXXX" autoCapitalize="characters" style={{ textAlign: 'center', letterSpacing: 2, fontWeight: 800 }} />
+      </div>
+      {erro && <div className="erro" style={{ maxWidth: 330 }}>{erro}</div>}
+      <button className="btn-principal" disabled={!codigo.trim() || tentando}
+        onClick={async () => {
+          setTentando(true); setErro('');
+          const r = await aoResgatar(codigo).catch(e => e?.message || 'Não consegui agora.');
+          if (r) setErro(r);
+          setTentando(false);
+        }}>{tentando ? 'Conferindo…' : 'Entrar com o código'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / entrar com outra conta</button>
       <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>
     </div>
@@ -763,20 +779,30 @@ function App() {
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ch-usuario', usuario); }, [usuario]);
 
-  // Quem entra: investidor cadastrado no Palmar (pelo e-mail) ou gestor
+  // Quem entra: quem o Palmar cadastrou como apoiador (a chave é o e-mail),
+  // quem gastou um código de convite, ou um gestor do projeto.
   useEffect(() => {
     if (!CONFIGURADO) { setAcesso('liberado'); return; }
     if (!usuario) { setAcesso('checando'); return; }
     let cancelado = false;
     const lembrete = 'ch-ja-entrou-' + usuario.uid;
+    // O lembrete deste aparelho só vale quando faltou INTERNET. Se o banco
+    // respondeu que a pessoa não está mais na lista, o lembrete é apagado.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('sem-acesso'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
+    };
     (async () => {
       try {
-        const { collection, query, where, getDocs, doc, getDoc, limit } = fb.fns;
-        const email = String(usuario.email || '').toLowerCase();
+        const { doc, getDoc } = fb.fns;
+        const email = String(usuario.email || '').trim().toLowerCase();
         if (email) {
-          const achou = await getDocs(query(collection(fb.db, 'investidores'), where('email', '==', email), limit(1)));
-          if (!achou.empty && !cancelado) {
-            setInvestidor({ id: achou.docs[0].id, ...achou.docs[0].data() });
+          // Um documento com o nome do e-mail: é a chave da porta. Assim a
+          // pessoa lê só o dela, sem vasculhar a lista de apoiadores.
+          const porta = await getDoc(doc(fb.db, 'apoiadores', email));
+          if (porta.exists() && !cancelado) {
+            setInvestidor({ id: email, email, ...porta.data() });
             gravarLocal(lembrete, true);
             setAcesso('liberado');
             return;
@@ -789,13 +815,34 @@ function App() {
           setAcesso('liberado');
           return;
         }
-        if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
-      } catch (e) {
-        if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
-      }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
+
+  // Convite por código: a coordenação gera no Palmar e passa para o apoiador
+  async function resgatarCodigo(codigo) {
+    const cod = String(codigo || '').trim().toUpperCase();
+    if (!cod) return 'Digite o código.';
+    const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
+    const ref = doc(fb.db, 'colheita-codigos', cod);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
+    if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
+    if (snap.data().usadoPor) return 'Esse código já foi usado.';
+    const email = String(usuario.email || '').trim().toLowerCase();
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoPorEmail: email, usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'apoiadores', email), { nome: usuario.nome || '', codigo: cod, desde: serverTimestamp() }, { merge: true }).catch(() => {});
+    setInvestidor({ id: email, email, nome: usuario.nome || '' });
+    gravarLocal('ch-ja-entrou-' + usuario.uid, true);
+    setAcesso('liberado');
+    return '';
+  }
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -860,7 +907,7 @@ function App() {
     oQueFica="O relatório do projeto continua — ele é do Seja Semente, não seu. O seu cadastro de apoiador é que sai."
     aoVoltar={() => setApagandoConta(false)} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
   else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
   return <>{conteudo}{abertura}</>;
 }

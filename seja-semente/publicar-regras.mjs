@@ -129,9 +129,15 @@ service cloud.firestore {
     }
     // A chave de entrada da Colheita: um documento por e-mail de apoiador.
     // A pessoa só consegue ver o SEU (é o que destranca o aplicativo dela).
+    function gastouConviteColheita() {
+      return request.resource.data.codigo is string
+        && exists(/databases/$(database)/documents/colheita-codigos/$(request.resource.data.codigo))
+        && get(/databases/$(database)/documents/colheita-codigos/$(request.resource.data.codigo)).data.usadoPor == request.auth.uid;
+    }
     match /apoiadores/{email} {
       allow read: if ehEquipe() || (entrou() && meuEmail() == email);
-      allow write: if ehCentral() || ehGestor();
+      allow create: if ehCentral() || ehGestor() || (entrou() && meuEmail() == email && gastouConviteColheita());
+      allow update, delete: if ehCentral() || ehGestor();
     }
 
     // ─── Códigos de acesso: quem tem o código na mão pode gastá-lo ───
@@ -152,6 +158,13 @@ service cloud.firestore {
       allow list: if ehGestor();
       allow update: if ehGestor() || (entrou() && gastandoOCodigo());
       allow create, delete: if ehGestor();
+    }
+    // Convite da Colheita: quem gasta o código passa a ser apoiador
+    match /colheita-codigos/{codigo} {
+      allow get: if entrou();
+      allow list: if ehCentral() || ehGestor();
+      allow update: if ehCentral() || ehGestor() || (entrou() && gastandoOCodigo());
+      allow create, delete: if ehCentral() || ehGestor();
     }
     match /central-autorizados/{email} { allow read: if ehEquipe() || (entrou() && meuEmail() == email); allow write: if ehCentral(); }
     match /palmar-autorizados/{email} { allow read: if ehEquipe() || (entrou() && meuEmail() == email); allow write: if ehGestor(); }
