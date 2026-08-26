@@ -683,6 +683,23 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
   }
 
+  // ─── Quem mais é gestor (para dar e tirar acesso) ───
+  const [gestores, setGestores] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO) { setGestores([{ id: 'g1', nome: 'João Paulo', email: 'joao@teste.com' }, { id: 'g2', nome: 'Maria Souza', email: 'maria@teste.com' }]); return; }
+    const { collection, onSnapshot } = fb.fns;
+    return onSnapshot(collection(fb.db, 'palmar-usuarios'),
+      snap => setGestores(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, []);
+  function tirarAcessoGestor(g) {
+    // Nunca deixar o Palmar sem ninguém: sem gestor, o aplicativo tranca
+    // para todo mundo e não há como entrar de novo.
+    if (gestores.length <= 1) { window.alert('Este é o único gestor. Dê acesso a outra pessoa antes de tirar este.'); return; }
+    if (!window.confirm(`Tirar o acesso de ${g.nome || g.email}? Ela não entra mais no Palmar.`)) return;
+    if (!CONFIGURADO) { setGestores(gs => gs.filter(x => x.id !== g.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'palmar-usuarios', g.id)).catch(() => {});
+  }
+
   // ─── Códigos de convite (gerados no Perfil) ───
   //   PM- abre o PALMAR (outro gestor)
   //   CH- abre a COLHEITA (quem apoia o projeto e quer ver a prestação
@@ -1149,6 +1166,21 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
                   <p className="obs">Gestão · Palmar</p>
                 </div>
               </div>
+            </div>
+            <div className="cartao">
+              <strong style={{ display: 'block', marginBottom: 6 }}>Quem tem acesso ao Palmar ({gestores.length})</strong>
+              {gestores.map(g => (
+                <div key={g.id} className="cartao-linha" style={{ alignItems: 'center', padding: '8px 0', borderTop: '1px solid #EEF2ED' }}>
+                  <Bolha nome={g.nome || g.email} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{g.nome || g.email}</strong>
+                    <p className="obs" style={{ margin: 0 }}>{g.id === usuario.uid ? 'você' : (g.email || '')}</p>
+                  </div>
+                  {g.id !== usuario.uid && (
+                    <button className="chip prioridade" style={{ border: 'none' }} onClick={() => tirarAcessoGestor(g)}>tirar acesso</button>
+                  )}
+                </div>
+              ))}
             </div>
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <strong>Dar acesso ao Palmar</strong>
@@ -2380,6 +2412,9 @@ function App() {
   // Apagar a conta: some o acesso de gestor e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
   async function apagarMinhaConta(senha) {
+    if (CONFIGURADO && gestores.length <= 1) {
+      throw new Error('Você é o único gestor. Gere um código de acesso para outra pessoa antes de apagar a sua conta — senão o Palmar fica trancado para todo mundo.');
+    }
     await apagarConta(CONFIGURADO ? fb : null, usuario,
       [{ colecao: 'palmar-usuarios', id: usuario.uid },
        { colecao: 'palmar-autorizados', id: String(usuario.email || '').trim().toLowerCase() },

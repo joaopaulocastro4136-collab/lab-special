@@ -19,7 +19,7 @@ import { createRoot } from 'react-dom/client';
 import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho, MacaAppleLogo } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package } from 'lucide-react';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package, Trash2 } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
 import { TelaChamada, TelaChamando, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
@@ -1130,6 +1130,20 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
     updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos }).catch(() => {});
   }
 
+  // Mudar o estado de um voluntário: aprovar, recusar, desativar, reativar
+  // ou remover. Antes só existia aprovar e recusar — e uma recusa por engano
+  // não tinha volta, porque o cartão sumia da tela.
+  async function mudarVoluntario(v, mudanca) {
+    if (!CONFIGURADO) { setVoluntarios(vs => vs.map(x => x.id === v.id ? { ...x, ...mudanca } : x)); return; }
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'voluntarios', v.id), mudanca).catch(() => {});
+  }
+  async function removerVoluntario(v) {
+    if (!window.confirm(`Remover ${v.nome} da equipe? O cadastro dele sai do sistema.`)) return;
+    setTela(null);
+    if (!CONFIGURADO) { setVoluntarios(vs => vs.filter(x => x.id !== v.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'voluntarios', v.id)).catch(() => {});
+  }
+
   async function responderSolicitacao(v, aprovar) {
     const mudanca = aprovar ? { status: 'ativo', ativo: true } : { status: 'recusado', ativo: false };
     if (!CONFIGURADO) {
@@ -1437,6 +1451,19 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
           </div>
         </div>
         <EspecialidadesVoluntario key={v.id} voluntario={v} todasAreas={todasAreas} aoSalvar={p => salvarProcedimentosVoluntario(v, p)} />
+        <div className="linha-acoes">
+          {v.status === 'recusado' ? (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'ativo', ativo: true }); setTela(null); }}>↩ Desfazer recusa e aprovar</button>
+          ) : v.ativo === false ? (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'ativo', ativo: true }); setTela(null); }}>✅ Reativar</button>
+          ) : (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'inativo', ativo: false }); setTela(null); }}>⏸ Desativar</button>
+          )}
+          <button className="btn-acao vermelho" onClick={() => removerVoluntario(v)}><Trash2 size={16} /> Remover</button>
+        </div>
+        <p className="dica" style={{ marginTop: 0 }}>
+          Desativar tira o acesso, mas guarda o histórico da pessoa. Remover apaga o cadastro dela.
+        </p>
         {(() => {
           // ⏱ Tempos de atendimento: alimentado pelo botão "Chamar paciente"
           // do Semeador — chamou o próximo, fecha o tempo do anterior
@@ -1659,6 +1686,8 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
         {aba === 'voluntarios' && (() => {
           const pendentes = voluntarios.filter(v => v.status === 'pendente');
           const equipe = voluntarios.filter(v => v.status !== 'pendente' && v.status !== 'recusado');
+          // Os recusados ficam à mão: uma recusa por engano tem volta
+          const recusados = voluntarios.filter(v => v.status === 'recusado');
           return (
             <>
               {pendentes.length > 0 && (
@@ -1711,6 +1740,23 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
                   </div>
                 </div>
               )) : <div className="vazio">Nenhum voluntário cadastrado ainda.</div>}
+              {recusados.length > 0 && (
+                <details className="ja-atendidos" style={{ marginTop: 14 }}>
+                  <summary>🚫 Recusados ({recusados.length})</summary>
+                  <p className="dica" style={{ margin: '8px 0' }}>Recusou sem querer? Toque na pessoa e desfaça.</p>
+                  {recusados.map(v => (
+                    <div className="cartao" key={v.id} onClick={() => setTela({ voluntario: v })} style={{ cursor: 'pointer', opacity: 0.75 }}>
+                      <div className="cartao-linha">
+                        <Bolha nome={v.nome} />
+                        <div>
+                          <strong>{v.nome}</strong>
+                          <p className="obs">{[v.ministerio, v.email].filter(Boolean).join(' · ')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </details>
+              )}
             </>
           );
         })()}
