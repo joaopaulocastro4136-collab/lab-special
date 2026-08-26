@@ -141,7 +141,10 @@ async function ligarFirebase() {
 const AREAS_FIXAS = ['Profilaxia', 'Periodontia', 'Dentística', 'Endodontia', 'Cirurgia', 'Prótese', 'Raio-X', 'Avaliação'];
 const DURACAO_PADRAO = 30;
 
-function hojeISO() { return new Date().toISOString().slice(0, 10); }
+// O dia de hoje no relógio de quem está usando. Antes isto usava a hora de
+// Londres: das 21h à meia-noite o aplicativo já achava que era amanhã, e a
+// agenda do dia aparecia vazia bem na hora do mutirão.
+function hojeISO() { return isoDe(new Date()); }
 function isoDe(v) {
   const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null);
   if (!d || isNaN(d)) return '';
@@ -314,6 +317,22 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  // Esqueceu a senha: o Firebase manda um link no e-mail. Sem isto, quem
+  // errasse a senha ficava trancado do lado de fora para sempre.
+  async function esqueciSenha() {
+    setErro('');
+    const alvo = email.trim();
+    if (!alvo) { setErro('Escreva o seu e-mail aí em cima primeiro.'); return; }
+    setCarregando(true);
+    try {
+      await fb.fns.sendPasswordResetEmail(fb.auth, alvo);
+      setErro('Pronto: se essa conta existe, o link para criar uma senha nova chegou em ' + alvo + '. Olhe também o lixo eletrônico.');
+    } catch (e) {
+      setErro('Não consegui enviar agora. Confira o e-mail e a internet.');
+    }
+    setCarregando(false);
+  }
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
@@ -360,6 +379,11 @@ function TelaLogin({ aoEntrarDemo }) {
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
+          {!novaConta && (
+            <button className="link-troca" onClick={esqueciSenha} disabled={carregando}>
+              Esqueci minha senha
+            </button>
+          )}
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
@@ -473,18 +497,31 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     setConfigProc(nova);
     if (!CONFIGURADO) return;
     const { doc, setDoc } = fb.fns;
-    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
+    // Mesclar: se a configuração ainda não terminou de chegar, gravar por cima
+    // apagaria os valores dos outros procedimentos.
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova, { merge: true }).catch(() => {});
   }
 
   // ─── Custos: quanto "vale" cada atendimento feito ───
-  function dentesDoPaciente(pid) {
-    const p = pacientes.find(x => x.id === pid);
-    return p?.triagem?.dentes?.length || 0;
+  // Quantos dentes ESTE atendimento tratou. O certo é o que o dentista marcou
+  // no registro do procedimento. Antes isto usava a triagem — que lista todos
+  // os dentes que a pessoa precisa tratar na vida inteira — e então UM
+  // atendimento valia pelo tratamento completo, em cada área, toda vez. O
+  // valor do projeto saía inflado várias vezes.
+  function dentesDoAtendimento(a) {
+    const diaDele = isoDe(a.inicio);
+    const casa = (r) => (a.id && r.atendimentoId === a.id)
+      || (!r.atendimentoId && r.pacienteId === a.pacienteId && r.area === a.area
+          && (r.data || isoDe(r.em || r.criadoEm)) === diaDele);
+    const n = procedimentos.filter(casa).reduce((s, r) => s + (r.dentes || []).length, 0);
+    // Ainda sem registro (o dentista pode registrar mais tarde): conta um só.
+    // Quando o registro chegar, o número se corrige sozinho.
+    return n || 1;
   }
   function custoAtendimento(a) {
     const v = valorDe(a.area);
     if (!v) return 0;
-    return ehPorDente(a.area) ? v * Math.max(1, dentesDoPaciente(a.pacienteId)) : v;
+    return ehPorDente(a.area) ? v * Math.max(1, dentesDoAtendimento(a)) : v;
   }
 
   // ─── Pessoas chamáveis (sino e chamada de grupo) ───
@@ -509,6 +546,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     updateDoc(doc(fb.db, 'voluntarios', v.id), campos).catch(() => {});
   }
   async function removerVoluntario(v) {
+    if (!window.confirm(`Remover ${v.nome || 'esta pessoa'} da equipe?\n\nEla perde o acesso ao Semeador. O trabalho já registrado continua no histórico.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setVoluntarios(vs => vs.filter(x => x.id !== v.id)); return; }
     const { doc, deleteDoc } = fb.fns;
@@ -565,6 +603,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     setDoc(doc(fb.db, 'acoes', a.id), campos, { merge: true }).catch(() => {});
   }
   async function excluirAcao(a) {
+    if (!window.confirm(`Excluir a ação "${a.titulo || 'sem título'}"?\n\nNão tem como desfazer.`)) return;
     setTela(null);
     setAba('acoes');
     if (!CONFIGURADO) { setAcoes(as => as.filter(x => x.id !== a.id)); return; }
@@ -590,6 +629,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     updateDoc(doc(fb.db, 'estoque', item.id), campos).catch(() => {});
   }
   async function excluirItem(item) {
+    if (!window.confirm(`Excluir "${item.nome || 'este material'}" do estoque?\n\nNão tem como desfazer.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setEstoque(es => es.filter(x => x.id !== item.id)); return; }
     const { doc, deleteDoc } = fb.fns;
@@ -615,8 +655,11 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
       setMovimentos(ms => [{ id: 'm' + Math.floor(Math.random() * 1e9), ...registro, em: new Date() }, ...ms]);
       return;
     }
-    const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: novaQtd, qtd: novaQtd }).catch(() => {});
+    const { doc, updateDoc, collection, addDoc, serverTimestamp, increment } = fb.fns;
+    // Somar a diferença em vez de regravar o total: se duas pessoas retirarem
+    // material ao mesmo tempo, as duas baixas contam. Regravando o total, a
+    // segunda apagava a primeira e o estoque ficava mentindo.
+    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: increment(delta), qtd: increment(delta) }).catch(() => {});
     addDoc(collection(fb.db, 'estoque-movimentos'), { ...registro, em: serverTimestamp(), criadoEm: serverTimestamp() }).catch(() => {});
   }
   const emFalta = estoque.filter(i => qtdEstoque(i) <= Number(i.minimo || 0));
@@ -662,6 +705,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     setTela(null);
   }
   async function excluirInvestidor(i) {
+    if (!window.confirm(`Remover ${i.nome || 'este investidor'}?\n\nSe tiver e-mail cadastrado, a pessoa também deixa de entrar na Colheita.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setInvestidores(is => is.filter(x => x.id !== i.id)); return; }
     const { doc, deleteDoc } = fb.fns;
@@ -679,6 +723,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaf
     setTela(f.acaoId ? { acao: f.acaoId } : 'notas');
   }
   async function excluirNota(n) {
+    if (!window.confirm('Excluir esta nota?\n\nNão tem como desfazer.')) return;
     if (!CONFIGURADO) { setNotas(ns => ns.filter(x => x.id !== n.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
@@ -1239,16 +1284,32 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
   // DENTRO da ação, depois de criada — cada coisa na sua caixinha.
   const [f, setF] = useState({ titulo: '', data: hojeISO(), dataFim: hojeISO(), local: '' });
   const [fotos, setFotos] = useState([]);
+  const [avisoFoto, setAvisoFoto] = useState('');
+
+  // As fotos vão dentro do registro da ação, e um registro só cabe 1 MB no
+  // total. Seis fotos grandes estouravam esse limite e a ação simplesmente
+  // não era criada, sem avisar ninguém. Agora existe um teto de verdade:
+  // cabe até 3 fotos e a soma nunca passa de 700 KB.
+  const TETO_FOTOS = 700000;
+  const MAX_FOTOS = 3;
 
   async function pegarFoto(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
+    setAvisoFoto('');
     if (!file) return;
+    if (fotos.length >= MAX_FOTOS) { setAvisoFoto(`Dá para anexar até ${MAX_FOTOS} fotos aqui. Depois de criar a ação você põe quantas quiser no relatório.`); return; }
     try {
-      let d = await comprimirImagem(file, 0.7, 900);
-      if (d.length > 800000) d = await comprimirImagem(file, 0.5, 700);
-      setFotos(fs => [...fs, d].slice(0, 6));
-    } catch (err) { /* imagem ilegível */ }
+      const usado = fotos.reduce((s, x) => s + x.length, 0);
+      let d = await comprimirImagem(file, 0.6, 800);
+      if (usado + d.length > TETO_FOTOS) d = await comprimirImagem(file, 0.45, 620);
+      if (usado + d.length > TETO_FOTOS) d = await comprimirImagem(file, 0.35, 480);
+      if (usado + d.length > TETO_FOTOS) {
+        setAvisoFoto('Essa foto não coube junto com as outras. Tire uma foto antes, ou crie a ação e anexe o resto no relatório.');
+        return;
+      }
+      setFotos(fs => [...fs, d]);
+    } catch (err) { setAvisoFoto('Não consegui ler essa imagem. Tente outra.'); }
   }
 
   const podeSalvar = f.titulo.trim() && f.data;
@@ -1273,7 +1334,8 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
 
       <div className="cartao">
         <strong style={{ display: 'block', marginBottom: 6 }}>📷 Fotos do local (opcional)</strong>
-        <p className="dica" style={{ margin: '0 0 8px' }}>Elas aparecem na Colheita, mostrando onde o projeto esteve.</p>
+        <p className="dica" style={{ margin: '0 0 8px' }}>Elas aparecem na Colheita, mostrando onde o projeto esteve. Até {MAX_FOTOS} fotos.</p>
+        {avisoFoto && <div className="erro" style={{ marginBottom: 8 }}>{avisoFoto}</div>}
         {fotos.length > 0 && (
           <div className="grade-fotos" style={{ marginBottom: 8 }}>
             {fotos.map((ft, i) => (
@@ -1285,7 +1347,7 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
             ))}
           </div>
         )}
-        {fotos.length < 6 && (
+        {fotos.length < MAX_FOTOS && (
           <div className="foto-ad-vazia">
             <label className="foto-ad-botao">
               <Camera size={19} /><span>Tirar foto</span>
@@ -1331,12 +1393,24 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
   const gastosMateriais = movimentos.filter(m => deltaMov(m) < 0
     && (m.acaoId === acao.id || (!m.acaoId && diasDela.includes(isoDe(m.em || m.criadoEm)))));
 
+  // Um atendimento vira DOIS registros: o horário na agenda (atendimento) e a
+  // ficha do que foi feito (procedimento). Contar os dois dobrava o número de
+  // atendimentos da ação. Só entram aqui os procedimentos que NÃO vieram de um
+  // atendimento — os que o dentista lançou direto pela ficha do paciente.
+  const idsAtendidos = new Set(feitos.map(a => a.id));
+  const procsSoltos = procsDaAcao.filter(r => !r.atendimentoId || !idsAtendidos.has(r.atendimentoId));
+
   const custoAtend = feitos.reduce((s, a) => s + custoAtendimento(a), 0);
   const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
   const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
   const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
   const produzido = custoAtend + custoRegistros;
-  const gasto = custoMateriais + gastoNotas;
+  // Nota fiscal é o dinheiro que SAIU (a compra). Material retirado do estoque
+  // é o uso daquilo que já foi comprado. Somar os dois contava a mesma despesa
+  // duas vezes e o resultado da ação aparecia pior do que realmente é. Fica o
+  // maior dos dois: se houve nota, ela é a despesa de verdade; se o material
+  // veio de doação (sem nota), o valor do estoque é a melhor conta que temos.
+  const gasto = Math.max(custoMateriais, gastoNotas);
   const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
   const dentesTratados = procsDaAcao.reduce((s, r) => s + (r.dentes || []).length, 0)
     + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
@@ -1381,7 +1455,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
           </div>
         </div>
         <div className="grade-numeros">
-          <div className="cartao-numero"><strong>{doDele.length + manuaisDele.length}</strong><span>atendimentos</span></div>
+          <div className="cartao-numero"><strong>{doDele.length + procsSoltos.filter(r => r.autorUid === v.id).length + manuaisDele.length}</strong><span>atendimentos</span></div>
           <div className="cartao-numero"><strong>{dentesDele}</strong><span>dentes tratados</span></div>
           <div className="cartao-numero"><strong>{minutos ? `${minutos} min` : '—'}</strong><span>tempo na cadeira</span></div>
           <div className="cartao-numero destaque"><strong>{dinheiro(valorDele)}</strong><span>valor produzido</span></div>
@@ -1443,7 +1517,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         const marcado = escalados.includes(v.id);
         const meus = (acao.procedimentosPorUid || {})[v.id] || v.procedimentos || [];
         const doDele = feitos.filter(a => a.profissionalUid === v.id);
-        const quantos = doDele.length + procsDaAcao.filter(r => r.autorUid === v.id).length + registros.filter(r => r.profissionalUid === v.id).length;
+        const quantos = doDele.length + procsSoltos.filter(r => r.autorUid === v.id).length + registros.filter(r => r.profissionalUid === v.id).length;
         const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0)
           + registros.filter(r => r.profissionalUid === v.id).reduce((sm, r) => sm + Number(r.valor || 0), 0);
         return (
@@ -1497,7 +1571,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         <span>valor da ação (tratamento entregue)</span>
       </div>
       <div className="grade-numeros">
-        <div className="cartao-numero"><strong>{feitos.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{feitos.length + procsSoltos.length + totalManuais}</strong><span>atendimentos</span></div>
         <div className="cartao-numero"><strong>{pessoasAtendidas}</strong><span>pessoas atendidas</span></div>
         <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
         <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na equipe</span></div>
@@ -1508,6 +1582,11 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         <strong>💰 Resultado (produzido − gastos)</strong>
         <b style={{ fontSize: 18, color: (produzido - gasto) >= 0 ? '#226343' : '#B3402A' }}>{dinheiro(produzido - gasto)}</b>
       </div>
+      <p className="obs" style={{ margin: '6px 2px 0' }}>
+        O gasto da ação conta o maior entre materiais e notas fiscais — a nota é a
+        compra e o material é o uso dela, então somar os dois contaria a mesma
+        despesa duas vezes.
+      </p>
       {gasto > 0 && produzido > 0 && (
         <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
           <div className="cartao-topo"><strong>💚 Cada R$ 1,00 gasto virou</strong><strong style={{ fontSize: 20 }}>{dinheiro(produzido / gasto)}</strong></div>
