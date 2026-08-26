@@ -60,16 +60,20 @@ for (const bundle of APPS) {
   console.log(`  Versão ${numero} (${versao.attributes.appStoreState})`);
 
   // ── O envio (build): o mais novo que terminou de processar e casa com o número ──
-  const bs = await api('GET', `/v1/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=20&fields[builds]=version,processingState,expired&include=preReleaseVersion&fields[preReleaseVersions]=version`);
-  const versoesPre = {};
-  for (const inc of (bs.json.included || [])) versoesPre[inc.id] = inc.attributes?.version;
-  const combina = (bs.json.data || []).filter(b =>
-    b.attributes.processingState === 'VALID' && !b.attributes.expired
-    && versoesPre[b.relationships?.preReleaseVersion?.data?.id] === numero);
-  const build = combina[0];
+  const bs = await api('GET', `/v1/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=10&fields[builds]=version,processingState,expired`);
+  // O número que a pessoa vê (8.0) não vem junto com o envio: fica num
+  // documento à parte. Pedir "include" não trouxe nada, então a gente
+  // pergunta de um em um — são poucos e é a única forma que responde.
+  const candidatos = [];
+  for (const b of (bs.json.data || []).slice(0, 8)) {
+    const pv = await api('GET', `/v1/builds/${b.id}/preReleaseVersion?fields[preReleaseVersions]=version`);
+    candidatos.push({ b, marca: pv.json.data?.attributes?.version || '?' });
+  }
+  const build = candidatos.find(c =>
+    c.b.attributes.processingState === 'VALID' && !c.b.attributes.expired && c.marca === numero)?.b;
   if (!build) {
-    const vistos = (bs.json.data || []).slice(0, 5)
-      .map(b => `nº${b.attributes.version}=${versoesPre[b.relationships?.preReleaseVersion?.data?.id] || '?'} (${b.attributes.processingState})`).join(', ');
+    const vistos = candidatos.slice(0, 5)
+      .map(c => `nº${c.b.attributes.version}=${c.marca} (${c.b.attributes.processingState})`).join(', ');
     falta.push(`nenhum envio pronto com a versão ${numero} — os últimos são: ${vistos}`);
   } else {
     const pendurado = await api('GET', `/v1/appStoreVersions/${versao.id}/build?fields[builds]=version`);
