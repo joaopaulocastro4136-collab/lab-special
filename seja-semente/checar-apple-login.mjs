@@ -28,6 +28,11 @@ for (const bundle of APPS) {
   const lista = (caps.json.data || []).map(c => c.attributes?.capabilityType);
   const tem = lista.includes('APPLE_ID_AUTH');
   console.log(`  ${bundle}: ${tem ? '✓ Entrar com a Apple ligado' : '✗ FALTA Entrar com a Apple'} · ${lista.join(', ')}`);
+  // COMO ela foi configurada: aplicativo principal ou agrupado com outro?
+  // Agrupado apontando para o lugar errado é o que faz a Apple recusar com
+  // "Inscrição não concluída" mesmo com tudo o resto certo.
+  const auth = (caps.json.data || []).find(c => c.attributes?.capabilityType === 'APPLE_ID_AUTH');
+  if (auth) console.log(`      configuração: ${JSON.stringify(auth.attributes?.settings || 'nenhuma')}`);
 }
 
 console.log('\n══ 2. No Firebase ══');
