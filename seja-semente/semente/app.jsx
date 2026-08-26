@@ -28,7 +28,7 @@ import { SeletorAvatar } from '../avatar.jsx';
 import { TelaJogos } from '../ludo.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
-import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
+import { FormDepoimento, TelaDepoimentos, apagarVideo } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 import icone from '../icones/icone-central-1024.png';
 
@@ -759,6 +759,9 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
     if (!CONFIGURADO) { setDepoimentos(ds => ds.filter(x => x.id !== d.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'depoimentos', d.id)).catch(() => {});
+    // O vídeo sai do depósito junto: tirar a autorização tem que apagar
+    // o arquivo de verdade, não só o registro
+    apagarVideo(fb, d.videoCaminho);
   }
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');

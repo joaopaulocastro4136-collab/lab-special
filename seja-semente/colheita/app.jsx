@@ -113,6 +113,9 @@ const dinheiro = (v) => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 // A privacidade do paciente vem primeiro: para quem investiu, o sorriso
 // aparece pelo PRIMEIRO NOME — a identificação completa fica com a equipe
 const primeiroNome = (n) => String(n || 'Paciente').trim().split(/\s+/)[0];
+// Registro novo já vem com o primeiro nome; registro antigo é cortado aqui
+const nomeDoSorriso = (s) => s.pacientePrimeiro || nomeDoSorriso(s);
+const nomeDeQuemFez = (s) => s.autorPrimeiro || primeiroNome(s.autorNome);
 
 // ─── Modo demonstração ───
 const fotoFalsa = (texto, cor) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -312,7 +315,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
   };
 
   // O depoimento daquela pessoa (se ela deixou um)
-  const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado !== false) || null;
+  const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado === true) || null;
   const valorDe = (nome) => Number(configProc.valores?.[nome] || 0);
   const ehPorDente = (nome) => !!configProc.porDente?.[nome];
   const valorDoSorriso = (s) => {
@@ -328,8 +331,9 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
   const notasVisiveis = filtrando ? notas.filter(n => n.acaoId === minhaAcao.id) : notas;
   const acoesVisiveis = filtrando ? acoes.filter(a => a.id === minhaAcao.id) : acoes;
   const movimentosVisiveis = filtrando ? movimentos.filter(m => m.acaoId === minhaAcao.id) : movimentos;
-  // Só depoimentos autorizados aparecem para quem apoia o projeto
-  const depoimentosVisiveis = depoimentos.filter(d => d.autorizado !== false)
+  // Só depoimentos AUTORIZADOS aparecem para quem apoia o projeto. Tem que
+  // ser === true: um depoimento antigo, sem o campo, não vale como permissão.
+  const depoimentosVisiveis = depoimentos.filter(d => d.autorizado === true)
     .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)));
 
   const pessoas = new Set(sorrisosVisiveis.map(s => s.pacienteId)).size;
@@ -377,8 +381,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
       return (
         <div className="folha">
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
-          <h2>O sorriso de {primeiroNome(s.pacienteNome)}</h2>
-          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{s.autorNome ? ` · cuidado por ${s.autorNome}` : ''}</p>
+          <h2>O sorriso de {nomeDoSorriso(s)}</h2>
+          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{(s.autorPrimeiro || s.autorNome) ? ` · cuidado por ${nomeDeQuemFez(s)}` : ''}</p>
           {(antes || depois) ? (
             <div className="plante-antesdepois">
               <figure>{antes ? <img src={antes} alt="Antes" /> : <span className="plante-sem">🦷</span>}<figcaption>ANTES</figcaption></figure>
@@ -393,7 +397,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
           </div>
           {depoimentoDe(s.pacienteId) && (
             <>
-              <h3 style={{ margin: '16px 0 8px' }}>O que {primeiroNome(s.pacienteNome)} disse</h3>
+              <h3 style={{ margin: '16px 0 8px' }}>O que {nomeDoSorriso(s)} disse</h3>
               <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque />
             </>
           )}
@@ -537,7 +541,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
               <h3 style={{ margin: '16px 0 8px' }}>😁 Os sorrisos desta ação</h3>
               {daAcao.map(s => (
                 <button className="cartao" key={s.id} style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }} onClick={() => setTela({ sorriso: s.id })}>
-                  <div className="cartao-topo"><strong>{primeiroNome(s.pacienteNome)}</strong><ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} /></div>
+                  <div className="cartao-topo"><strong>{nomeDoSorriso(s)}</strong><ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} /></div>
                   <p className="obs" style={{ margin: 0 }}>{s.area}{s.descricao ? ` · ${String(s.descricao).slice(0, 60)}` : ''}</p>
                 </button>
               ))}
@@ -621,7 +625,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
                             <span className="plante-seta">→</span>
                           </span>
                           <span className="plante-pe">
-                            <strong>{primeiroNome(s.pacienteNome)}</strong>
+                            <strong>{nomeDoSorriso(s)}</strong>
                             <span className="plante-area" style={{ background: cor + '1C', color: cor }}>{s.area || 'Atendimento'}</span>
                           </span>
                         </button>

@@ -21,7 +21,7 @@ import { TelaJogos } from '../ludo.jsx';
 import { FormRegistro } from '../registro.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
-import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
+import { FormDepoimento, TelaDepoimentos, apagarVideo } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
@@ -559,11 +559,20 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
 
   async function salvarRegistro(t, dados) {
     const { fotoAntes, fotoDepois, ...resto } = dados;
+    // ATENÇÃO: este registro é lido pela COLHEITA, que é o aplicativo de quem
+    // doou — gente de fora do projeto. Por isso vai só o PRIMEIRO NOME do
+    // paciente e do dentista. O nome inteiro fica na ficha, que só a equipe
+    // abre. O espelho lá embaixo (procedimentos-feitos) é só da equipe e
+    // pode levar o nome completo.
+    const soPrimeiro = (n) => String(n || '').trim().split(/\s+/)[0] || '';
     const registro = {
-      ...resto, pacienteNome: t.pacienteNome || '',
-      autorUid: usuario.uid, autorNome: usuario.nome || '',
+      ...resto,
+      pacientePrimeiro: soPrimeiro(t.pacienteNome),
+      autorUid: usuario.uid, autorPrimeiro: soPrimeiro(usuario.nome),
       ...(t.atendimentoId ? { atendimentoId: t.atendimentoId } : {}),
     };
+    // O que a equipe vê (nome inteiro) vai só no espelho da raiz
+    const registroEquipe = { ...registro, pacienteNome: t.pacienteNome || '', autorNome: usuario.nome || '' };
     const rotuloArea = resto.area || 'atendimento';
     // Registrou? Então o horário dele sai da lista de espera de hoje —
     // vale nos dois caminhos (com e sem Firebase)
@@ -573,7 +582,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
       if (fotoAntes) novosArq.push({ id: 'fa' + Math.floor(Math.random() * 1e9), dataUrl: fotoAntes, legenda: `Antes — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
       if (fotoDepois) novosArq.push({ id: 'fd' + Math.floor(Math.random() * 1e9), dataUrl: fotoDepois, legenda: `Depois — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
       if (novosArq.length) setDemoArquivos(a => ({ ...a, [t.pacienteId]: [...novosArq, ...(a[t.pacienteId] || [])] }));
-      setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registro, fotoAntesId: novosArq[0]?.id || '', fotoDepoisId: novosArq[1]?.id || '', criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
+      setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registroEquipe, fotoAntesId: novosArq[0]?.id || '', fotoDepoisId: novosArq[1]?.id || '', criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
       setMeusAtendimentos(as => as.map(a => (a.id === t.atendimentoId || (a.pacienteId === t.pacienteId && a.fim)) ? { ...a, registrado: true } : a));
       return;
     }
@@ -602,7 +611,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
     // enxerga o que cada voluntário fez, sem precisar abrir paciente por
     // paciente. Vai só o resumo — as fotos ficam nos arquivos do paciente.
     addDoc(collection(fb.db, 'procedimentos-feitos'), {
-      ...registro, pacienteId: t.pacienteId, fotoAntesId, fotoDepoisId,
+      ...registroEquipe, pacienteId: t.pacienteId, fotoAntesId, fotoDepoisId,
       data: dataISO(), criadoEm: serverTimestamp(), em: serverTimestamp(),
     }).catch(() => {});
     // Marca o atendimento de onde veio E qualquer outro pendente do mesmo
@@ -804,6 +813,9 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
     if (!CONFIGURADO) { setDepoimentos(ds => ds.filter(x => x.id !== d.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'depoimentos', d.id)).catch(() => {});
+    // O vídeo sai do depósito junto: tirar a autorização tem que apagar
+    // o arquivo de verdade, não só o registro
+    apagarVideo(fb, d.videoCaminho);
   }
 
   // O dentista da prótese agenda ele mesmo, na própria agenda
@@ -1362,7 +1374,15 @@ function App() {
     setDoc(doc(fb.db, 'voluntarios', conta.uid), campos, { merge: true }).catch(() => {});
   }
 
+  // Este aparelho para de tocar: sem isto, depois de sair (ou de apagar a
+  // conta) o celular continuava recebendo ligação com nome de paciente
+  function calarAparelho() {
+    if (!CONFIGURADO || !window.__tokenPush) return;
+    try { fb.fns.deleteDoc(fb.fns.doc(fb.db, 'aparelhos', window.__tokenPush)).catch(() => {}); } catch (e) { /* segue */ }
+  }
+
   async function sair() {
+    calarAparelho();
     try { await window.__sairNativoGoogle?.(); } catch (e) { /* ponte antiga sem sair */ }
     if (CONFIGURADO) await fb.fns.signOut(fb.auth);
     setConta(null);
@@ -1372,6 +1392,7 @@ function App() {
   // Apagar a conta: some o cadastro de voluntário e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
   async function apagarMinhaConta() {
+    calarAparelho();
     await apagarConta(CONFIGURADO ? fb : null, conta,
       [{ colecao: 'voluntarios', id: conta.uid }],
       ['sd-conta', 'sd-cadastro']);
@@ -1385,7 +1406,9 @@ function App() {
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
   useEffect(() => {
-    if (!CONFIGURADO || !conta) return;
+    // Só quem foi APROVADO ouve as chamadas: elas trazem o nome e a foto do
+    // paciente, e quem ainda espera aprovação (ou foi recusado) não pode ver
+    if (!CONFIGURADO || !conta || cadastro?.status !== 'ativo') return;
     const { collection, onSnapshot, query, where } = fb.fns;
     return onSnapshot(query(collection(fb.db, 'chamadas'), where('ativa', '==', true)), snap => {
       const agora = Date.now();
@@ -1396,7 +1419,7 @@ function App() {
         return { ...c, nova: agora - t < 3 * 60 * 1000 };
       }));
     });
-  }, [conta?.uid]);
+  }, [conta?.uid, cadastro?.status]);
   function encerrarChamada(c, atendida) {
     setChamadasVistas(v => [...v, c.id]);
     if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
@@ -1409,7 +1432,8 @@ function App() {
   // chamada mesmo com o app fechado (a casca expõe __registrarPush; o token
   // vai para aparelhos/{token} e o carteiro na nuvem faz o resto) ───
   useEffect(() => {
-    if (!CONFIGURADO || !conta || !window.__registrarPush) return;
+    // Mesmo motivo: o aparelho de quem não foi aprovado não pode tocar
+    if (!CONFIGURADO || !conta || cadastro?.status !== 'ativo' || !window.__registrarPush) return;
     const { doc, setDoc, serverTimestamp } = fb.fns;
     const grava = (token) => {
       if (!token) return;
@@ -1431,7 +1455,7 @@ function App() {
     const vigia = setInterval(() => { if (window.__tokenVoip && window.__tokenPush) { grava(window.__tokenPush); clearInterval(vigia); } }, 3000);
     setTimeout(() => clearInterval(vigia), 60000);
     return () => { clearInterval(vigia); window.removeEventListener('token-push', ouve); window.removeEventListener('token-voip', ouveVoip); };
-  }, [conta?.uid, cadastro?.nome]);
+  }, [conta?.uid, cadastro?.nome, cadastro?.status]);
   // A tela de ligação nativa (CallKit) chama isto quando a pessoa ATENDE
   // com o app fechado — marca a chamada como atendida para todo mundo
   useEffect(() => {

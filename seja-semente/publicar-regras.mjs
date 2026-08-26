@@ -74,7 +74,8 @@ service cloud.firestore {
     match /denuncias/{doc}     { allow create: if entrou(); allow read, write: if ehCentral() || ehGestor(); }
 
     // ─── O que a Colheita mostra a quem apoia ───
-    match /procedimentos-feitos/{doc} { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
+    // Espelho da equipe (leva o nome inteiro): quem apoia NÃO entra aqui
+    match /procedimentos-feitos/{doc} { allow read, write: if ehEquipe(); }
     match /acoes/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
     match /notas/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
     match /estoque-movimentos/{doc}   { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
