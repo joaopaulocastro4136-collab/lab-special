@@ -427,12 +427,17 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
         ) : (
           saidas.length ? saidas.map(m => (
             <div className="cartao" key={m.id}>
-              <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
-              <p className="obs" style={{ margin: 0 }}>
-                {Math.abs(deltaMov(m))} unidade(s)
-                {m.autorNome ? ` · ${String(m.autorNome).split(' ')[0]}` : ''}
-                {m.acaoTitulo ? ` · ${m.acaoTitulo}` : ''}
-              </p>
+              <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                {m.itemFoto && <img className="estoque-foto" src={m.itemFoto} alt={m.itemNome} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+                  <p className="obs" style={{ margin: 0 }}>
+                    {Math.abs(deltaMov(m))} {m.unidade || 'unidade(s)'}
+                    {m.autorNome ? ` · ${String(m.autorNome).split(' ')[0]}` : ''}
+                    {m.acaoTitulo ? ` · ${m.acaoTitulo}` : ''}
+                  </p>
+                </div>
+              </div>
             </div>
           )) : <Vazio texto="Nenhum material retirado ainda." />
         )}
@@ -462,6 +467,11 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
           <h2>🌱 {a.titulo}</h2>
           <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(a)}{a.local ? ` · ${a.local}` : ''}</p>
+          {(a.fotosLocal || []).length > 0 && (
+            <div className="grade-fotos" style={{ marginBottom: 10 }}>
+              {a.fotosLocal.map((ft, i) => <span key={i} className="foto-mini"><img src={ft} alt={'local ' + (i + 1)} /></span>)}
+            </div>
+          )}
           {a.status === 'encerrada' && (
             <div className="cartao" style={{ border: '1.5px solid #BFDCC9', background: '#E9F5EE' }}>
               <strong style={{ display: 'block', color: '#1E6B41' }}>✅ Ação concluída</strong>
@@ -509,8 +519,13 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
               <h3 style={{ margin: '16px 0 8px' }}>📦 Materiais usados</h3>
               {materiaisDaAcao.map(m => (
                 <div className="cartao" key={m.id}>
-                  <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
-                  <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s)</p>
+                  <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                    {m.itemFoto && <img className="estoque-foto" src={m.itemFoto} alt={m.itemNome} />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+                      <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} {m.unidade || 'unidade(s)'}</p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </>

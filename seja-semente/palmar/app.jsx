@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
-import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2 } from 'lucide-react';
+import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2, Camera, Images } from 'lucide-react';
 import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { comprimirImagem } from '../ficha.jsx';
 import { Arcada } from '../dentes.jsx';
@@ -1107,52 +1107,33 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
 }
 
 // ─── Nova ação ───
-function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCancelar, aoSalvar }) {
+function FormAcao({ antiga, aoCancelar, aoSalvar }) {
+  // Criar ação é simples de propósito: nome, quando, onde e (se quiser) as
+  // fotos do lugar. A equipe, o que cada um faz e os lançamentos ficam
+  // DENTRO da ação, depois de criada — cada coisa na sua caixinha.
   const [f, setF] = useState({ titulo: '', data: hojeISO(), dataFim: hojeISO(), local: '' });
-  const [escalados, setEscalados] = useState([]);
-  // O que cada pessoa vai fazer nesta ação: { uid: ['Profilaxia', ...] }
-  const [procsPorUid, setProcsPorUid] = useState({});
-  // Ação ANTIGA: vai empilhando o que foi feito, especialidade por
-  // especialidade (o valor sai da tabela de Valores, por dente quando marcado)
-  const [itens, setItens] = useState([]);
-  const [item, setItem] = useState({ area: todasAreas?.[0] || 'Profilaxia', quantos: 1, dentes: 1, descricao: '', quemUid: '' });
+  const [fotos, setFotos] = useState([]);
 
-  const porDente = ehPorDente?.(item.area);
-  const unidades = porDente ? Math.max(1, Number(item.dentes || 1)) : Math.max(1, Number(item.quantos || 1));
-  const valorItem = (valorDe?.(item.area) || 0) * unidades;
-
-  function adicionar() {
-    const quem = equipe.find(v => v.id === item.quemUid);
-    setItens(is => [...is, {
-      id: 'r' + Math.floor(Math.random() * 1e9),
-      area: item.area,
-      quantos: porDente ? 1 : Math.max(1, Number(item.quantos || 1)),
-      dentes: porDente ? Math.max(1, Number(item.dentes || 1)) : 0,
-      descricao: item.descricao.trim(),
-      profissionalUid: quem?.id || '', profissionalNome: quem?.nome || '',
-      pacienteNome: item.descricao.trim() || item.area,
-      valor: valorItem,
-    }]);
-    setItem({ ...item, quantos: 1, dentes: 1, descricao: '' });
+  async function pegarFoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let d = await comprimirImagem(file, 0.7, 900);
+      if (d.length > 800000) d = await comprimirImagem(file, 0.5, 700);
+      setFotos(fs => [...fs, d].slice(0, 6));
+    } catch (err) { /* imagem ilegível */ }
   }
 
-  const totalValor = itens.reduce((s, r) => s + Number(r.valor || 0), 0);
-  const totalProc = itens.reduce((s, r) => s + (r.dentes > 0 ? 1 : Number(r.quantos || 1)), 0);
-  const totalDentes = itens.reduce((s, r) => s + Number(r.dentes || 0), 0);
-  const porArea = {};
-  for (const r of itens) porArea[r.area] = (porArea[r.area] || 0) + (r.dentes > 0 ? Number(r.dentes) : Number(r.quantos || 1));
-
-  const alternaEscala = (id) => setEscalados(es => es.includes(id) ? es.filter(x => x !== id) : [...es, id]);
-  const podeSalvar = f.titulo.trim() && f.data && (!antiga || itens.length > 0);
-
+  const podeSalvar = f.titulo.trim() && f.data;
   return (
     <div className="folha">
       <button className="btn-voltar" onClick={aoCancelar}><ChevronLeft size={18} /> Voltar</button>
-      <h2>{antiga ? '📚 Ação antiga' : 'Nova ação'}</h2>
+      <h2>{antiga ? '📚 Registrar ação antiga' : 'Nova ação'}</h2>
       <p className="dica" style={{ marginTop: 0 }}>
         {antiga
-          ? 'Para registrar mutirões que aconteceram ANTES do aplicativo: preencha data e local e vá lançando o que foi feito em cada especialidade. Ao salvar, o Palmar já monta o balanço.'
-          : 'Preencha os dados, marque a equipe e crie — depois o relatório vai se enchendo sozinho com o que os aplicativos registrarem no dia.'}
+          ? 'Para mutirões que aconteceram antes do aplicativo. Registre o básico agora — depois você entra na ação e lança o que foi feito.'
+          : 'Só o essencial: nome, quando e onde. Depois de criar, você entra na ação e cuida da equipe, dos procedimentos e do relatório.'}
       </p>
       <Campo rotulo="Nome da ação"><input value={f.titulo} onChange={e => setF({ ...f, titulo: e.target.value })} placeholder="Ex.: Mutirão da Comunidade" /></Campo>
       <div className="linha-botoes">
@@ -1162,178 +1143,100 @@ function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCanc
           onChange={e => setF({ ...f, dataFim: e.target.value })} /></Campo>
       </div>
       {f.dataFim > f.data && <p className="dica" style={{ margin: '0 0 8px' }}>🗓 {diasDaAcao(f).length} dias de atendimento — a agenda do Seja Semente abre em todos eles.</p>}
-      <Campo rotulo={antiga ? 'Local' : 'Local (opcional)'}><input value={f.local} onChange={e => setF({ ...f, local: e.target.value })} placeholder="Ex.: Igreja Central" /></Campo>
+      <Campo rotulo="Local"><input value={f.local} onChange={e => setF({ ...f, local: e.target.value })} placeholder="Ex.: Igreja Central" /></Campo>
 
-      <h3 style={{ margin: '14px 0 6px' }}>{antiga ? 'Quem participou' : 'Quem vai participar'} ({escalados.length})</h3>
-      <p className="dica" style={{ margin: '0 0 8px' }}>
-        {antiga
-          ? 'Marque as pessoas — depois dá para abrir cada uma e ver o que ela fez.'
-          : 'Marque as pessoas e, em cada uma, o que ela vai fazer nesta ação. Assim o Seja Semente já sabe quem agendar em cada procedimento.'}
-      </p>
-      {equipe.length ? equipe.map(v => {
-        const marcado = escalados.includes(v.id);
-        const meus = procsPorUid[v.id] || v.procedimentos || [];
-        const alternaProc = (nome) => setProcsPorUid(m => ({
-          ...m, [v.id]: (m[v.id] || v.procedimentos || []).includes(nome)
-            ? (m[v.id] || v.procedimentos || []).filter(x => x !== nome)
-            : [...(m[v.id] || v.procedimentos || []), nome],
-        }));
-        return (
-          <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'block', marginBottom: 8, width: '100%' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
-              <Bolha nome={v.nome} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <strong>{v.nome}</strong>
-                <span className="obs" style={{ display: 'block' }}>
-                  {marcado ? (meus.length ? `🦷 ${meus.join(' · ')}` : '⚠ marque o que ela vai fazer') : (v.ministerio || 'toque para incluir')}
-                </span>
-              </span>
+      <div className="cartao">
+        <strong style={{ display: 'block', marginBottom: 6 }}>📷 Fotos do local (opcional)</strong>
+        <p className="dica" style={{ margin: '0 0 8px' }}>Elas aparecem na Colheita, mostrando onde o projeto esteve.</p>
+        {fotos.length > 0 && (
+          <div className="grade-fotos" style={{ marginBottom: 8 }}>
+            {fotos.map((ft, i) => (
+              <div key={i} className="foto-mini" style={{ position: 'relative' }}>
+                <img src={ft} alt={'local ' + (i + 1)} />
+                <button className="btn-remover" style={{ position: 'absolute', top: 4, right: 4 }}
+                  onClick={() => setFotos(fs => fs.filter((_, k) => k !== i))}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {fotos.length < 6 && (
+          <div className="foto-ad-vazia">
+            <label className="foto-ad-botao">
+              <Camera size={19} /><span>Tirar foto</span>
+              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pegarFoto} />
             </label>
-            {marcado && !antiga && (
-              <div className="caixas" style={{ marginTop: 8 }}>
-                {(todasAreas || []).map(nome => (
-                  <label key={nome} className={meus.includes(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '5px 10px', fontSize: 12.5 }}>
-                    <input type="checkbox" checked={meus.includes(nome)} onChange={() => alternaProc(nome)} />
-                    {nome}
-                  </label>
-                ))}
-              </div>
-            )}
+            <label className="foto-ad-botao secundario">
+              <Images size={19} /><span>Da galeria</span>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pegarFoto} />
+            </label>
           </div>
-        );
-      }) : <p className="dica">Nenhum voluntário ativo cadastrado ainda.</p>}
-
-      {antiga && (
-        <>
-          <h3 style={{ margin: '16px 0 6px' }}>O que foi feito</h3>
-          <p className="dica" style={{ margin: '0 0 8px' }}>Escolha a especialidade, diga quantos (ou quantos dentes) e vá adicionando. Pode repetir a mesma especialidade quantas vezes precisar.</p>
-          <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Campo rotulo="Especialidade">
-              <select value={item.area} onChange={e => setItem({ ...item, area: e.target.value })}>
-                {(todasAreas || []).map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Campo>
-            <Campo rotulo={porDente ? 'Quantos dentes' : 'Quantos procedimentos'}>
-              <input type="number" min="1" value={porDente ? item.dentes : item.quantos}
-                onChange={e => setItem(porDente ? { ...item, dentes: e.target.value } : { ...item, quantos: e.target.value })} />
-            </Campo>
-            <Campo rotulo="Quem fez (opcional)">
-              <select value={item.quemUid} onChange={e => setItem({ ...item, quemUid: e.target.value })}>
-                <option value="">— não informado —</option>
-                {equipe.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
-              </select>
-            </Campo>
-            <Campo rotulo="Observação (paciente, detalhe do que foi feito)">
-              <input value={item.descricao} onChange={e => setItem({ ...item, descricao: e.target.value })} placeholder="Ex.: José da Silva — extração do 36" />
-            </Campo>
-            <div className="cartao-topo">
-              <span className="obs">{porDente ? `${unidades} dente(s)` : `${unidades} procedimento(s)`}</span>
-              <strong>{dinheiro(valorItem)}</strong>
-            </div>
-            <button className="btn-mais" onClick={adicionar}>+ Adicionar</button>
-          </div>
-
-          {itens.length > 0 && (
-            <>
-              <h3 style={{ margin: '14px 0 8px' }}>Lançados ({itens.length})</h3>
-              {itens.map(r => (
-                <div className="cartao" key={r.id}>
-                  <div className="cartao-topo"><strong>{r.area}</strong>
-                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <strong>{dinheiro(r.valor)}</strong>
-                      <button className="btn-remover" onClick={() => setItens(is => is.filter(x => x.id !== r.id))}>✕</button>
-                    </span>
-                  </div>
-                  <p className="obs" style={{ margin: 0 }}>
-                    {r.dentes > 0 ? `${r.dentes} dente(s)` : `${r.quantos} procedimento(s)`}
-                    {r.profissionalNome ? ` · ${r.profissionalNome}` : ''}{r.descricao ? ` · ${r.descricao}` : ''}
-                  </p>
-                </div>
-              ))}
-              <h3 style={{ margin: '14px 0 8px' }}>Balanço desta ação</h3>
-              <div className="grade-numeros">
-                <div className="cartao-numero"><strong>{totalProc}</strong><span>procedimentos</span></div>
-                <div className="cartao-numero"><strong>{totalDentes}</strong><span>dentes tratados</span></div>
-                <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas</span></div>
-                <div className="cartao-numero destaque"><strong>{dinheiro(totalValor)}</strong><span>valor produzido</span></div>
-              </div>
-              <div className="cartao">
-                <strong style={{ display: 'block', marginBottom: 4 }}>Por especialidade</strong>
-                {Object.entries(porArea).map(([a, n]) => (
-                  <p className="obs" key={a} style={{ margin: '2px 0' }}>{a}: <b>{n}</b></p>
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
+        )}
+      </div>
 
       <div className="linha-botoes" style={{ marginTop: 10 }}>
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
         <button className="btn-principal" disabled={!podeSalvar} onClick={() => aoSalvar({
-          ...f, voluntariosUids: escalados,
-          procedimentosPorUid: Object.fromEntries(escalados.map(uid => [uid, procsPorUid[uid] || equipe.find(v => v.id === uid)?.procedimentos || []])),
-          ...(antiga ? { registros: itens, retroativa: true, status: 'encerrada' } : {}),
-        })}>{antiga ? 'Salvar ação antiga' : 'Criar ação'}</button>
+          ...f, fotosLocal: fotos,
+          ...(antiga ? { retroativa: true, status: 'encerrada' } : {}),
+        })}>{antiga ? 'Registrar ação' : 'Criar ação'}</button>
       </div>
-      {antiga && !itens.length && <p className="dica">Adicione pelo menos um procedimento para salvar.</p>}
     </div>
   );
 }
 
 // ─── A ação aberta: escala, status e relatório em tempo real ───
+// ─── A ação aberta: um menu de caixinhas. Cada uma abre a SUA página
+//     (não é rolar para baixo) — e volta com o botão ou arrastando o dedo
+//     da beirada esquerda para a direita. ───
 function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], procedimentos = [], aoNovaNota, aoExcluirNota, aoSalvar, aoSalvarProcs, aoExcluir, aoVoltar }) {
-  const escalados = acao.voluntariosUids || [];
-  const alternaEscala = (id) => aoSalvar({ voluntariosUids: escalados.includes(id) ? escalados.filter(x => x !== id) : [...escalados, id] });
-  // Quem está aberto na "ficha da pessoa" (o que ela fez nesta ação)
+  const [pagina, setPagina] = useState(null); // 'equipe' | 'relatorio' | 'pacientes' | 'notas' | 'materiais' | 'lancamentos'
   const [vendoPessoa, setVendoPessoa] = useState(null);
-  const [editandoProcs, setEditandoProcs] = useState(null); // uid em edição
-  // Os procedimentos registrados pelos dentistas no dia desta ação
-  // O relatório cobre todos os dias da ação (de início a fim)
-  const diasDela = diasDaAcao(acao);
-  const procsDoDia = procedimentos.filter(r => diasDela.includes(r.data || isoDe(r.em || r.criadoEm)));
+  const [editandoProcs, setEditandoProcs] = useState(null);
+  const [diaEscolhido, setDiaEscolhido] = useState('');
 
-  // Relatório do dia da ação (em tempo real, vindo do Semeador/central)
-  const doDia = atendimentos.filter(a => diasDela.includes(isoDe(a.inicio)));
-  // Só o atendimento JÁ CONCLUÍDO vira valor produzido e entra na contagem —
-  // quem ainda está na cadeira aparece na lista, mas não no dinheiro
-  const feitosDoDia = doDia.filter(a => a.fim);
+  const escalados = acao.voluntariosUids || [];
   const registros = acao.registros || [];
-  const custoAtend = feitosDoDia.reduce((s, a) => s + custoAtendimento(a), 0);
-  const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
-  // Materiais gastos na ação: os vinculados a ela E, para quem retirou sem
-  // vínculo, os do MESMO DIA da ação (é o mutirão daquele dia)
+  const alternaEscala = (id) => aoSalvar({ voluntariosUids: escalados.includes(id) ? escalados.filter(x => x !== id) : [...escalados, id] });
+
+  // Tudo o que aconteceu nos dias da ação
+  const diasDela = diasDaAcao(acao);
+  const procsDaAcao = procedimentos.filter(r => diasDela.includes(r.data || isoDe(r.em || r.criadoEm)));
+  const feitos = atendimentos.filter(a => a.fim && diasDela.includes(isoDe(a.inicio)));
   const gastosMateriais = movimentos.filter(m => deltaMov(m) < 0
     && (m.acaoId === acao.id || (!m.acaoId && diasDela.includes(isoDe(m.em || m.criadoEm)))));
+
+  const custoAtend = feitos.reduce((s, a) => s + custoAtendimento(a), 0);
+  const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
   const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
   const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
-  // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
+  const produzido = custoAtend + custoRegistros;
+  const gasto = custoMateriais + gastoNotas;
   const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
-  const dentesTratados = procsDoDia.reduce((s, r) => s + (r.dentes || []).length, 0)
+  const dentesTratados = procsDaAcao.reduce((s, r) => s + (r.dentes || []).length, 0)
     + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
+  const pessoasAtendidas = new Set([...feitos.map(a => a.pacienteId), ...procsDaAcao.map(r => r.pacienteId)].filter(Boolean)).size;
+
+  // O que foi feito, por especialidade (o "segmento" da ação)
   const porEspecialidade = (() => {
     const m = {};
-    for (const a of feitosDoDia) if (a.area) m[a.area] = (m[a.area] || 0) + 1;
-    for (const r of registros) m[r.area] = (m[r.area] || 0) + (Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1));
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+    const poe = (area, quantos, valor) => {
+      const k = area || 'Outros';
+      m[k] = m[k] || { quantos: 0, valor: 0 };
+      m[k].quantos += quantos; m[k].valor += valor;
+    };
+    for (const a of feitos) poe(a.area, 1, custoAtendimento(a));
+    for (const r of registros) poe(r.area, Number(r.dentes || 0) > 0 ? Number(r.dentes) : Number(r.quantos || 1), Number(r.valor || 0));
+    return Object.entries(m).sort((a, b) => b[1].valor - a[1].valor);
   })();
 
-  // Registro manual (para ações passadas ou pacientes fora do fluxo)
-  const [novo, setNovo] = useState({ pacienteNome: '', area: todasAreas[0] || '', dentes: 1 });
-  const valorNovo = valorDe(novo.area) * (ehPorDente(novo.area) ? Math.max(1, Number(novo.dentes || 1)) : 1);
-  function adicionarRegistro() {
-    if (!novo.pacienteNome.trim()) return;
-    const r = { id: 'r' + Math.floor(Math.random() * 1e9), pacienteNome: novo.pacienteNome.trim(), area: novo.area, dentes: Number(novo.dentes || 1), valor: valorNovo, em: new Date() };
-    aoSalvar({ registros: [...registros, r] });
-    setNovo({ pacienteNome: '', area: todasAreas[0] || '', dentes: 1 });
-  }
+  const primeiroNome = (n) => String(n || '').split(' ')[0];
+  const voltarPagina = () => { setPagina(null); setVendoPessoa(null); setEditandoProcs(null); };
 
-  // ── Ficha da pessoa: tudo o que ela fez nesta ação ──
+  // ═══ PÁGINA: a ficha de uma pessoa dentro da ação ═══
   if (vendoPessoa) {
     const v = vendoPessoa;
-    const doDele = feitosDoDia.filter(a => a.profissionalUid === v.id);
-    const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
+    const doDele = feitos.filter(a => a.profissionalUid === v.id);
+    const procsDele = procsDaAcao.filter(r => r.autorUid === v.id);
     const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
     const materiaisDele = gastosMateriais.filter(m => m.autorUid === v.id);
     const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
@@ -1357,7 +1260,6 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
           <div className="cartao-numero"><strong>{minutos ? `${minutos} min` : '—'}</strong><span>tempo na cadeira</span></div>
           <div className="cartao-numero destaque"><strong>{dinheiro(valorDele)}</strong><span>valor produzido</span></div>
         </div>
-
         {procsDele.length > 0 && (
           <>
             <h3 style={{ margin: '14px 0 8px' }}>O que ele(a) registrou</h3>
@@ -1379,18 +1281,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
             {doDele.map(a => (
               <div className="cartao" key={a.id}>
                 <div className="cartao-topo"><strong>{a.pacienteNome}</strong><strong>{dinheiro(custoAtendimento(a))}</strong></div>
-                <p className="obs" style={{ margin: 0 }}>{a.area}{a.duracaoMin ? ` · ${a.duracaoMin} min` : ' · em andamento'}</p>
-              </div>
-            ))}
-          </>
-        )}
-        {manuaisDele.length > 0 && (
-          <>
-            <h3 style={{ margin: '14px 0 8px' }}>Lançamentos manuais</h3>
-            {manuaisDele.map(r => (
-              <div className="cartao" key={r.id}>
-                <div className="cartao-topo"><strong>{r.pacienteNome}</strong><strong>{dinheiro(r.valor)}</strong></div>
-                <p className="obs" style={{ margin: 0 }}>{r.area}{r.dentes > 1 ? ` · ${r.dentes} dentes` : ''}{r.descricao ? ` · ${r.descricao}` : ''}</p>
+                <p className="obs" style={{ margin: 0 }}>{a.area}{a.duracaoMin ? ` · ${a.duracaoMin} min` : ''}</p>
               </div>
             ))}
           </>
@@ -1400,184 +1291,189 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
             <h3 style={{ margin: '14px 0 8px' }}>Materiais que retirou</h3>
             {materiaisDele.map(m => (
               <div className="cartao" key={m.id}>
-                <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
-                <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s)</p>
+                <div className="cartao-linha" style={{ alignItems: 'center' }}>
+                  {m.itemFoto && <img className="estoque-foto" src={m.itemFoto} alt={m.itemNome} />}
+                  <div style={{ flex: 1 }}>
+                    <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
+                    <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s)</p>
+                  </div>
+                </div>
               </div>
             ))}
           </>
         )}
-        {!doDele.length && !procsDele.length && !manuaisDele.length && (
-          <Vazio texto="Esta pessoa ainda não registrou nada nesta ação." />
-        )}
+        {!doDele.length && !procsDele.length && !manuaisDele.length && <Vazio texto="Esta pessoa ainda não registrou nada nesta ação." />}
       </div>
     );
   }
 
-  return (
+  // ═══ PÁGINA: EQUIPE (marcar quem participa e o que cada um faz) ═══
+  if (pagina === 'equipe') return (
     <div className="folha">
-      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
-      <div className="titulo-com-botao"><h2>{acao.retroativa ? '📚' : '🌱'} {acao.titulo}</h2>
-        <span className={'chip ' + (acao.status === 'iniciada' ? 'em-atendimento' : acao.status === 'encerrada' ? 'concluído' : 'aguardando')}>{acao.retroativa ? 'antiga' : acao.status}</span>
-      </div>
-      <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(acao)}{acao.local ? ` · ${acao.local}` : ''}{acao.retroativa ? ' · registro de mutirão anterior ao aplicativo' : ''}</p>
-      {!acao.retroativa && (
-        <>
-          {acao.status === 'encerrada' ? (
-            <div className="cartao" style={{ border: '1.5px solid #E8A08C', background: '#FBE3DA' }}>
-              <strong style={{ display: 'block', color: '#8F2F1B' }}>⏹ Ação encerrada</strong>
-              <p className="obs" style={{ margin: '4px 0 0' }}>
-                {acao.iniciadaEm ? `Começou ${quandoBonito(acao.iniciadaEm)} · ` : ''}
-                Encerrada {quandoBonito(acao.encerradaEm)}
-                {acao.encerradaPorNome ? ` por ${String(acao.encerradaPorNome).split(' ')[0]}` : ''}.
-              </p>
-              <p className="obs" style={{ margin: '4px 0 0' }}>Ninguém agenda nem atende mais nestes dias — no Seja Semente e no Semeador já está fechado, e a Colheita mostra o encerramento.</p>
-              <button className="btn-secundario" style={{ width: '100%', marginTop: 10 }} onClick={() => {
-                if (window.confirm('Reabrir esta ação? A equipe volta a agendar e atender nos dias dela.')) {
-                  aoSalvar({ status: 'iniciada', encerradaEm: null, encerradaPorNome: '', reabertaEm: new Date() });
-                }
-              }}>↩ Reabrir ação</button>
-            </div>
-          ) : (
-            <div className="linha-botoes" style={{ marginBottom: 12 }}>
-              {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
-              {acao.status === 'iniciada' && (
-                <button className="btn-secundario" onClick={() => {
-                  if (window.confirm('Encerrar a ação?\n\nDepois de encerrada ninguém consegue agendar nem chamar paciente nos dias dela. Dá para reabrir se precisar.')) {
-                    aoSalvar({ status: 'encerrada', encerradaEm: new Date(), encerradaPorNome: acao.encerradaPorNome || '' });
-                  }
-                }}>⏹ Encerrar ação</button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      <h3 style={{ margin: '10px 0 8px' }}>Equipe da ação ({escalados.length})</h3>
-      <p className="dica" style={{ margin: '0 0 8px' }}>Marque quem participa. Toque no nome de quem está marcado para ver <b>o que essa pessoa fez</b> nesta ação.</p>
+      <button className="btn-voltar" onClick={voltarPagina}><ChevronLeft size={18} /> Voltar</button>
+      <h2>👥 Equipe da ação</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Marque quem participa e, em cada pessoa, o que ela vai fazer (o 🦷). Assim o Seja Semente já sabe quem oferecer em cada procedimento. Toque no nome para ver o que ela fez.</p>
       {equipe.length ? equipe.map(v => {
         const marcado = escalados.includes(v.id);
-        const doDele = feitosDoDia.filter(a => a.profissionalUid === v.id);
-        const procsDele = procsDoDia.filter(r => r.autorUid === v.id);
-        const manuaisDele = registros.filter(r => r.profissionalUid === v.id);
-        const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
-        const quantos = doDele.length + procsDele.length + manuaisDele.length;
+        const meus = (acao.procedimentosPorUid || {})[v.id] || v.procedimentos || [];
+        const doDele = feitos.filter(a => a.profissionalUid === v.id);
+        const quantos = doDele.length + procsDaAcao.filter(r => r.autorUid === v.id).length + registros.filter(r => r.profissionalUid === v.id).length;
+        const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0)
+          + registros.filter(r => r.profissionalUid === v.id).reduce((sm, r) => sm + Number(r.valor || 0), 0);
         return (
           <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'block', marginBottom: 8, width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
-            <Bolha nome={v.nome} />
-            <button type="button" onClick={() => marcado && setVendoPessoa(v)}
-              style={{ flex: 1, textAlign: 'left', border: 'none', background: 'none', font: 'inherit', cursor: marcado ? 'pointer' : 'default', padding: 0, minWidth: 0 }}>
-              <strong>{v.nome}</strong>
-              <span className="obs" style={{ display: 'block' }}>
-                {marcado ? `${quantos} atendimento(s) · ${dinheiro(valorDele)} — toque para ver` : (v.ministerio || 'marque para incluir na ação')}
-              </span>
-            </button>
-            {marcado && (
-              <button type="button" className="btn-remover" title="O que ela vai fazer"
-                onClick={() => setEditandoProcs(editandoProcs === v.id ? null : v.id)}
-                style={{ background: '#E5F3EA', color: '#226343' }}>🦷</button>
-            )}
-            {marcado && <ChevronRight size={18} strokeWidth={2.6} style={{ opacity: 0.5, flex: 'none' }} />}
+              <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
+              <Bolha nome={v.nome} />
+              <button type="button" onClick={() => marcado && setVendoPessoa(v)}
+                style={{ flex: 1, textAlign: 'left', border: 'none', background: 'none', font: 'inherit', cursor: marcado ? 'pointer' : 'default', padding: 0, minWidth: 0 }}>
+                <strong>{v.nome}</strong>
+                <span className="obs" style={{ display: 'block' }}>
+                  {marcado
+                    ? (meus.length ? `🦷 ${meus.join(' · ')}` : '⚠ marque o que ela vai fazer')
+                    : (v.ministerio || 'toque na caixinha para incluir')}
+                </span>
+                {marcado && quantos > 0 && <span className="obs" style={{ display: 'block' }}>{quantos} atendimento(s) · {dinheiro(valorDele)}</span>}
+              </button>
+              {marcado && (
+                <button type="button" className="btn-remover" title="O que ela vai fazer"
+                  onClick={() => setEditandoProcs(editandoProcs === v.id ? null : v.id)}
+                  style={{ background: '#E5F3EA', color: '#226343' }}>🦷</button>
+              )}
+              {marcado && <ChevronRight size={18} strokeWidth={2.6} style={{ opacity: 0.5, flex: 'none' }} />}
             </div>
             {marcado && editandoProcs === v.id && (
               <div className="caixas" style={{ marginTop: 8, width: '100%' }}>
-                {todasAreas.map(nome => {
-                  const meus = (acao.procedimentosPorUid || {})[v.id] || v.procedimentos || [];
-                  return (
-                    <label key={nome} className={meus.includes(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '5px 10px', fontSize: 12.5 }}>
-                      <input type="checkbox" checked={meus.includes(nome)} onChange={() => {
-                        const novos = meus.includes(nome) ? meus.filter(x => x !== nome) : [...meus, nome];
-                        aoSalvarProcs(v, novos);
-                      }} />
-                      {nome}
-                    </label>
-                  );
-                })}
+                {todasAreas.map(nome => (
+                  <label key={nome} className={meus.includes(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '5px 10px', fontSize: 12.5 }}>
+                    <input type="checkbox" checked={meus.includes(nome)} onChange={() => {
+                      aoSalvarProcs(v, meus.includes(nome) ? meus.filter(x => x !== nome) : [...meus, nome]);
+                    }} />
+                    {nome}
+                  </label>
+                ))}
               </div>
             )}
           </div>
         );
-      }) : <p className="dica">Nenhum voluntário ativo para escalar.</p>}
+      }) : <Vazio texto="Nenhum voluntário ativo para escalar." />}
+    </div>
+  );
 
-      <h3 style={{ margin: '16px 0 8px' }}>{acao.retroativa ? 'Balanço da ação' : 'Relatório em tempo real'}</h3>
+  // ═══ PÁGINA: RELATÓRIO ═══
+  if (pagina === 'relatorio') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={voltarPagina}><ChevronLeft size={18} /> Voltar</button>
+      <h2>📊 Relatório da ação</h2>
+      <p className="dica" style={{ marginTop: 0 }}>{acao.titulo} · {periodoBonito(acao)}{acao.local ? ` · ${acao.local}` : ''}</p>
+      <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+        <strong style={{ fontSize: 30 }}>{dinheiro(produzido)}</strong>
+        <span>valor da ação (tratamento entregue)</span>
+      </div>
       <div className="grade-numeros">
-        <div className="cartao-numero"><strong>{feitosDoDia.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{feitos.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{pessoasAtendidas}</strong><span>pessoas atendidas</span></div>
         <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
-        <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na ação</span></div>
-        <div className="cartao-numero destaque"><strong>{dinheiro(custoAtend + custoRegistros)}</strong><span>valor produzido</span></div>
-        <div className="cartao-numero"><strong>{dinheiro(custoMateriais)}</strong><span>custo de materiais</span></div>
-        <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>gasto em notas ({notas.length})</span></div>
+        <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na equipe</span></div>
+        <div className="cartao-numero"><strong>{dinheiro(custoMateriais)}</strong><span>materiais</span></div>
+        <div className="cartao-numero"><strong>{dinheiro(gastoNotas)}</strong><span>notas fiscais</span></div>
       </div>
       <div className="cartao" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px' }}>
         <strong>💰 Resultado (produzido − gastos)</strong>
-        <b style={{ fontSize: 18, color: (custoAtend + custoRegistros - custoMateriais - gastoNotas) >= 0 ? '#226343' : '#B3402A' }}>
-          {dinheiro(custoAtend + custoRegistros - custoMateriais - gastoNotas)}
-        </b>
+        <b style={{ fontSize: 18, color: (produzido - gasto) >= 0 ? '#226343' : '#B3402A' }}>{dinheiro(produzido - gasto)}</b>
       </div>
-      {porEspecialidade.length > 0 && (
-        <div className="cartao">
-          <strong style={{ display: 'block', marginBottom: 4 }}>Por especialidade</strong>
-          {porEspecialidade.map(([a, n]) => <p className="obs" key={a} style={{ margin: '2px 0' }}>{a}: <b>{n}</b></p>)}
+      {gasto > 0 && produzido > 0 && (
+        <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
+          <div className="cartao-topo"><strong>💚 Cada R$ 1,00 gasto virou</strong><strong style={{ fontSize: 20 }}>{dinheiro(produzido / gasto)}</strong></div>
+          <p className="obs" style={{ margin: 0 }}>em tratamento entregue para quem precisava.</p>
         </div>
       )}
-
-      {doDia.length > 0 && (
-        <>
-          <h3 style={{ margin: '14px 0 8px' }}>Pacientes do dia (automático)</h3>
-          {doDia.map(a => (
-            <div className="cartao" key={a.id}>
-              <div className="cartao-topo"><strong>{a.pacienteNome}</strong><strong>{dinheiro(custoAtendimento(a))}</strong></div>
-              <p className="obs" style={{ margin: 0 }}>{a.area} · {a.profissionalNome}{a.duracaoMin ? ` · ${a.duracaoMin} min` : a.fim ? '' : ' · em andamento'}</p>
-            </div>
-          ))}
-        </>
-      )}
-
-      {procsDoDia.length > 0 && (
-        <>
-          <h3 style={{ margin: '14px 0 8px' }}>Registrado pelos dentistas ({procsDoDia.length})</h3>
-          {procsDoDia.map(r => (
-            <div className="cartao" key={r.id}>
-              <div className="cartao-topo"><strong>{r.pacienteNome}</strong>{r.area && <span className="chip concluído">{r.area}</span>}</div>
-              {r.descricao && <p style={{ margin: '4px 0 0' }}>{r.descricao}</p>}
-              <p className="obs" style={{ margin: '2px 0 0' }}>
-                {r.autorNome ? `por ${r.autorNome}` : ''}
-                {(r.dentes || []).length ? ` · dentes ${r.dentes.join(', ')}` : ''}
-                {(r.fotoAntesId && r.fotoDepoisId) ? ' · 📷 antes e depois' : ''}
-              </p>
-            </div>
-          ))}
-        </>
-      )}
-
-      <h3 style={{ margin: '14px 0 8px' }}>{acao.retroativa ? 'Lançar mais um procedimento' : 'Adicionar atendimento manual'}</h3>
-      <p className="dica" style={{ margin: '0 0 8px' }}>Para registrar ações passadas ou algo feito fora do fluxo — o valor sai da tabela de Valores (por dente, quando marcado).</p>
-      <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <input value={novo.pacienteNome} onChange={e => setNovo({ ...novo, pacienteNome: e.target.value })} placeholder="Nome do paciente" />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select style={{ flex: 1 }} value={novo.area} onChange={e => setNovo({ ...novo, area: e.target.value })}>
-            {todasAreas.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-          {ehPorDente(novo.area) && <input type="number" min="1" style={{ width: 90 }} value={novo.dentes} onChange={e => setNovo({ ...novo, dentes: e.target.value })} placeholder="dentes" />}
-        </div>
-        <div className="cartao-topo"><span className="obs">{ehPorDente(novo.area) ? `${novo.dentes || 1} dente(s)` : 'por atendimento'}</span><strong>{dinheiro(valorNovo)}</strong></div>
-        <button className="btn-mais" disabled={!novo.pacienteNome.trim()} onClick={adicionarRegistro}>+ Registrar</button>
-      </div>
-      {registros.length > 0 && registros.map(r => (
-        <div className="cartao" key={r.id}>
-          <div className="cartao-topo"><strong>{r.pacienteNome}</strong>
-            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <strong>{dinheiro(r.valor)}</strong>
-              <button className="btn-remover" onClick={() => aoSalvar({ registros: registros.filter(x => x.id !== r.id) })}>✕</button>
-            </span>
+      <h3 style={{ margin: '16px 0 8px' }}>Por segmento (especialidade)</h3>
+      {porEspecialidade.length ? porEspecialidade.map(([area, v]) => (
+        <div className="cartao" key={area}>
+          <div className="cartao-topo">
+            <strong style={{ color: corDoNome(area) }}>{area}</strong>
+            <strong>{dinheiro(v.valor)}</strong>
           </div>
-          <p className="obs" style={{ margin: 0 }}>{r.area}{r.dentes > 1 ? ` · ${r.dentes} dentes` : ''} · manual</p>
+          <p className="obs" style={{ margin: 0 }}>{v.quantos} procedimento(s){v.quantos ? ` · ${dinheiro(v.valor / v.quantos)} cada, em média` : ''}</p>
         </div>
-      ))}
+      )) : <Vazio texto="Ainda sem procedimentos registrados nesta ação." />}
+      <p className="dica" style={{ marginTop: 12 }}>Estes números vão sozinhos para a Colheita, para quem apoia o projeto acompanhar. 💚</p>
+    </div>
+  );
 
-      <div className="titulo-com-botao" style={{ marginTop: 14 }}><h3 style={{ margin: 0 }}>📄 Notas fiscais da ação</h3>
-        <button className="btn-mais" onClick={aoNovaNota}>+ Nota</button>
+  // ═══ PÁGINA: PACIENTES (por dia) ═══
+  if (pagina === 'pacientes') {
+    const dia = diaEscolhido || (diasDela.includes(hojeISO()) ? hojeISO() : diasDela[0] || acao.data);
+    const doDia = procsDaAcao.filter(r => (r.data || isoDe(r.em || r.criadoEm)) === dia);
+    const atendDia = feitos.filter(a => isoDe(a.inicio) === dia);
+    // Uma linha por paciente, juntando o que o dentista registrou com o
+    // atendimento cronometrado
+    const linhas = (() => {
+      const m = new Map();
+      for (const a of atendDia) {
+        const k = a.pacienteId || a.pacienteNome;
+        const x = m.get(k) || { id: a.pacienteId, nome: a.pacienteNome, areas: [], quem: [], dentes: 0, valor: 0, comRegistro: false };
+        x.valor += custoAtendimento(a);
+        if (a.area && !x.areas.includes(a.area)) x.areas.push(a.area);
+        if (a.profissionalNome && !x.quem.includes(a.profissionalNome)) x.quem.push(a.profissionalNome);
+        m.set(k, x);
+      }
+      for (const r of doDia) {
+        const k = r.pacienteId || r.pacienteNome;
+        const x = m.get(k) || { id: r.pacienteId, nome: r.pacienteNome, areas: [], quem: [], dentes: 0, valor: 0, comRegistro: false };
+        x.dentes += (r.dentes || []).length;
+        x.comRegistro = true;
+        if (r.area && !x.areas.includes(r.area)) x.areas.push(r.area);
+        if (r.autorNome && !x.quem.includes(r.autorNome)) x.quem.push(r.autorNome);
+        m.set(k, x);
+      }
+      return [...m.values()];
+    })();
+    return (
+      <div className="folha">
+        <button className="btn-voltar" onClick={voltarPagina}><ChevronLeft size={18} /> Voltar</button>
+        <h2>🧑‍🤝‍🧑 Pacientes do dia</h2>
+        <p className="dica" style={{ marginTop: 0 }}>Escolha o dia e veja quem foi atendido — é o que os dentistas registraram no Semeador.</p>
+        <Campo rotulo="Dia">
+          <select value={dia} onChange={e => setDiaEscolhido(e.target.value)}>
+            {diasDela.map(d => <option key={d} value={d}>{dataBonita(d)}</option>)}
+          </select>
+        </Campo>
+        <div className="grade-numeros">
+          <div className="cartao-numero"><strong>{linhas.length}</strong><span>pessoas neste dia</span></div>
+          <div className="cartao-numero destaque"><strong>{dinheiro(linhas.reduce((s, x) => s + x.valor, 0))}</strong><span>entregue no dia</span></div>
+        </div>
+        {linhas.length ? linhas.map(x => (
+          <div className="cartao" key={x.id || x.nome}>
+            <div className="cartao-linha" style={{ alignItems: 'center' }}>
+              <Bolha nome={x.nome} foto={pacientes.find(p => p.id === x.id)?.foto} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="cartao-topo">
+                  <strong>{x.nome}</strong>
+                  {x.comRegistro ? <span className="chip concluído">registrado</span> : <span className="chip aguardando">sem registro</span>}
+                </div>
+                <p className="obs" style={{ margin: 0 }}>
+                  {x.areas.join(', ') || 'sem procedimento'}{x.dentes ? ` · ${x.dentes} dente(s)` : ''}
+                  {x.quem.length ? ` · ${x.quem.map(primeiroNome).join(', ')}` : ''}
+                </p>
+              </div>
+              {x.valor > 0 && <strong style={{ flex: 'none' }}>{dinheiro(x.valor)}</strong>}
+            </div>
+          </div>
+        )) : <Vazio texto="Ninguém atendido neste dia ainda." />}
+      </div>
+    );
+  }
+
+  // ═══ PÁGINA: NOTAS FISCAIS ═══
+  if (pagina === 'notas') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={voltarPagina}><ChevronLeft size={18} /> Voltar</button>
+      <div className="titulo-com-botao"><h2>📄 Notas fiscais</h2><button className="btn-mais" onClick={aoNovaNota}>+ Nota</button></div>
+      <p className="dica" style={{ marginTop: 0 }}>As compras desta ação. Escaneie o QR da nota — o código prova que ela é real.</p>
+      <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+        <strong style={{ fontSize: 26 }}>{dinheiro(gastoNotas)}</strong><span>em {notas.length} nota(s)</span>
       </div>
       {notas.length ? notas.map(n => (
         <div className="cartao" key={n.id}>
@@ -1587,28 +1483,196 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
               <button className="btn-remover" onClick={() => aoExcluirNota(n)}>✕</button>
             </span>
           </div>
-          <p className="obs" style={{ margin: 0 }}>{n.chave ? '✓ QR real · …' + n.chave.slice(-8) : '📷 foto'}</p>
+          <p className="obs" style={{ margin: 0 }}>{n.chave ? '✓ QR real · …' + String(n.chave).slice(-8) : '📷 foto'}</p>
           {n.foto && <img src={n.foto} alt="nota" style={{ maxWidth: '100%', borderRadius: 10, marginTop: 8 }} />}
         </div>
-      )) : <p className="dica" style={{ margin: '4px 0 0' }}>Nenhuma nota nesta ação — toque em + Nota para fotografar ou escanear o QR.</p>}
+      )) : <Vazio texto="Nenhuma nota nesta ação — toque em + Nota para fotografar ou escanear o QR." />}
+    </div>
+  );
 
-      {gastosMateriais.length > 0 && (
-        <>
-          <h3 style={{ margin: '14px 0 8px' }}>Materiais usados nesta ação</h3>
-          {gastosMateriais.map(m => (
-            <div className="cartao" key={m.id}>
+  // ═══ PÁGINA: MATERIAIS ═══
+  if (pagina === 'materiais') return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={voltarPagina}><ChevronLeft size={18} /> Voltar</button>
+      <h2>📦 Materiais usados</h2>
+      <p className="dica" style={{ marginTop: 0 }}>O que saiu do estoque nesta ação — quem retirou, quanto e quanto custou.</p>
+      <div className="cartao-numero destaque" style={{ marginBottom: 12 }}>
+        <strong style={{ fontSize: 26 }}>{dinheiro(custoMateriais)}</strong><span>em {gastosMateriais.length} retirada(s)</span>
+      </div>
+      {gastosMateriais.length ? gastosMateriais.map(m => (
+        <div className="cartao" key={m.id}>
+          <div className="cartao-linha" style={{ alignItems: 'center' }}>
+            {m.itemFoto && <img className="estoque-foto" src={m.itemFoto} alt={m.itemNome} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="cartao-topo"><strong>{m.itemNome}</strong><strong>{dinheiro(Math.abs(deltaMov(m)) * Number(m.valorUnit || 0))}</strong></div>
-              <p className="obs" style={{ margin: 0 }}>{Math.abs(deltaMov(m))} unidade(s){m.autorNome ? ` · ${String(m.autorNome).split(' ')[0]}` : ''}{m.motivo ? ` · ${m.motivo}` : ''}</p>
+              <p className="obs" style={{ margin: 0 }}>
+                {Math.abs(deltaMov(m))} {m.unidade || 'un'}
+                {m.autorNome ? ` · ${primeiroNome(m.autorNome)}` : ''}
+              </p>
             </div>
-          ))}
-        </>
+          </div>
+        </div>
+      )) : <Vazio texto="Nenhum material retirado nesta ação ainda." />}
+    </div>
+  );
+
+  // ═══ PÁGINA: LANÇAMENTOS (só na ação antiga) ═══
+  if (pagina === 'lancamentos') return (
+    <LancamentosAntigos acao={acao} equipe={equipe} todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente}
+      aoSalvar={aoSalvar} aoVoltar={voltarPagina} />
+  );
+
+  // ═══ O MENU DA AÇÃO ═══
+  const caixa = (id, icone, titulo, detalhe, valor) => (
+    <button className="cartao caixa-menu" onClick={() => setPagina(id)}>
+      <span className="caixa-menu-icone">{icone}</span>
+      <span className="caixa-menu-texto">
+        <strong>{titulo}</strong>
+        <span className="obs">{detalhe}</span>
+      </span>
+      {valor && <span className="caixa-menu-valor">{valor}</span>}
+      <ChevronRight size={20} strokeWidth={2.6} style={{ color: '#9AA79F', flex: 'none' }} />
+    </button>
+  );
+
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <div className="titulo-com-botao"><h2>{acao.retroativa ? '📚' : '🌱'} {acao.titulo}</h2>
+        <span className={'chip ' + (acao.status === 'iniciada' ? 'em-atendimento' : acao.status === 'encerrada' ? 'concluído' : 'aguardando')}>{acao.retroativa ? 'antiga' : acao.status}</span>
+      </div>
+      <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(acao)}{acao.local ? ` · ${acao.local}` : ''}</p>
+
+      {(acao.fotosLocal || []).length > 0 && (
+        <div className="grade-fotos" style={{ marginBottom: 10 }}>
+          {acao.fotosLocal.map((ft, i) => <span key={i} className="foto-mini"><img src={ft} alt={'local ' + (i + 1)} /></span>)}
+        </div>
       )}
+
+      {!acao.retroativa && (
+        acao.status === 'encerrada' ? (
+          <div className="cartao" style={{ border: '1.5px solid #E8A08C', background: '#FBE3DA' }}>
+            <strong style={{ display: 'block', color: '#8F2F1B' }}>⏹ Ação encerrada</strong>
+            <p className="obs" style={{ margin: '4px 0 0' }}>
+              {acao.iniciadaEm ? `Começou ${quandoBonito(acao.iniciadaEm)} · ` : ''}
+              Encerrada {quandoBonito(acao.encerradaEm)}
+              {acao.encerradaPorNome ? ` por ${primeiroNome(acao.encerradaPorNome)}` : ''}.
+            </p>
+            <p className="obs" style={{ margin: '4px 0 0' }}>Ninguém agenda nem atende mais nestes dias — no Seja Semente e no Semeador já está fechado, e a Colheita mostra o encerramento.</p>
+            <button className="btn-secundario" style={{ width: '100%', marginTop: 10 }} onClick={() => {
+              if (window.confirm('Reabrir esta ação? A equipe volta a agendar e atender nos dias dela.')) {
+                aoSalvar({ status: 'iniciada', encerradaEm: null, encerradaPorNome: '', reabertaEm: new Date() });
+              }
+            }}>↩ Reabrir ação</button>
+          </div>
+        ) : (
+          <div className="linha-botoes" style={{ marginBottom: 12 }}>
+            {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
+            {acao.status === 'iniciada' && (
+              <button className="btn-secundario" onClick={() => {
+                if (window.confirm('Encerrar a ação?\n\nDepois de encerrada ninguém consegue agendar nem chamar paciente nos dias dela. Dá para reabrir se precisar.')) {
+                  aoSalvar({ status: 'encerrada', encerradaEm: new Date() });
+                }
+              }}>⏹ Encerrar ação</button>
+            )}
+          </div>
+        )
+      )}
+
+      <div className="menu-acao">
+        {caixa('equipe', '👥', 'Equipe', escalados.length ? `${escalados.length} pessoa(s) · toque para ver e marcar` : 'ninguém marcado ainda')}
+        {caixa('relatorio', '📊', 'Relatório', `${feitos.length + totalManuais} atendimento(s) · ${pessoasAtendidas} pessoa(s)`, dinheiro(produzido))}
+        {caixa('pacientes', '🧑‍🤝‍🧑', 'Pacientes do dia', 'quem foi atendido, dia a dia')}
+        {caixa('notas', '📄', 'Notas fiscais', `${notas.length} nota(s)`, dinheiro(gastoNotas))}
+        {caixa('materiais', '📦', 'Materiais usados', `${gastosMateriais.length} retirada(s)`, dinheiro(custoMateriais))}
+        {acao.retroativa && caixa('lancamentos', '✍️', 'Lançamentos', `${registros.length} lançamento(s) · o que foi feito no mutirão`, dinheiro(custoRegistros))}
+      </div>
 
       <button className="btn-sair" style={{ width: '100%', marginTop: 14 }} onClick={aoExcluir}>🗑 Excluir esta ação</button>
     </div>
   );
 }
 
+// ─── Lançamentos da ação ANTIGA: aqui sim entra na mão, porque o mutirão
+//     aconteceu antes do aplicativo existir ───
+function LancamentosAntigos({ acao, equipe, todasAreas, valorDe, ehPorDente, aoSalvar, aoVoltar }) {
+  const registros = acao.registros || [];
+  const [item, setItem] = useState({ area: todasAreas[0] || '', quantos: 1, dentes: 1, descricao: '', quemUid: '' });
+  const porDente = ehPorDente(item.area);
+  const unidades = porDente ? Math.max(1, Number(item.dentes || 1)) : Math.max(1, Number(item.quantos || 1));
+  const valorItem = valorDe(item.area) * unidades;
+
+  function adicionar() {
+    const quem = equipe.find(v => v.id === item.quemUid);
+    const novo = {
+      id: 'r' + Math.floor(Math.random() * 1e9),
+      area: item.area,
+      quantos: porDente ? 1 : Math.max(1, Number(item.quantos || 1)),
+      dentes: porDente ? Math.max(1, Number(item.dentes || 1)) : 0,
+      descricao: item.descricao.trim(),
+      profissionalUid: quem?.id || '', profissionalNome: quem?.nome || '',
+      pacienteNome: item.descricao.trim() || item.area,
+      valor: valorItem,
+    };
+    aoSalvar({ registros: [...registros, novo] });
+    setItem({ ...item, quantos: 1, dentes: 1, descricao: '' });
+  }
+
+  const total = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <h2>✍️ Lançamentos</h2>
+      <p className="dica" style={{ marginTop: 0 }}>Como este mutirão aconteceu antes do aplicativo, o que foi feito entra aqui: escolha a especialidade, diga quantos (ou quantos dentes) e vá adicionando.</p>
+      <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Campo rotulo="Especialidade">
+          <select value={item.area} onChange={e => setItem({ ...item, area: e.target.value })}>
+            {todasAreas.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Campo>
+        <Campo rotulo={porDente ? 'Quantos dentes' : 'Quantos procedimentos'}>
+          <input type="number" min="1" value={porDente ? item.dentes : item.quantos}
+            onChange={e => setItem(porDente ? { ...item, dentes: e.target.value } : { ...item, quantos: e.target.value })} />
+        </Campo>
+        <Campo rotulo="Quem fez (opcional)">
+          <select value={item.quemUid} onChange={e => setItem({ ...item, quemUid: e.target.value })}>
+            <option value="">— não informado —</option>
+            {equipe.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+          </select>
+        </Campo>
+        <Campo rotulo="Observação (paciente, detalhe do que foi feito)">
+          <input value={item.descricao} onChange={e => setItem({ ...item, descricao: e.target.value })} placeholder="Ex.: José da Silva — extração do 36" />
+        </Campo>
+        <div className="cartao-topo">
+          <span className="obs">{porDente ? `${unidades} dente(s)` : `${unidades} procedimento(s)`}</span>
+          <strong>{dinheiro(valorItem)}</strong>
+        </div>
+        <button className="btn-mais" onClick={adicionar}>+ Adicionar</button>
+      </div>
+      {registros.length > 0 && (
+        <>
+          <div className="cartao-numero destaque" style={{ margin: '12px 0' }}>
+            <strong style={{ fontSize: 26 }}>{dinheiro(total)}</strong><span>em {registros.length} lançamento(s)</span>
+          </div>
+          {registros.map(r => (
+            <div className="cartao" key={r.id}>
+              <div className="cartao-topo"><strong>{r.area}</strong>
+                <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <strong>{dinheiro(r.valor)}</strong>
+                  <button className="btn-remover" onClick={() => aoSalvar({ registros: registros.filter(x => x.id !== r.id) })}>✕</button>
+                </span>
+              </div>
+              <p className="obs" style={{ margin: 0 }}>
+                {r.dentes > 0 ? `${r.dentes} dente(s)` : `${r.quantos} procedimento(s)`}
+                {r.profissionalNome ? ` · ${r.profissionalNome}` : ''}{r.descricao ? ` · ${r.descricao}` : ''}
+              </p>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Ficha do paciente pelos olhos da gestão: dados, o que foi feito, as
 //     fotos (buscadas sob demanda) e o depoimento. Só leitura — é o checkup
