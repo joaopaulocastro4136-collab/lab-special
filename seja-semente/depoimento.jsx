@@ -8,18 +8,64 @@
 //  Coleção: depoimentos.
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { ChevronLeft, Camera, Quote } from 'lucide-react';
+import { ChevronLeft, Camera, Quote, Video, Images } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 import { comprimirImagem } from './ficha.jsx';
 
-// Formulário: quem falou, o que disse e (se quiser) a foto do sorriso
-export function FormDepoimento({ pacientes = [], pacienteInicial = null, aoCancelar, aoSalvar }) {
+// O vídeo não cabe dentro do banco (uma foto cabe, um vídeo não), então ele
+// vai para o depósito de arquivos do Firebase e o depoimento guarda só o
+// endereço. Sobe aos pedaços, mostrando o quanto já foi.
+export async function subirVideo(fb, arquivo, aoProgresso) {
+  const mod = await import('firebase/storage');
+  const deposito = mod.getStorage(fb.app);
+  const limpo = String(arquivo.name || 'video').replace(/[^\w.-]/g, '_').slice(-40);
+  const lugar = mod.ref(deposito, `depoimentos/${Date.now()}-${limpo}`);
+  const tarefa = mod.uploadBytesResumable(lugar, arquivo, { contentType: arquivo.type || 'video/mp4' });
+  await new Promise((pronto, deuRuim) => {
+    tarefa.on('state_changed',
+      p => aoProgresso && aoProgresso(Math.round((p.bytesTransferred / (p.totalBytes || 1)) * 100)),
+      deuRuim, pronto);
+  });
+  return await mod.getDownloadURL(lugar);
+}
+
+// Formulário: quem falou, o que disse e (se quiser) a foto ou o VÍDEO do sorriso
+export function FormDepoimento({ pacientes = [], pacienteInicial = null, fb = null, aoCancelar, aoSalvar }) {
   const [pacienteId, setPacienteId] = useState(pacienteInicial?.id || '');
   const [texto, setTexto] = useState('');
   const [foto, setFoto] = useState('');
+  const [video, setVideo] = useState(null);          // o arquivo escolhido
+  const [videoPrevia, setVideoPrevia] = useState(''); // para assistir antes de salvar
+  const [enviando, setEnviando] = useState(-1);      // % do envio do vídeo
   const [autoriza, setAutoriza] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+
+  async function pegarFoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      let d = await comprimirImagem(file);
+      if (d.length > 900000) d = await comprimirImagem(file, 0.5, 800);
+      setFoto(d);
+    } catch (err) { setErro('Não consegui ler essa imagem.'); }
+  }
+
+  function pegarVideo(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    // 200 MB é o teto do depósito — um recado de celular cabe folgado
+    if (f.size > 200 * 1024 * 1024) { setErro('Esse vídeo é grande demais (máximo 200 MB). Grave um mais curto.'); return; }
+    setErro('');
+    setVideo(f);
+    setVideoPrevia(URL.createObjectURL(f));
+  }
+  function tirarVideo() {
+    if (videoPrevia) URL.revokeObjectURL(videoPrevia);
+    setVideo(null); setVideoPrevia('');
+  }
   const paciente = pacientes.find(p => p.id === pacienteId) || pacienteInicial || null;
 
   return (
@@ -61,21 +107,45 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, aoCance
             <button type="button" className="btn-remover" onClick={() => setFoto('')}>✕</button>
           </div>
         ) : (
-          <label className="foto-ad-botao">
-            <Camera size={20} />
-            <span>Tirar / escolher</span>
-            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-              onChange={async e => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                try {
-                  let d = await comprimirImagem(file);
-                  if (d.length > 900000) d = await comprimirImagem(file, 0.5, 800);
-                  setFoto(d);
-                } catch (err) { setErro('Não consegui ler essa imagem.'); }
-              }} />
-          </label>
+          <div className="foto-ad-vazia">
+            <label className="foto-ad-botao">
+              <Camera size={19} />
+              <span>Tirar foto</span>
+              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pegarFoto} />
+            </label>
+            <label className="foto-ad-botao secundario">
+              <Images size={19} />
+              <span>Da galeria</span>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={pegarFoto} />
+            </label>
+          </div>
+        )}
+      </div>
+
+      <div className="cartao">
+        <strong style={{ display: 'block', marginBottom: 6 }}>🎥 Vídeo do depoimento (opcional)</strong>
+        <p className="dica" style={{ margin: '0 0 8px' }}>A pessoa falando é o que mais toca quem apoia o projeto. Grave na hora ou pegue um que já está no celular.</p>
+        {videoPrevia ? (
+          <div className="video-depo">
+            <video src={videoPrevia} controls playsInline preload="metadata" />
+            <button type="button" className="btn-remover" onClick={tirarVideo}>✕</button>
+          </div>
+        ) : (
+          <div className="foto-ad-vazia">
+            <label className="foto-ad-botao">
+              <Video size={19} />
+              <span>Gravar vídeo</span>
+              <input type="file" accept="video/*" capture="environment" style={{ display: 'none' }} onChange={pegarVideo} />
+            </label>
+            <label className="foto-ad-botao secundario">
+              <Images size={19} />
+              <span>Da galeria</span>
+              <input type="file" accept="video/*" style={{ display: 'none' }} onChange={pegarVideo} />
+            </label>
+          </div>
+        )}
+        {enviando >= 0 && (
+          <div className="barra-envio"><i style={{ width: enviando + '%' }} /><span>Enviando o vídeo… {enviando}%</span></div>
         )}
       </div>
 
@@ -87,19 +157,26 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, aoCance
       {erro && <div className="erro">{erro}</div>}
       <div className="linha-botoes">
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={salvando || !texto.trim() || !paciente} onClick={async () => {
+        <button className="btn-principal" disabled={salvando || !paciente || (!texto.trim() && !video)} onClick={async () => {
           setSalvando(true); setErro('');
           try {
+            let videoUrl = '';
+            if (video && fb) {
+              setEnviando(0);
+              videoUrl = await subirVideo(fb, video, setEnviando);
+              setEnviando(-1);
+            }
             await aoSalvar({
-              texto: texto.trim(), foto,
+              texto: texto.trim(), foto, videoUrl,
               pacienteId: paciente.id, pacienteNome: paciente.nome || '',
               pacienteFoto: paciente.fotoMini || '', autorizado: autoriza,
             });
           } catch (e) {
+            setEnviando(-1);
             setErro('Não consegui salvar: ' + (e?.message || e));
             setSalvando(false);
           }
-        }}>{salvando ? 'Salvando…' : 'Salvar depoimento'}</button>
+        }}>{enviando >= 0 ? `Enviando… ${enviando}%` : (salvando ? 'Salvando…' : 'Salvar depoimento')}</button>
       </div>
     </div>
   );
@@ -112,7 +189,12 @@ export function CartaoDepoimento({ depoimento: d, destaque, aoTocar }) {
     <Tag className={'depoimento' + (destaque ? ' destaque' : '')} onClick={aoTocar}
       style={aoTocar ? { cursor: 'pointer', width: '100%', textAlign: 'left', font: 'inherit' } : undefined}>
       <Quote className="depo-aspas" size={destaque ? 30 : 22} strokeWidth={2.4} />
-      <p className="depo-texto">{d.texto}</p>
+      {d.videoUrl && (
+        <div className="video-depo" onClick={e => e.stopPropagation()}>
+          <video src={d.videoUrl} controls playsInline preload="metadata" />
+        </div>
+      )}
+      {d.texto && <p className="depo-texto">{d.texto}</p>}
       <div className="depo-quem">
         <Bolha nome={d.pacienteNome} foto={d.foto || d.pacienteFoto} />
         <span>

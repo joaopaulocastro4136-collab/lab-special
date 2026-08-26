@@ -70,7 +70,7 @@ async function ligarFirebase() {
   } catch (e) {
     db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   }
-  fb = { auth, db, fns: { ...modAuth, ...modFs } };
+  fb = { app, auth, db, fns: { ...modAuth, ...modFs } };
 }
 
 // ─── Dados de exemplo do modo demonstração ───
@@ -998,7 +998,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     aoSalvar={async dados => { await salvarRegistro(telaRegistro, dados); const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }} />;
 
   // Pasta da Prótese: só destrava para quem tem Prótese nos procedimentos
-  if (telaDepo?.novo !== undefined) return <FormDepoimento pacientes={todosPacientes} pacienteInicial={telaDepo.novo}
+  if (telaDepo?.novo !== undefined) return <FormDepoimento pacientes={todosPacientes} pacienteInicial={telaDepo.novo} fb={CONFIGURADO ? fb : null}
     aoCancelar={() => setTelaDepo('lista')} aoSalvar={salvarDepoimento} />;
   if (telaDepo === 'lista') return <TelaDepoimentos depoimentos={depoimentos} pacientes={todosPacientes}
     aoNovo={() => setTelaDepo({ novo: null })} aoExcluir={apagarDepoimento} aoVoltar={() => setTelaDepo(null)} />;

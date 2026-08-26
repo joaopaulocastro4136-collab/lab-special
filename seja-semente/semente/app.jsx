@@ -74,7 +74,7 @@ async function ligarFirebase() {
   } catch (e) {
     db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   }
-  fb = { auth, db, fns: { ...modAuth, ...modFs } };
+  fb = { app, auth, db, fns: { ...modAuth, ...modFs } };
 }
 
 // ─── Procedimentos (as caixinhas da triagem) e ficha de saúde ───
@@ -1162,7 +1162,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
 
   // ─── Telas por cima das abas ───
   if (tela?.triagem) return <FormTriagem paciente={tela.triagem} areas={todasAreas} condicoes={todasCondicoes} aoAdicionarTipo={adicionarTipo} aoAdicionarCondicao={adicionarCondicao} aoCancelar={() => setTela(null)} aoSalvar={(t, fts) => salvarTriagem(tela.triagem, t, fts)} />;
-  if (tela?.novoDepoimento !== undefined) return <FormDepoimento pacientes={pacientes} pacienteInicial={tela.novoDepoimento}
+  if (tela?.novoDepoimento !== undefined) return <FormDepoimento pacientes={pacientes} pacienteInicial={tela.novoDepoimento} fb={CONFIGURADO ? fb : null}
     aoCancelar={() => setTela('depoimentos')} aoSalvar={salvarDepoimento} />;
   if (tela === 'depoimentos') return <TelaDepoimentos depoimentos={depoimentos} pacientes={pacientes}
     aoNovo={() => setTela({ novoDepoimento: null })} aoExcluir={apagarDepoimento} aoVoltar={() => setTela(null)} />;

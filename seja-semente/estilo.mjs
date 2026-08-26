@@ -523,6 +523,12 @@ export const CSS = `
   .foto-ad-tem { position: relative; }
   .foto-ad-tem img { width: 100%; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
   .foto-ad-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+  .video-depo { position: relative; margin: 8px 0; }
+  .video-depo video { width: 100%; max-height: 320px; border-radius: 14px; display: block; background: #1E2B22; }
+  .video-depo .btn-remover { position: absolute; top: 8px; right: 8px; }
+  .barra-envio { position: relative; height: 26px; border-radius: 999px; background: #E7EFE7; overflow: hidden; margin-top: 8px; }
+  .barra-envio i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #37935B, #226343); transition: width .25s; }
+  .barra-envio span { position: relative; display: block; line-height: 26px; text-align: center; font-size: 12.5px; font-weight: 800; color: #1E2B22; }
   .ja-atendidos { margin-top: 10px; }
   .ja-atendidos summary { cursor: pointer; font-size: 14px; font-weight: 800; color: #55645A; padding: 9px 12px; background: #EDF3EC; border-radius: 12px; list-style: none; }
   .ja-atendidos summary::-webkit-details-marker { display: none; }
