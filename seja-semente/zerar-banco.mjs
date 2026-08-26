@@ -62,19 +62,28 @@ const pedir = async (metodo, url, corpo) => {
 
 let apagados = 0;
 
+// O nome que o Firestore devolve já vem completo
+// (projects/.../documents/pacientes/abc). Estas duas funções trabalham
+// sempre com o endereço INTEIRO, para não montar caminho em cima de caminho.
+const enderecoDe = (nome) => `https://firestore.googleapis.com/v1/${nome}`;
+
 // Apaga um documento e tudo o que está pendurado nele
 async function apagarDoc(nome) {
-  const subs = await pedir('GET', `https://firestore.googleapis.com/v1/${nome}:listCollectionIds`, {});
-  for (const sub of (subs.json.collectionIds || [])) await apagarColecao(`${nome}/${sub}`, true);
-  await pedir('DELETE', `https://firestore.googleapis.com/v1/${nome}`);
+  const subs = await pedir('POST', `${enderecoDe(nome)}:listCollectionIds`, {});
+  for (const sub of (subs.json.collectionIds || [])) await apagarColecao(`${nome}/${sub}`);
+  await pedir('DELETE', enderecoDe(nome));
   apagados++;
 }
 
-async function apagarColecao(caminho, ehSub) {
+// `caminho` é sempre relativo ao banco: 'pacientes' ou
+// 'projects/.../documents/pacientes/abc/arquivos'
+async function apagarColecao(caminho) {
+  const url = caminho.startsWith('projects/')
+    ? enderecoDe(caminho)
+    : `${BASE}/${caminho}`;
   let pagina = '';
   for (;;) {
-    const url = `https://firestore.googleapis.com/v1/${caminho}?pageSize=200${pagina ? '&pageToken=' + pagina : ''}`;
-    const r = await pedir('GET', ehSub ? url : `${BASE}/${caminho.split('/').pop()}?pageSize=200${pagina ? '&pageToken=' + pagina : ''}`);
+    const r = await pedir('GET', `${url}?pageSize=300${pagina ? '&pageToken=' + pagina : ''}`);
     const docs = r.json.documents || [];
     for (const d of docs) await apagarDoc(d.name);
     pagina = r.json.nextPageToken || '';
@@ -85,7 +94,7 @@ async function apagarColecao(caminho, ehSub) {
 console.log('══ Zerando o banco ══');
 for (const c of COLECOES) {
   const antes = apagados;
-  await apagarColecao(`${BASE}/${c}`, true);
+  await apagarColecao(c);
   console.log(`  ${c}: ${apagados - antes} apagado(s)`);
 }
 console.log(`\n  Mantidas de propósito: ${FICAM.join(', ')} (a configuração do projeto)`);
