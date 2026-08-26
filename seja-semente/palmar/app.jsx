@@ -22,6 +22,7 @@ import { SeletorUnidade, Contador } from '../estoque.jsx';
 import { Arcada } from '../dentes.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 
 // Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
 // a nota é real; quando o QR traz o valor, ele entra sozinho)
@@ -401,7 +402,7 @@ function Campo({ rotulo, children }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal, com as abas ───
-function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaff }) {
   const [aba, setAba] = useState('painel');
   const [tela, setTela] = useState(null);
   const temInternet = usarTemInternet();
@@ -681,6 +682,23 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
     if (!CONFIGURADO) { setNotas(ns => ns.filter(x => x.id !== n.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
+  }
+
+  // ─── Quem mais é gestor (para dar e tirar acesso) ───
+  const [gestores, setGestores] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO) { setGestores([{ id: 'g1', nome: 'João Paulo', email: 'joao@teste.com' }, { id: 'g2', nome: 'Maria Souza', email: 'maria@teste.com' }]); return; }
+    const { collection, onSnapshot } = fb.fns;
+    return onSnapshot(collection(fb.db, 'palmar-usuarios'),
+      snap => setGestores(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, []);
+  function tirarAcessoGestor(g) {
+    // Nunca deixar o Palmar sem ninguém: sem gestor, o aplicativo tranca
+    // para todo mundo e não há como entrar de novo.
+    if (gestores.length <= 1) { window.alert('Este é o único gestor. Dê acesso a outra pessoa antes de tirar este.'); return; }
+    if (!window.confirm(`Tirar o acesso de ${g.nome || g.email}? Ela não entra mais no Palmar.`)) return;
+    if (!CONFIGURADO) { setGestores(gs => gs.filter(x => x.id !== g.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'palmar-usuarios', g.id)).catch(() => {});
   }
 
   // ─── Códigos de convite (gerados no Perfil) ───
@@ -1150,6 +1168,21 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
                 </div>
               </div>
             </div>
+            <div className="cartao">
+              <strong style={{ display: 'block', marginBottom: 6 }}>Quem tem acesso ao Palmar ({gestores.length})</strong>
+              {gestores.map(g => (
+                <div key={g.id} className="cartao-linha" style={{ alignItems: 'center', padding: '8px 0', borderTop: '1px solid #EEF2ED' }}>
+                  <Bolha nome={g.nome || g.email} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{g.nome || g.email}</strong>
+                    <p className="obs" style={{ margin: 0 }}>{g.id === usuario.uid ? 'você' : (g.email || '')}</p>
+                  </div>
+                  {g.id !== usuario.uid && (
+                    <button className="chip prioridade" style={{ border: 'none' }} onClick={() => tirarAcessoGestor(g)}>tirar acesso</button>
+                  )}
+                </div>
+              ))}
+            </div>
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <strong>Dar acesso ao Palmar</strong>
               <p className="dica" style={{ margin: 0 }}>Gere um código e passe para outro gestor. Ele entra com a conta dele e digita o código. Cada código serve uma vez.</p>
@@ -1175,6 +1208,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
               )}
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
             <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
@@ -2379,7 +2413,11 @@ function App() {
 
   // Apagar a conta: some o acesso de gestor e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
   async function apagarMinhaConta(senha) {
+    if (CONFIGURADO && gestores.length <= 1) {
+      throw new Error('Você é o único gestor. Gere um código de acesso para outra pessoa antes de apagar a sua conta — senão o Palmar fica trancado para todo mundo.');
+    }
     await apagarConta(CONFIGURADO ? fb : null, usuario,
       [{ colecao: 'palmar-usuarios', id: usuario.uid },
        { colecao: 'palmar-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
@@ -2492,11 +2530,12 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Palmar" aoVoltar={() => setVendoSuporte(false)} />;
   else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
     oQueFica="As ações, o estoque, as notas e o histórico do projeto continuam — são registros do trabalho, não dados seus. Se você era o único gestor, gere um código de acesso para outra pessoa ANTES de apagar."
     aoVoltar={() => setApagandoConta(false)} />;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoChamarStaff={chamarStaff} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} aoChamarStaff={chamarStaff} />;
   // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
   // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
   // desligar (segunda chamada, sem a marca) é que fecha a tela.

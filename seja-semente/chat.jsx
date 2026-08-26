@@ -22,7 +22,7 @@ function quandoBonito(v) {
 }
 
 // `cheio`: a tela não tem título em cima do chat — ele pode usar essa altura
-export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, aoAceitar, aoAbrirPaciente, cheio }) {
+export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, aoAceitar, aoAbrirPaciente, aoApagarMensagem, aoDenunciar, cheio }) {
   const [texto, setTexto] = useState('');
   const [pacienteId, setPacienteId] = useState('');
   const [pessoaId, setPessoaId] = useState('');
@@ -33,6 +33,24 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
   const [vendoFoto, setVendoFoto] = useState('');
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [menuDe, setMenuDe] = useState('');   // qual mensagem está com o menu aberto
+  // Quem eu bloqueei fica guardado no MEU aparelho: as mensagens dessa
+  // pessoa somem da minha tela na hora, sem depender de ninguém aprovar.
+  const [bloqueados, setBloqueados] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('chat-bloqueados') || '[]'); } catch (e) { return []; }
+  });
+  function bloquear(uid, nome) {
+    if (!window.confirm(`Bloquear ${nome}? As mensagens dessa pessoa somem da sua tela.`)) return;
+    const novo = [...new Set([...bloqueados, uid])];
+    setBloqueados(novo);
+    try { localStorage.setItem('chat-bloqueados', JSON.stringify(novo)); } catch (e) { /* nada */ }
+    setMenuDe('');
+  }
+  function desbloquear(uid) {
+    const novo = bloqueados.filter(x => x !== uid);
+    setBloqueados(novo);
+    try { localStorage.setItem('chat-bloqueados', JSON.stringify(novo)); } catch (e) { /* nada */ }
+  }
   const fimRef = useRef(null);
 
   useEffect(() => { fimRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [mensagens.length]);
@@ -84,7 +102,14 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
     <div className={'chat' + (cheio ? ' cheio' : '')}>
       <div className="chat-mensagens">
         {mensagens.length === 0 && <div className="vazio">Nenhuma mensagem ainda — puxe a conversa! 🌱</div>}
-        {mensagens.map(m => (
+        {bloqueados.length > 0 && (
+          <p className="dica" style={{ textAlign: 'center' }}>
+            {bloqueados.length} pessoa{bloqueados.length > 1 ? 's' : ''} bloqueada{bloqueados.length > 1 ? 's' : ''} ·{' '}
+            <button className="link-troca" style={{ display: 'inline', padding: 0 }}
+              onClick={() => { setBloqueados([]); try { localStorage.removeItem('chat-bloqueados'); } catch (e) {} }}>desbloquear todas</button>
+          </p>
+        )}
+        {mensagens.filter(m => !bloqueados.includes(m.autorUid)).map(m => (
           <div key={m.id} className={'msg' + (m.autorUid === usuario.uid ? ' minha' : '')}>
             <Bolha nome={m.autorNome || '?'} foto={m.autorFotoMini} avatar={m.autorAvatar} />
             {/* Cada pessoa tem a sua cor (nome, barrinha E fundo do balão) —
@@ -93,7 +118,23 @@ export function Chat({ usuario, mensagens, pacientes, pessoas, areas, aoEnviar, 
               <div className="msg-topo">
                 <strong style={{ color: m.autorUid === usuario.uid ? '#1E6B41' : corDoNome(m.autorNome) }}>{m.autorUid === usuario.uid ? 'Você' : m.autorNome}</strong>
                 <span className="quando">{quandoBonito(m.criadoEm)}</span>
+                {/* A Apple exige, onde há conteúdo escrito por gente:
+                    apagar o que é seu, denunciar e bloquear (diretriz 1.2) */}
+                <button className="msg-menu" aria-label="Opções da mensagem"
+                  onClick={() => setMenuDe(menuDe === m.id ? '' : m.id)}>⋯</button>
               </div>
+              {menuDe === m.id && (
+                <div className="msg-opcoes">
+                  {m.autorUid === usuario.uid ? (
+                    <button onClick={() => { setMenuDe(''); if (window.confirm('Apagar esta mensagem?')) aoApagarMensagem?.(m); }}>🗑 Apagar minha mensagem</button>
+                  ) : (
+                    <>
+                      <button onClick={() => { setMenuDe(''); aoDenunciar?.(m); }}>🚩 Denunciar à coordenação</button>
+                      <button onClick={() => bloquear(m.autorUid, m.autorNome || 'esta pessoa')}>🚫 Bloquear {String(m.autorNome || '').split(' ')[0]}</button>
+                    </>
+                  )}
+                </div>
+              )}
               {m.paraNome && (
                 <span className={'chip-mencao' + (m.paraUid && m.paraUid === usuario.uid ? ' pra-mim' : '')}>
                   <AtSign size={12} strokeWidth={2.6} /> {m.paraUid === usuario.uid ? 'para você' : m.paraNome}

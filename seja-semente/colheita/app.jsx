@@ -21,6 +21,7 @@ import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, E
 import { SobreOProjeto } from '../projeto.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 
 // Logo da Colheita: a mão dourada com o coração — a mesma do ecossistema
 function LogoApp({ tamanho = 120 }) {
@@ -268,7 +269,7 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta }) {
+function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta, aoSuporte }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [tentando, setTentando] = useState(false);
@@ -295,6 +296,7 @@ function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta }) {
           setTentando(false);
         }}>{tentando ? 'Conferindo…' : 'Entrar com o código'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / entrar com outra conta</button>
+      <button className="link-troca" onClick={aoSuporte}>Ajuda e contato</button>
       <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>
     </div>
   );
@@ -303,7 +305,7 @@ function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal ───
-function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta }) {
+function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta, aoSuporte }) {
   const [aba, setAba] = useState('inicio');
   const [tela, setTela] = useState(null);
   const [soMinhaAcao, setSoMinhaAcao] = useState(!!investidor?.acaoId);
@@ -367,6 +369,21 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
   };
 
   // O depoimento daquela pessoa (se ela deixou um)
+  // A Apple exige (diretriz 1.2) caminho para denunciar conteúdo de gente.
+  // Aqui o conteúdo é o depoimento do paciente, visto por quem apoia.
+  function denunciarDepoimento(d) {
+    const motivo = window.prompt('O que há de errado neste depoimento? A coordenação recebe e responde em até 24 horas.');
+    if (motivo === null) return;
+    if (CONFIGURADO) {
+      fb.fns.addDoc(fb.fns.collection(fb.db, 'denuncias'), {
+        tipo: 'depoimento', depoimentoId: d.id, pacienteId: d.pacienteId || '',
+        motivo: String(motivo).slice(0, 500),
+        deUid: usuario?.uid || '', deNome: usuario?.nome || '', criadoEm: fb.fns.serverTimestamp(),
+      }).catch(() => {});
+    }
+    window.alert('Denúncia enviada à coordenação. Obrigado — vamos olhar em até 24 horas.');
+  }
+
   const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado === true) || null;
   const valorDe = (nome) => Number(configProc.valores?.[nome] || 0);
   const ehPorDente = (nome) => !!configProc.porDente?.[nome];
@@ -450,7 +467,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
           {depoimentoDe(s.pacienteId) && (
             <>
               <h3 style={{ margin: '16px 0 8px' }}>O que {nomeDoSorriso(s)} disse</h3>
-              <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque />
+              <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque aoDenunciar={denunciarDepoimento} />
             </>
           )}
           <p className="dica" style={{ marginTop: 12 }}>Foi a sua semente que devolveu este sorriso. 💚</p>
@@ -650,10 +667,10 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
                 <p className="dica" style={{ marginTop: 0 }}>Palavras de quem sentou na cadeira. {depoimentosVisiveis.length > 1 ? 'Arraste para o lado. 👉' : ''}</p>
                 {depoimentosVisiveis.length > 1 ? (
                   <div className="depo-faixa">
-                    {depoimentosVisiveis.slice(0, 8).map(d => <CartaoDepoimento key={d.id} depoimento={d} destaque />)}
+                    {depoimentosVisiveis.slice(0, 8).map(d => <CartaoDepoimento key={d.id} depoimento={d} destaque aoDenunciar={denunciarDepoimento} />)}
                   </div>
                 ) : (
-                  <CartaoDepoimento depoimento={depoimentosVisiveis[0]} destaque />
+                  <CartaoDepoimento depoimento={depoimentosVisiveis[0]} destaque aoDenunciar={denunciarDepoimento} />
                 )}
               </>
             )}
@@ -786,6 +803,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta })
               </p>
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
             <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
@@ -911,6 +929,7 @@ function App() {
 
   // Apagar a conta: some o cadastro de investidor e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
   async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
       [{ colecao: 'investidores', porEmail: true },
@@ -938,12 +957,13 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Colheita" aoVoltar={() => setVendoSuporte(false)} />;
   else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
     oQueFica="O relatório do projeto continua — ele é do Seja Semente, não seu. O seu cadastro de apoiador é que sai."
     aoVoltar={() => setApagandoConta(false)} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
-  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
   return <>{conteudo}{abertura}</>;
 }
 

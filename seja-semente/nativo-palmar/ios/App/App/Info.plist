@@ -34,10 +34,6 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>armv7</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -65,11 +61,9 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>A câmera é usada para tirar a foto do paciente no cadastro e registrar fotos dos atendimentos na ficha.</string>
+	<string>A câmera é usada pela gestão do projeto para fotografar a nota fiscal de uma compra, ler o código de barras dela e registrar a foto de um material do estoque ou do local do mutirão.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>A galeria é usada para escolher fotos do paciente e dos atendimentos.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Permite salvar fotos dos atendimentos na galeria.</string>
+	<string>A galeria é usada para você anexar uma foto de nota fiscal que já está no aparelho, quando não deu para fotografar na hora da compra.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>O microfone é usado nas ligações entre a equipe durante o mutirão: quando a gestão chama alguém, os dois conseguem se falar.</string>
 </dict>
