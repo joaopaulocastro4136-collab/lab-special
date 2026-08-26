@@ -1,9 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  SOBE AS FOTOS DE TELA DOS QUATRO APLICATIVOS DO SEJA SEMENTE
 //
-//  Lê fotos-loja/<alvo>-1.png … <alvo>-5.png (1290×2796, o tamanho que a
-//  Apple pede) e põe na ficha da versão em preparação de cada um,
-//  substituindo o que estiver lá.
+//  Lê dois conjuntos e põe os dois na ficha da versão em preparação:
+//    fotos-loja/<alvo>-N.png        → iPhone (1290×2796)
+//    fotos-loja/ipad-<alvo>-N.png   → iPad   (2048×2732)
+//
+//  As de iPad são OBRIGATÓRIAS: os quatro aplicativos rodam em iPad, e sem
+//  elas a Apple recusa o envio dizendo só que "não pode ser analisado".
 //
 //  Rodar pelo robô: ativar-apple.yml com seja-semente/subir-fotos-semente.mjs
 // ═══════════════════════════════════════════════════════════════════════════
@@ -19,6 +22,10 @@ const APPS = [
   { alvo: 'semeador', bundle: 'com.sejasemente.semeador' },
   { alvo: 'palmar',   bundle: 'com.sejasemente.palmar' },
   { alvo: 'colheita', bundle: 'com.sejasemente.colheita' },
+];
+const CONJUNTOS = [
+  { nome: 'iPhone', tipo: 'APP_IPHONE_67',         prefixo: (a) => a + '-' },
+  { nome: 'iPad',   tipo: 'APP_IPAD_PRO_3GEN_129', prefixo: (a) => 'ipad-' + a + '-' },
 ];
 
 function jwt() {
@@ -43,11 +50,6 @@ let deuErro = false;
 
 for (const app of APPS) {
   console.log(`\n══════ ${app.alvo} ══════`);
-  const arquivos = existsSync(PASTA)
-    ? readdirSync(PASTA).filter(f => f.startsWith(app.alvo + '-') && f.endsWith('.png')).sort()
-    : [];
-  if (!arquivos.length) { console.log('  ✗ nenhuma foto em ' + PASTA + '/' + app.alvo + '-*.png'); deuErro = true; continue; }
-
   const apps = await api('GET', `/v1/apps?filter[bundleId]=${app.bundle}`);
   const ficha = (apps.dados?.data || []).find(a => a.attributes.bundleId === app.bundle);
   if (!ficha) { console.log('  ✗ sem ficha na loja'); deuErro = true; continue; }
@@ -62,16 +64,25 @@ for (const app of APPS) {
   if (!loc) { console.log('  ✗ ficha sem idioma'); deuErro = true; continue; }
 
   const sets = await api('GET', `/v1/appStoreVersionLocalizations/${loc.id}/appScreenshotSets`);
-  let conjunto = (sets.dados?.data || []).find(s => ['APP_IPHONE_67', 'APP_IPHONE_69'].includes(s.attributes.screenshotDisplayType));
+
+ for (const c of CONJUNTOS) {
+  const pref = c.prefixo(app.alvo);
+  const arquivos = existsSync(PASTA)
+    ? readdirSync(PASTA).filter(f => f.startsWith(pref) && f.endsWith('.png')).sort()
+    : [];
+  if (!arquivos.length) { console.log(`  ✗ nenhuma foto de ${c.nome} em ${PASTA}/${pref}*.png`); deuErro = true; continue; }
+  console.log(`  ── ${c.nome} ──`);
+
+  let conjunto = (sets.dados?.data || []).find(s => s.attributes.screenshotDisplayType === c.tipo);
   if (!conjunto) {
     const novo = await api('POST', '/v1/appScreenshotSets', {
       data: {
         type: 'appScreenshotSets',
-        attributes: { screenshotDisplayType: 'APP_IPHONE_67' },
+        attributes: { screenshotDisplayType: c.tipo },
         relationships: { appStoreVersionLocalization: { data: { type: 'appStoreVersionLocalizations', id: loc.id } } },
       },
     });
-    if (novo.status >= 300) { console.log('  ✗ não consegui criar o conjunto: ' + JSON.stringify(novo.dados).slice(0, 200)); deuErro = true; continue; }
+    if (novo.status >= 300) { console.log(`  ✗ não consegui criar o conjunto ${c.nome}: ` + JSON.stringify(novo.dados).slice(0, 250)); deuErro = true; continue; }
     conjunto = novo.dados.data;
   }
 
@@ -111,7 +122,8 @@ for (const app of APPS) {
   const ordena = await api('PATCH', `/v1/appScreenshotSets/${conjunto.id}/relationships/appScreenshots`, {
     data: idsNaOrdem.map(id => ({ type: 'appScreenshots', id })),
   });
-  console.log(`  ${idsNaOrdem.length} fotos na ficha · ordem ${ordena.status < 300 ? 'ok' : 'aviso ' + ordena.status}`);
+  console.log(`  ${idsNaOrdem.length} fotos de ${c.nome} na ficha · ordem ${ordena.status < 300 ? 'ok' : 'aviso ' + ordena.status}`);
+ }
 }
 
 console.log(deuErro ? '\n✗ Fim com problema' : '\n✓ Fim — as quatro fichas com foto');
