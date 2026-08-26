@@ -17,7 +17,9 @@ import { comprimirImagem } from './ficha.jsx';
 // endereço. Sobe aos pedaços, mostrando o quanto já foi.
 export async function subirVideo(fb, arquivo, aoProgresso) {
   const mod = await import('firebase/storage');
-  const deposito = mod.getStorage(fb.app);
+  // Depósito próprio do projeto (o nome padrão do Firebase é um domínio
+  // reservado pelo Google, que não dá para criar por fora)
+  const deposito = mod.getStorage(fb.app, 'gs://seja-semente-arquivos');
   const limpo = String(arquivo.name || 'video').replace(/[^\w.-]/g, '_').slice(-40);
   const lugar = mod.ref(deposito, `depoimentos/${Date.now()}-${limpo}`);
   const tarefa = mod.uploadBytesResumable(lugar, arquivo, { contentType: arquivo.type || 'video/mp4' });
