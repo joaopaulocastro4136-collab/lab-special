@@ -319,11 +319,15 @@ for (const app of APPS) {
   const versao = (vs.json.data || []).find(v => ['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED', 'REJECTED', 'METADATA_REJECTED'].includes(v.attributes.appStoreState));
   if (!versao) { console.log('  ✗ nenhuma versão aberta para editar'); continue; }
 
-  if (versao.attributes.versionString !== VERSAO) {
-    conta(await api('PATCH', `/v1/appStoreVersions/${versao.id}`, {
-      data: { type: 'appStoreVersions', id: versao.id, attributes: { versionString: VERSAO } },
-    }), `número da versão ${versao.attributes.versionString} → ${VERSAO}`);
-  } else console.log(`  ✓ número da versão já é ${VERSAO}`);
+  // Junto com o número vão duas respostas que a Apple EXIGE e que ficavam em
+  // branco — e ela recusa o envio sem dizer que é isso:
+  //  · usesIdfa: se o aplicativo usa o identificador de anúncios. Não usa.
+  //  · copyright: de quem é o aplicativo.
+  const mudanca = { usesIdfa: false, copyright: `${new Date().getFullYear()} ${ONG.nome} ${ONG.sobrenome}` };
+  if (versao.attributes.versionString !== VERSAO) mudanca.versionString = VERSAO;
+  conta(await api('PATCH', `/v1/appStoreVersions/${versao.id}`, {
+    data: { type: 'appStoreVersions', id: versao.id, attributes: mudanca },
+  }), `versão ${VERSAO}, identificador de anúncios e direitos autorais`);
 
   const vlocs = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreVersionLocalizations`);
   for (const l of (vlocs.json.data || [])) {
