@@ -19,6 +19,12 @@ O que o robô já deixou pronto nos quatro:
 
 O que ainda depende de gente:
 
+- [ ] **A declaração de privacidade da loja** (App Privacy) — a Apple **não
+  expõe isso na API**: todos os caminhos respondem "não existe". Tem que ser no
+  site, uma vez por aplicativo. É o que está segurando o envio: sem ela a Apple
+  recusa dizendo só "This resource cannot be reviewed". Os passos e as
+  respostas estão logo abaixo.
+
 - [ ] **Telefone de contato da análise** — a Apple exige um número de verdade
 - [ ] Vídeo curto mostrando: entrar → chamar alguém → o outro aparelho tocando bloqueado → atender e **falar** → apagar a conta (opcional, mas ajuda muito na regra da ligação)
 
@@ -26,6 +32,52 @@ O que ainda depende de gente:
 (Produtividade, Negócios, Estilo de Vida), não como "Medicina". É o que eles de
 fato são, e evita a regra 5.1.1(ix), que exige pessoa jurídica para aplicativo
 de área regulada — o envio é por conta pessoal.
+
+---
+
+## A declaração de privacidade — para preencher no site
+
+**Onde:** App Store Connect → o aplicativo → menu da esquerda, **App Privacy**
+→ **Get Started** (ou **Editar**).
+
+**Primeira pergunta — "Do you or your third-party partners collect data from
+this app?"** → **Yes, we collect data from this app**.
+
+**Depois ele lista as categorias.** Marque só as da tabela abaixo. Para
+**cada uma** que marcar, as três perguntas seguintes são sempre as mesmas:
+
+1. *Para que é usado?* → **App Functionality** (só isso)
+2. *É ligado à identidade da pessoa?* → **Yes** (é ficha de atendimento, não
+   adianta dizer que é anônimo)
+3. *É usado para rastrear?* → **No**
+
+No fim, **Publish**. Sem publicar, não vale.
+
+### O que marcar em cada aplicativo
+
+| Categoria | Seja Semente | Semeador | Palmar | Colheita |
+| --- | :---: | :---: | :---: | :---: |
+| Name | ✓ | ✓ | ✓ | ✓ |
+| Email Address | ✓ | ✓ | ✓ | ✓ |
+| Phone Number | ✓ | ✓ | ✓ | |
+| Health | ✓ | ✓ | | ✓ |
+| Photos or Videos | ✓ | ✓ | ✓ | ✓ |
+| Other User Content | ✓ | ✓ | | |
+| User ID | ✓ | ✓ | ✓ | ✓ |
+
+Nada de propaganda, nada de análise de comportamento, nada de rastreamento —
+não marque nenhuma dessas finalidades em lugar nenhum.
+
+Por que cada um é assim:
+
+- **Palmar** não tem ficha de paciente: por isso fica sem *Health* e sem
+  *Other User Content*.
+- **Colheita** recebe o primeiro nome, a foto do tratamento e o depoimento em
+  vídeo: por isso tem *Health*, mas não tem telefone nem conversa.
+- **Seja Semente** e **Semeador** têm tudo, inclusive a conversa da equipe
+  (*Other User Content*).
+
+Quando terminar nos quatro, é só avisar que o robô do envio manda tudo.
 
 ---
 
