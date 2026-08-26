@@ -58,7 +58,7 @@ for (const bundle of APPS) {
   if (!app) { console.log('  ✗ sem ficha na loja'); algumFalhou = true; continue; }
 
   // A versão que vamos enviar
-  const vs = await api('GET', `/v1/apps/${app.id}/appStoreVersions?limit=5&fields[appStoreVersions]=versionString,appStoreState,releaseType`);
+  const vs = await api('GET', `/v1/apps/${app.id}/appStoreVersions?limit=5&fields[appStoreVersions]=versionString,appStoreState,releaseType,usesIdfa,copyright`);
   const versao = (vs.json.data || []).find(v => ['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED', 'REJECTED', 'METADATA_REJECTED'].includes(v.attributes.appStoreState));
   if (!versao) {
     const jaEnviada = (vs.json.data || [])[0];
@@ -127,6 +127,9 @@ for (const bundle of APPS) {
     if (!temIpad) falta.push('fotos de tela de iPad');
     if (temIphone && temIpad) console.log(`  ✓ fotos de tela: ${Object.entries(porTipo).map(([t, n]) => `${t}=${n}`).join(', ')}`);
   }
+
+  // Perguntas da versão que ficam em branco e travam tudo em silêncio
+  if (versao.attributes.usesIdfa === null || versao.attributes.usesIdfa === undefined) falta.push('resposta sobre identificador de anúncios (usesIdfa)');
 
   const det = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreReviewDetail`);
   const d = det.json.data?.attributes;
