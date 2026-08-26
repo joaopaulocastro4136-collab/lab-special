@@ -292,6 +292,22 @@ function TelaLogin({ aoEntrarDemo }) {
 
   const [novaConta, setNovaConta] = useState(false);
 
+  // Esqueceu a senha: o Firebase manda um link no e-mail. Sem isto, quem
+  // errasse a senha ficava trancado do lado de fora para sempre.
+  async function esqueciSenha() {
+    setErro('');
+    const alvo = email.trim();
+    if (!alvo) { setErro('Escreva o seu e-mail aí em cima primeiro.'); return; }
+    setCarregando(true);
+    try {
+      await fb.fns.sendPasswordResetEmail(fb.auth, alvo);
+      setErro('Pronto: se essa conta existe, o link para criar uma senha nova chegou em ' + alvo + '. Olhe também o lixo eletrônico.');
+    } catch (e) {
+      setErro('Não consegui enviar agora. Confira o e-mail e a internet.');
+    }
+    setCarregando(false);
+  }
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
@@ -342,6 +358,11 @@ function TelaLogin({ aoEntrarDemo }) {
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
+          {!novaConta && (
+            <button className="link-troca" onClick={esqueciSenha} disabled={carregando}>
+              Esqueci minha senha
+            </button>
+          )}
         </>
       )}
       {erro && <div className="erro">{erro}</div>}

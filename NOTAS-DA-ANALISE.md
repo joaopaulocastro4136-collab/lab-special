@@ -5,11 +5,32 @@ um texto por aplicativo. Está em inglês porque é a língua da análise.
 
 Antes de enviar, confira:
 
-- [ ] Conta de demonstração preenchida (**Sign-in required** ligado), com a senha que o robô `preparar-analise.mjs` imprime
+- [ ] Conta de demonstração preenchida (**Sign-in required** ligado) — as contas abaixo já estão criadas e com o papel liberado
 - [ ] Vídeo curto anexado mostrando: entrar → chamar alguém → o outro aparelho tocando bloqueado → atender e **falar** → apagar a conta
 - [ ] Preço **Free** nos quatro
 - [ ] Faixa etária respondida
 - [ ] Link da política de privacidade preenchido
+
+---
+
+## As contas de demonstração (já criadas)
+
+Senha de todas: `AnaliseApple2026!`
+
+| Aplicativo | E-mail | O que o analista vê |
+| --- | --- | --- |
+| Seja Semente (central) | `analise.central@sejasemente.org` | coordenação, com tudo liberado |
+| Semeador | `analise.semeador@sejasemente.org` | voluntário já aprovado |
+| Palmar | `analise.palmar@sejasemente.org` | gestor |
+| Colheita | `analise.colheita@sejasemente.org` | apoiador |
+
+As quatro entram também na Colheita, para o analista conseguir ver a prestação
+de contas de qualquer uma delas. Os dois pacientes que aparecem (`Paciente
+Exemplo Um` e `Paciente Exemplo Dois`) são fictícios — não existe nenhum dado de
+pessoa real no banco.
+
+Para recriar as contas (se a senha for trocada ou o banco for zerado de novo),
+rode `seja-semente/preparar-analise.mjs` pelo robô.
 
 ---
 
@@ -25,8 +46,12 @@ Antes de enviar, confira:
 > The submitter is the person responsible for the organization. Authorization
 > documents are available on request.
 >
-> **Test accounts** are below and are valid for the whole review period. Sample
-> patients are fictional — no real patient data is present.
+> **Test account** (valid for the whole review period, password
+> `AnaliseApple2026!`): use the email listed for this app in the section below.
+> Sign in with "ou com e-mail" on the login screen — the account already has its
+> role granted, so you go straight in. Sample patients are fictional; no real
+> patient data is present. If the password ever fails, email us and we reset it
+> within the hour.
 >
 > **Account deletion** (5.1.1(v)) is inside every app: Profile → "Apagar minha
 > conta". It also appears on the screens shown to someone who signed up but has no
@@ -40,6 +65,8 @@ Antes de enviar, confira:
 ---
 
 ## Seja Semente (central) — `com.sejasemente.central`
+
+> **Reviewer account:** `analise.central@sejasemente.org` / `AnaliseApple2026!`
 
 > **What it does.** Coordination app: registers people who come to a free clinic,
 > records the initial screening, schedules them with a volunteer dentist, and
@@ -61,6 +88,8 @@ Antes de enviar, confira:
 
 ## Semeador — `com.sejasemente.semeador`
 
+> **Reviewer account:** `analise.semeador@sejasemente.org` / `AnaliseApple2026!`
+
 > **What it does.** The volunteer dentist's app: the day's schedule, patient
 > screening, calling the next patient, and recording the procedure that was
 > performed, with before/after photos and a video testimonial from the patient.
@@ -76,6 +105,8 @@ Antes de enviar, confira:
 
 ## Palmar — `com.sejasemente.palmar`
 
+> **Reviewer account:** `analise.palmar@sejasemente.org` / `AnaliseApple2026!`
+
 > **What it does.** Management app for the project's coordinators: field clinics
 > (dates, team, report), volunteers, materials stock, invoices and the value produced
 > by the project.
@@ -86,6 +117,8 @@ Antes de enviar, confira:
 ---
 
 ## Colheita — `com.sejasemente.colheita`
+
+> **Reviewer account:** `analise.colheita@sejasemente.org` / `AnaliseApple2026!`
 
 > **What it does.** The app for people who donate to the project: it shows what their
 > donation turned into — before/after photos of treated patients, video testimonials,
