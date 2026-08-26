@@ -50,11 +50,12 @@ const lista = await pedir('GET', `https://firebasestorage.googleapis.com/v1beta/
 const baldes = (lista.json.buckets || []).map(b => String(b.name).split('/').pop());
 console.log(baldes.length ? `  Já ligados ao Firebase: ${baldes.join(', ')}` : '  Nenhum ligado ainda');
 
-// O nome que o aplicativo usa (vem do GoogleService-Info.plist)
-const BALDE = baldes.find(b => b.startsWith(PROJETO)) || `${PROJETO}.firebasestorage.app`;
+// O nome padrão (…​.firebasestorage.app) é um domínio reservado pelo Google e
+// só o próprio Firebase cria. Como o que a gente precisa é apenas um lugar
+// para guardar os vídeos, usamos um depósito de nome simples, nosso.
+const BALDE = 'seja-semente-arquivos';
 
 if (!baldes.includes(BALDE)) {
-  // O depósito em si pode nem existir ainda — cria antes de ligar
   const existe = await pedir('GET', `https://storage.googleapis.com/storage/v1/b/${BALDE}`);
   if (existe.status !== 200) {
     const cria = await pedir('POST', `https://storage.googleapis.com/storage/v1/b?project=${PROJETO}`, {
@@ -76,6 +77,7 @@ if (!baldes.includes(BALDE)) {
     : `  ✗ não deu para ligar (${liga.status}): ${JSON.stringify(liga.json.error?.message || liga.json).slice(0, 250)}`);
 }
 console.log(`  Depósito em uso: ${BALDE}`);
+console.log('  (o aplicativo aponta para gs://' + BALDE + ')');
 
 // ─── 2. As regras: só quem está logado ───
 console.log('\n══ 2. Regras do depósito ══');
