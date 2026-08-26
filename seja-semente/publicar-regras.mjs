@@ -85,17 +85,44 @@ service cloud.firestore {
     // ─── Quem é da casa ───
     // Cada um lê e escreve o PRÓPRIO cadastro (é assim que a pessoa se
     // cadastra e é assim que ela apaga a conta). A equipe vê a lista.
+    // O voluntário se cadastra sozinho, mas nasce PENDENTE e não consegue
+    // se aprovar: mexer em status/ativo é só da coordenação e da gestão.
     match /voluntarios/{uid} {
       allow read: if ehEquipe() || request.auth.uid == uid;
-      allow create, update, delete: if request.auth.uid == uid || ehCentral() || ehGestor();
+      allow create: if request.auth.uid == uid && request.resource.data.status == 'pendente';
+      allow update: if ehCentral() || ehGestor()
+        || (request.auth.uid == uid
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.get('ativo', false) == resource.data.get('ativo', false));
+      allow delete: if request.auth.uid == uid || ehCentral() || ehGestor();
+    }
+
+    // Coordenação e gestão NÃO se criam sozinhas. Só entra quem gastou um
+    // código válido (a marca do código fica no próprio banco) ou quem teve
+    // o e-mail pré-autorizado por alguém que já está dentro.
+    function gastouCodigoCentral() {
+      return request.resource.data.codigo is string
+        && exists(/databases/$(database)/documents/codigos-acesso/$(request.resource.data.codigo))
+        && get(/databases/$(database)/documents/codigos-acesso/$(request.resource.data.codigo)).data.usadoPor == request.auth.uid;
+    }
+    function gastouCodigoPalmar() {
+      return request.resource.data.codigo is string
+        && exists(/databases/$(database)/documents/palmar-codigos/$(request.resource.data.codigo))
+        && get(/databases/$(database)/documents/palmar-codigos/$(request.resource.data.codigo)).data.usadoPor == request.auth.uid;
     }
     match /central-usuarios/{uid} {
       allow read: if ehEquipe() || request.auth.uid == uid;
-      allow create, update, delete: if request.auth.uid == uid || ehCentral();
+      allow create: if request.auth.uid == uid
+        && (ehCentral() || gastouCodigoCentral() || exists(/databases/$(database)/documents/central-autorizados/$(meuEmail())));
+      allow update: if request.auth.uid == uid || ehCentral();
+      allow delete: if request.auth.uid == uid || ehCentral();
     }
     match /palmar-usuarios/{uid} {
       allow read: if ehEquipe() || request.auth.uid == uid;
-      allow create, update, delete: if request.auth.uid == uid || ehGestor();
+      allow create: if request.auth.uid == uid
+        && (ehGestor() || gastouCodigoPalmar() || exists(/databases/$(database)/documents/palmar-autorizados/$(meuEmail())));
+      allow update: if request.auth.uid == uid || ehGestor();
+      allow delete: if request.auth.uid == uid || ehGestor();
     }
     match /investidores/{doc} {
       allow read, write: if ehCentral() || ehGestor();
@@ -108,10 +135,26 @@ service cloud.firestore {
     }
 
     // ─── Códigos de acesso: quem tem o código na mão pode gastá-lo ───
-    match /codigos-acesso/{codigo}   { allow read, update: if entrou(); allow create, delete: if ehCentral(); }
-    match /palmar-codigos/{codigo}   { allow read, update: if entrou(); allow create, delete: if ehGestor(); }
-    match /central-autorizados/{doc} { allow read: if entrou(); allow write: if ehCentral(); }
-    match /palmar-autorizados/{doc}  { allow read: if entrou(); allow write: if ehGestor(); }
+    // Quem tem o código na mão gasta o código — mas só marcando o PRÓPRIO
+    // nome, e só se ninguém tiver gastado antes. Ninguém lista os códigos.
+    function gastandoOCodigo() {
+      return resource.data.get('usadoPor', null) == null
+        && request.resource.data.usadoPor == request.auth.uid;
+    }
+    match /codigos-acesso/{codigo} {
+      allow get: if entrou();
+      allow list: if ehCentral();
+      allow update: if ehCentral() || (entrou() && gastandoOCodigo());
+      allow create, delete: if ehCentral();
+    }
+    match /palmar-codigos/{codigo} {
+      allow get: if entrou();
+      allow list: if ehGestor();
+      allow update: if ehGestor() || (entrou() && gastandoOCodigo());
+      allow create, delete: if ehGestor();
+    }
+    match /central-autorizados/{email} { allow read: if ehEquipe() || (entrou() && meuEmail() == email); allow write: if ehCentral(); }
+    match /palmar-autorizados/{email} { allow read: if ehEquipe() || (entrou() && meuEmail() == email); allow write: if ehGestor(); }
 
     // ─── Qualquer coisa não prevista fica trancada ───
     match /{document=**} { allow read, write: if false; }

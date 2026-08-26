@@ -1835,7 +1835,14 @@ function App() {
     // conferência de verdade acontece de novo quando a conexão voltar.
     const lembrete = 'ss-ja-entrou-' + usuario.uid;
     const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
-    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
+    // O lembrete deste aparelho só vale quando foi a INTERNET que falhou.
+    // Se o banco RESPONDEU que a pessoa não tem mais acesso, o lembrete é
+    // apagado — antes, quem perdia o acesso continuava entrando para sempre.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('pedir'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir');
+    };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
@@ -1855,14 +1862,8 @@ function App() {
             return;
           }
         }
-        const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
-        if (algum.empty) {
-          setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
-          libera();
-          return;
-        }
-        nega();
-      } catch (e) { nega(); }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -1871,11 +1872,18 @@ function App() {
     const cod = codigo.trim().toUpperCase();
     const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
     const ref = doc(fb.db, 'codigos-acesso', cod);
-    const snap = await getDoc(ref);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
-    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    // Gastar o código PRIMEIRO, e esperar: é essa marca no banco que prova,
+    // para as regras de segurança, que a pessoa tem direito de entrar.
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
     gravarLocal('ss-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
