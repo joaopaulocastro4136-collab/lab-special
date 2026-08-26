@@ -24,6 +24,7 @@ import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
 import { FormDepoimento, TelaDepoimentos, apagarVideo } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -374,7 +375,7 @@ function TelaCadastro({ usuario, aoEnviar, aoSair, aoApagarConta }) {
   );
 }
 
-function TelaAguardando({ usuario, aoSair, aoApagarConta, aoSimularAprovacao }) {
+function TelaAguardando({ usuario, aoSair, aoApagarConta, aoSuporte, aoSimularAprovacao }) {
   return (
     <div className="tela-login">
       <LogoApp tamanho={110} />
@@ -556,7 +557,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoSalvarPerfil, aoChamarStaff }) {
   const [aba, setAba] = useState('inicio');
   const temInternet = usarTemInternet();
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
@@ -1345,6 +1346,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
             <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
       {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
+            <BotaoSuporte aoAbrir={aoSuporte} />
             <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
@@ -1450,6 +1452,7 @@ function App() {
 
   // Apagar a conta: some o cadastro de voluntário e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
   async function apagarMinhaConta(senha) {
     calarAparelho();
     await apagarConta(CONFIGURADO ? fb : null, conta,
@@ -1578,11 +1581,12 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!conta) conteudo = <TelaLogin aoEntrarDemo={setConta} />;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Semeador" aoVoltar={() => setVendoSuporte(false)} />;
   else if (apagandoConta) conteudo = <TelaApagarConta usuario={conta} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
-  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
-  else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
-  else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
-  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro, uid: conta.uid }} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSalvarPerfil={salvarPerfil} aoChamarStaff={chamarStaff} />;
+  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
+  else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro, uid: conta.uid }} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} aoSalvarPerfil={salvarPerfil} aoChamarStaff={chamarStaff} />;
   // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
   // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
   // desligar (segunda chamada, sem a marca) é que fecha a tela.

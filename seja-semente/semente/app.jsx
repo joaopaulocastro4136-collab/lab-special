@@ -31,6 +31,7 @@ import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
 import { FormDepoimento, TelaDepoimentos, apagarVideo } from '../depoimento.jsx';
 import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -771,7 +772,7 @@ function NovoProcedimento({ aoAdicionar }) {
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
   const [aba, setAba] = useState('cadastro');
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -1871,6 +1872,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
               </div>
             )}
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
             <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
@@ -2069,6 +2071,7 @@ function App() {
 
   // Apagar a conta: some o cadastro da central e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
   async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
       [{ colecao: 'central-usuarios', id: usuario.uid },
@@ -2205,9 +2208,10 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Seja Semente" aoVoltar={() => setVendoSuporte(false)} />;
   else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
   // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
   // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
   // desligar (segunda chamada, sem a marca) é que fecha a tela.
