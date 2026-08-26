@@ -910,6 +910,47 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
     return () => soltar.forEach(s => s());
   }, []);
 
+  // A Apple exige, onde há conteúdo escrito por gente (diretriz 1.2):
+  // apagar o que é seu, denunciar e bloquear. O bloqueio fica no aparelho
+  // de quem bloqueou; a denúncia chega à coordenação.
+  // ─── Denúncias (a Apple exige resposta em até 24 horas) ───
+  const [denuncias, setDenuncias] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO) { setDenuncias([]); return; }
+    const { collection, onSnapshot } = fb.fns;
+    return onSnapshot(collection(fb.db, 'denuncias'),
+      snap => setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.resolvida)));
+  }, []);
+  function resolverDenuncia(d, apagouConteudo) {
+    if (!CONFIGURADO) { setDenuncias(ds => ds.filter(x => x.id !== d.id)); return; }
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'denuncias', d.id), {
+      resolvida: true, apagouConteudo: !!apagouConteudo,
+      resolvidaPorNome: usuario.nome || '', resolvidaEm: fb.fns.serverTimestamp(),
+    }).catch(() => {});
+    if (apagouConteudo) {
+      if (d.tipo === 'chat' && d.mensagemId) fb.fns.deleteDoc(fb.fns.doc(fb.db, 'chat', d.mensagemId)).catch(() => {});
+      if (d.tipo === 'depoimento' && d.depoimentoId) fb.fns.deleteDoc(fb.fns.doc(fb.db, 'depoimentos', d.depoimentoId)).catch(() => {});
+    }
+  }
+
+  function apagarMensagem(m) {
+    if (!CONFIGURADO) { setMensagens(ms => ms.filter(x => x.id !== m.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'chat', m.id)).catch(() => {});
+  }
+  function denunciarMensagem(m) {
+    const motivo = window.prompt('O que há de errado nesta mensagem? A coordenação vai receber e responder em até 24 horas.');
+    if (motivo === null) return;
+    if (CONFIGURADO) {
+      fb.fns.addDoc(fb.fns.collection(fb.db, 'denuncias'), {
+        tipo: 'chat', mensagemId: m.id, texto: String(m.texto || '').slice(0, 500),
+        autorDenunciadoUid: m.autorUid || '', autorDenunciadoNome: m.autorNome || '',
+        motivo: String(motivo).slice(0, 500),
+        deUid: usuario.uid, deNome: usuario.nome || '', criadoEm: fb.fns.serverTimestamp(),
+      }).catch(() => {});
+    }
+    window.alert('Denúncia enviada à coordenação. Obrigado — vamos olhar em até 24 horas.');
+  }
+
   async function enviarMensagem(m) {
     const dados = {
       ...m, autorUid: usuario.uid, autorNome: usuario.nome || '',
@@ -1679,7 +1720,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
         })()}
 
         {aba === 'chat' && (
-          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
+          <Chat cheio aoApagarMensagem={apagarMensagem} aoDenunciar={denunciarMensagem} usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
             areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
 
@@ -1809,6 +1850,26 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
               )}
             </div>
 
+            {denuncias.length > 0 && (
+              <div className="cartao" style={{ border: '1.5px solid #E8A08C' }}>
+                <strong style={{ display: 'block', marginBottom: 6 }}>🚩 Denúncias a responder ({denuncias.length})</strong>
+                <p className="dica" style={{ margin: '0 0 8px' }}>A gente se compromete a olhar cada uma em até 24 horas.</p>
+                {denuncias.map(d => (
+                  <div key={d.id} style={{ borderTop: '1px solid #EEF2ED', paddingTop: 8, marginTop: 8 }}>
+                    <p className="obs" style={{ margin: 0 }}>
+                      {d.tipo === 'chat' ? 'Mensagem do chat' : 'Depoimento'} · denunciado por {String(d.deNome || '').split(' ')[0] || 'alguém'}
+                    </p>
+                    <p style={{ margin: '4px 0' }}><b>Motivo:</b> {d.motivo}</p>
+                    {d.texto && <p className="obs" style={{ margin: '4px 0' }}>“{d.texto}”</p>}
+                    <div className="linha-botoes">
+                      <button className="btn-secundario" onClick={() => resolverDenuncia(d, false)}>Está tudo bem</button>
+                      <button className="btn-principal" style={{ background: '#B3402A', boxShadow: 'none' }}
+                        onClick={() => { if (window.confirm('Apagar o conteúdo denunciado?')) resolverDenuncia(d, true); }}>Apagar o conteúdo</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <button className="btn-sair" onClick={aoSair}>Sair</button>
             <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>

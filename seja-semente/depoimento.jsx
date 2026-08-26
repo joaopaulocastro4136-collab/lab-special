@@ -214,7 +214,7 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, fb = nu
 }
 
 // Cartão bonito do depoimento (usado na Colheita e na lista da equipe)
-export function CartaoDepoimento({ depoimento: d, destaque, aoTocar }) {
+export function CartaoDepoimento({ depoimento: d, destaque, aoTocar, aoDenunciar }) {
   const Tag = aoTocar ? 'button' : 'div';
   return (
     <Tag className={'depoimento' + (destaque ? ' destaque' : '')} onClick={aoTocar}
@@ -226,6 +226,9 @@ export function CartaoDepoimento({ depoimento: d, destaque, aoTocar }) {
         </div>
       )}
       {d.texto && <p className="depo-texto">{d.texto}</p>}
+      {aoDenunciar && (
+        <button className="depo-denunciar" onClick={e => { e.stopPropagation(); aoDenunciar(d); }}>🚩 Denunciar</button>
+      )}
       <div className="depo-quem">
         <Bolha nome={String(d.pacienteNome || '').split(' ')[0]} foto={d.foto || d.pacienteFoto} />
         <span>

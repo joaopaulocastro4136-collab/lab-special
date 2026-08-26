@@ -528,6 +528,12 @@ export const CSS = `
   .btn-apagar-conta { display: block; width: 100%; margin-top: 18px; padding: 13px; border: 1.5px solid #E8A08C; border-radius: 14px;
     background: #fff; color: #B3402A; font-size: 15px; font-weight: 800; cursor: pointer; }
   /* ── A voz dentro da ligação ── */
+  .depo-denunciar { position: absolute; top: 8px; right: 8px; border: none; background: rgba(30,43,34,0.08);
+    color: #6E7D72; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 800; cursor: pointer; }
+  .msg-menu { border: none; background: none; color: #8A968D; font-size: 19px; line-height: 1; padding: 0 4px; cursor: pointer; }
+  .msg-opcoes { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+  .msg-opcoes button { text-align: left; border: 1.5px solid #DBE3D8; background: #fff; border-radius: 12px;
+    padding: 10px 12px; font-size: 14px; font-weight: 700; color: #55645A; cursor: pointer; }
   .btn-apple { width: 100%; max-width: 330px; display: flex; align-items: center; justify-content: center; gap: 10px;
     padding: 14px; border: none; border-radius: 14px; background: #000; color: #fff; font-size: 16.5px; font-weight: 700;
     cursor: pointer; margin-top: 8px; }

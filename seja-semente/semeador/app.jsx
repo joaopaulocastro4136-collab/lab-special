@@ -758,6 +758,27 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
     gravarLocal('sd-chat-visto', mensagens.length);
   }, [aba, mensagens.length]);
 
+  // A Apple exige, onde há conteúdo escrito por gente (diretriz 1.2):
+  // apagar o que é seu, denunciar e bloquear. O bloqueio fica no aparelho
+  // de quem bloqueou; a denúncia chega à coordenação.
+  function apagarMensagem(m) {
+    if (!CONFIGURADO) { setMensagens(ms => ms.filter(x => x.id !== m.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'chat', m.id)).catch(() => {});
+  }
+  function denunciarMensagem(m) {
+    const motivo = window.prompt('O que há de errado nesta mensagem? A coordenação vai receber e responder em até 24 horas.');
+    if (motivo === null) return;
+    if (CONFIGURADO) {
+      fb.fns.addDoc(fb.fns.collection(fb.db, 'denuncias'), {
+        tipo: 'chat', mensagemId: m.id, texto: String(m.texto || '').slice(0, 500),
+        autorDenunciadoUid: m.autorUid || '', autorDenunciadoNome: m.autorNome || '',
+        motivo: String(motivo).slice(0, 500),
+        deUid: usuario.uid, deNome: usuario.nome || '', criadoEm: fb.fns.serverTimestamp(),
+      }).catch(() => {});
+    }
+    window.alert('Denúncia enviada à coordenação. Obrigado — vamos olhar em até 24 horas.');
+  }
+
   async function enviarMensagem(m) {
     const dados = {
       ...m, autorUid: usuario.uid, autorNome: usuario.nome || '',
@@ -1296,7 +1317,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
           </>
         )}
         {aba === 'chat' && (
-          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
+          <Chat cheio aoApagarMensagem={apagarMensagem} aoDenunciar={denunciarMensagem} usuario={usuario} mensagens={mensagens} pacientes={todosPacientes} pessoas={equipe}
             areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
         {aba === 'estoque' && (
