@@ -35,7 +35,12 @@ const api = async (metodo, caminho, corpo) => {
   try { j = t ? JSON.parse(t) : {}; } catch (e) { j = { cru: t.slice(0, 300) }; }
   return { status: r.status, json: j };
 };
-const porque = (r) => r.json?.errors?.map(e => e.detail || e.title).join(' · ') || JSON.stringify(r.json).slice(0, 220);
+// A Apple costuma devolver o motivo de verdade no segundo, terceiro erro da
+// lista — o primeiro é sempre o genérico "não pode ser analisado". Mostrar
+// todos, com o código, senão a gente fica adivinhando.
+const porque = (r) => (r.json?.errors || []).map(e =>
+  `[${e.code || e.status || '?'}] ${e.detail || e.title || ''}${e.source?.pointer ? ' (' + e.source.pointer + ')' : ''}`
+).join('\n      ') || JSON.stringify(r.json).slice(0, 300);
 const cheio = (v) => !!String(v || '').trim();
 
 let algumFalhou = false;
@@ -108,9 +113,15 @@ for (const bundle of APPS) {
   if (!cheio(vl?.attributes?.supportUrl)) falta.push('endereço de suporte');
   if (vl) {
     const sets = await api('GET', `/v1/appStoreVersionLocalizations/${vl.id}/appScreenshotSets?include=appScreenshots`);
-    const quantas = (sets.json.data || []).reduce((s, c) => s + (c.relationships?.appScreenshots?.data || []).length, 0);
-    if (!quantas) falta.push('fotos de tela');
-    else console.log(`  ✓ ${quantas} foto(s) de tela`);
+    const porTipo = {};
+    for (const c of (sets.json.data || [])) porTipo[c.attributes.screenshotDisplayType] = (c.relationships?.appScreenshots?.data || []).length;
+    const temIphone = Object.entries(porTipo).some(([t, n]) => t.startsWith('APP_IPHONE') && n > 0);
+    // Os quatro rodam em iPad também, e aí a Apple EXIGE fotos de iPad. Sem
+    // elas ela recusa o envio dizendo só que "não pode ser analisado".
+    const temIpad = Object.entries(porTipo).some(([t, n]) => t.startsWith('APP_IPAD') && n > 0);
+    if (!temIphone) falta.push('fotos de tela de iPhone');
+    if (!temIpad) falta.push('fotos de tela de iPad');
+    if (temIphone && temIpad) console.log(`  ✓ fotos de tela: ${Object.entries(porTipo).map(([t, n]) => `${t}=${n}`).join(', ')}`);
   }
 
   const det = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreReviewDetail`);
