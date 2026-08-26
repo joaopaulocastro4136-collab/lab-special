@@ -33,20 +33,12 @@ const api = async (metodo, caminho, corpo) => {
 };
 const porque = (r) => (r.json?.errors || []).map(e => `[${e.code || '?'}] ${e.detail || e.title}`).join(' · ') || JSON.stringify(r.json).slice(0, 250);
 
-// ─── O que a Apple aceita: pergunta a ela, não adivinha ───
-console.log('══ O que a Apple aceita ══');
-const cat = await api('GET', '/v1/appDataUsageCategories?limit=200');
-const pur = await api('GET', '/v1/appDataUsagePurposes?limit=200');
-const pro = await api('GET', '/v1/appDataUsageDataProtections?limit=200');
-const ids = (r) => (r.json.data || []).map(d => d.id);
-console.log(`  categorias (${cat.status}): ${ids(cat).join(', ') || porque(cat)}`);
-console.log(`  finalidades (${pur.status}): ${ids(pur).join(', ') || porque(pur)}`);
-console.log(`  proteções (${pro.status}): ${ids(pro).join(', ') || porque(pro)}`);
-if (SO_LISTAR) { console.log('\n⏸ só listando'); process.exit(0); }
-
-const existe = (lista, id) => ids(lista).includes(id);
+// A Apple não deixa listar as categorias por fora ("resource does not
+// exist"), então usamos os nomes dela mesma. Se algum não servir, ela diz
+// qual é na resposta e o robô mostra — melhor do que ficar no escuro.
 const LIGADO = 'DATA_LINKED_TO_YOU';
 const FUNCIONAR = 'APP_FUNCTIONALITY';
+if (SO_LISTAR) { console.log('A Apple não deixa listar; o robô usa os nomes dela.'); process.exit(0); }
 
 // O que cada aplicativo recolhe DE VERDADE
 const COMUM = ['NAME', 'EMAIL_ADDRESS', 'USER_ID'];
@@ -78,7 +70,6 @@ for (const app of APPS) {
 
   let deu = 0, nao = 0;
   for (const categoria of app.dados) {
-    if (!existe(cat, categoria)) { console.log(`  ⚠ a Apple não conhece a categoria "${categoria}" — pulei`); continue; }
     // Cada dado precisa de DOIS registros: para que serve, e se dá para
     // ligar à pessoa. A Apple recusa se faltar um dos dois.
     for (const [rel, valor] of [['purpose', FUNCIONAR], ['dataProtection', LIGADO]]) {
@@ -99,9 +90,14 @@ for (const app of APPS) {
   console.log(`  ${nao ? '✗' : '✓'} ${deu} resposta(s) gravada(s)${nao ? `, ${nao} falharam` : ''}`);
 
   // Publicar: sem isto a declaração fica de rascunho e não vale
-  const pubEstado = await api('GET', `/v1/apps/${ficha.id}/appDataUsagePublishState`);
-  const idPub = pubEstado.json.data?.id;
-  if (!idPub) { console.log(`  ✗ não achei o estado de publicação (${pubEstado.status})`); continue; }
+  // O endereço desse estado mudou de nome entre versões da API; tenta os dois
+  let idPub = null, ondeAchou = '';
+  for (const caminho of ['appDataUsagesPublishState', 'appDataUsagePublishState']) {
+    const e = await api('GET', `/v1/apps/${ficha.id}/${caminho}`);
+    if (e.json.data?.id) { idPub = e.json.data.id; ondeAchou = caminho; break; }
+  }
+  if (!idPub) { console.log('  ✗ não achei o estado de publicação por nenhum caminho'); continue; }
+  console.log(`  (estado de publicação em ${ondeAchou})`);
   const pub = await api('PATCH', `/v1/appDataUsagesPublishState/${idPub}`, {
     data: { type: 'appDataUsagesPublishState', id: idPub, attributes: { published: true } },
   });
