@@ -1,0 +1,33 @@
+# Fica tentando mandar os quatro para a análise da App Store, de hora em hora.
+#
+# Existe porque a última coisa que falta — a declaração de privacidade da
+# loja — só dá para preencher no site da Apple, e não dá para saber pela API
+# quando foi preenchida. Então, em vez de alguém ficar olhando, o robô tenta
+# sozinho: no minuto em que destravar, ele manda.
+#
+# Ele NÃO manda nada incompleto: confere tudo antes e desiste em silêncio se
+# faltar alguma coisa. Quando os quatro já tiverem sido enviados, cada volta
+# só diz "nada a enviar".
+name: Tentar enviar para a análise
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tentar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tenta mandar
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          MODO_ESPERA: '1'
+        run: node seja-semente/enviar-analise.mjs

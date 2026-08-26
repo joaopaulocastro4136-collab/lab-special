@@ -15,6 +15,10 @@
 import crypto from 'crypto';
 
 const SO_CONFERIR = !!process.env.SO_CONFERIR;
+// Modo espera: o robô fica agendado tentando de hora em hora. Enquanto a
+// ficha não estiver completa ele só anota e sai em paz, sem acender alarme
+// falso — o dia que destravar, ele manda sozinho.
+const MODO_ESPERA = !!process.env.MODO_ESPERA;
 const KEY_ID = process.env.ASC_KEY_ID.trim();
 const ISSUER = process.env.ASC_ISSUER_ID.trim();
 const P8 = process.env.ASC_KEY_P8;
@@ -183,4 +187,4 @@ for (const bundle of APPS) {
 }
 
 console.log(algumFalhou ? '\n✗ Fim — algum aplicativo não foi' : '\n✓ Fim');
-if (algumFalhou) process.exit(1);
+if (algumFalhou && !MODO_ESPERA) process.exit(1);
