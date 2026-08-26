@@ -66,7 +66,7 @@ async function ligarFirebase() {
   } catch (e) {
     db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   }
-  fb = { auth, db, fns: { ...modAuth, ...modFs } };
+  fb = { app, auth, db, fns: { ...modAuth, ...modFs } };
 }
 
 // ─── Ajudinhas ───

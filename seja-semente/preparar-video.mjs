@@ -32,8 +32,20 @@ const pedir = async (metodo, url, corpo) => {
   return { status: r.status, json: await r.json().catch(() => ({})) };
 };
 
+// ─── 0. Ligar o serviço de arquivos no Google ───
+console.log('══ 0. Serviço de arquivos ══');
+const NUMERO = '474886604901'; // número do projeto (o mesmo do GCM_SENDER_ID)
+for (const servico of ['storage.googleapis.com', 'firebasestorage.googleapis.com']) {
+  const r = await pedir('POST', `https://serviceusage.googleapis.com/v1/projects/${NUMERO}/services/${servico}:enable`, {});
+  console.log(r.status === 200
+    ? `  ✓ ${servico} ligado`
+    : `  ${servico}: ${r.status} ${JSON.stringify(r.json.error?.message || r.json).slice(0, 160)}`);
+}
+// O Google leva alguns segundos para o serviço valer
+await new Promise(r => setTimeout(r, 15000));
+
 // ─── 1. O depósito ───
-console.log('══ 1. Depósito de arquivos ══');
+console.log('\n══ 1. Depósito de arquivos ══');
 const lista = await pedir('GET', `https://firebasestorage.googleapis.com/v1beta/projects/${PROJETO}/buckets`);
 const baldes = (lista.json.buckets || []).map(b => String(b.name).split('/').pop());
 console.log(baldes.length ? `  Já ligados ao Firebase: ${baldes.join(', ')}` : '  Nenhum ligado ainda');
