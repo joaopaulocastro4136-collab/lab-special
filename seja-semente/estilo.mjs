@@ -528,6 +528,10 @@ export const CSS = `
   .btn-apagar-conta { display: block; width: 100%; margin-top: 18px; padding: 13px; border: 1.5px solid #E8A08C; border-radius: 14px;
     background: #fff; color: #B3402A; font-size: 15px; font-weight: 800; cursor: pointer; }
   /* ── A voz dentro da ligação ── */
+  .btn-apple { width: 100%; max-width: 330px; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px; border: none; border-radius: 14px; background: #000; color: #fff; font-size: 16.5px; font-weight: 700;
+    cursor: pointer; margin-top: 8px; }
+  .btn-apple:disabled { opacity: 0.55; }
   .voz-controles { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
   .voz-aviso { margin: 0; font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.9); text-align: center; }
   .voz-botoes { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }

@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho, MacaAppleLogo } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare, Package } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
@@ -198,6 +198,38 @@ function TelaLogin({ aoEntrarDemo }) {
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
+  // ENTRAR COM A APPLE — exigido pela Apple (diretriz 4.8) para quem
+  // oferece login do Google. Quem esconde o e-mail recebe um endereço de
+  // repasse da própria Apple, e o aplicativo funciona igual com ele.
+  async function entrarApple() {
+    setErro('');
+    if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
+    setCarregando(true);
+    try {
+      if (window.__loginAppleNativo) {
+        const c = await window.__loginAppleNativo();
+        const p = new fb.fns.OAuthProvider('apple.com');
+        await fb.fns.signInWithCredential(fb.auth, p.credential({ idToken: c.idToken, rawNonce: c.nonce || undefined }));
+      } else {
+        const p = new fb.fns.OAuthProvider('apple.com');
+        p.addScope('email'); p.addScope('name');
+        try {
+          await fb.fns.signInWithPopup(fb.auth, p);
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') { setCarregando(false); return; }
+          if (cod === 'auth/popup-blocked') { await fb.fns.signInWithRedirect(fb.auth, p); return; }
+          throw e2;
+        }
+      }
+    } catch (e) {
+      setCarregando(false);
+      const m = String(e?.message || e);
+      if (m.includes('cancel')) return;
+      setErro('A Apple não entrou — código: ' + (e?.code || '?'));
+    }
+  }
+
   async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) {
@@ -285,6 +317,9 @@ function TelaLogin({ aoEntrarDemo }) {
       {!CONFIGURADO && <div className="faixa-demo">Modo demonstração — o Firebase ainda não foi configurado (veja o README.md)</div>}
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <GoogleG tamanho={23} /> Entrar com Google
+      </button>
+      <button className="btn-apple" onClick={entrarApple} disabled={carregando}>
+        <MacaAppleLogo /> Entrar com a Apple
       </button>
       {CONFIGURADO && (
         <>

@@ -36,6 +36,16 @@ window.__loginGoogleNativo = async () => {
   throw ultimo || new Error('sem resposta do Google');
 };
 
+// ENTRAR COM A APPLE — a Apple exige que quem oferece login do Google
+// ofereça também uma opção equivalente (diretriz 4.8). No aplicativo
+// instalado, quem cuida disso é a tela do próprio iPhone.
+window.__loginAppleNativo = async () => {
+  const r = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
+  const idToken = r?.credential?.idToken;
+  if (!idToken) throw new Error('cancelado');
+  return { idToken, nonce: r?.credential?.nonce || '', nome: r?.user?.displayName || '' };
+};
+
 // O app chama ao SAIR: encerra também a sessão Google nativa do aparelho
 window.__sairNativoGoogle = async () => {
   try { await FirebaseAuthentication.signOut(); } catch (e) { /* sem sessão */ }
