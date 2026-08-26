@@ -112,6 +112,26 @@ function proximoDia(diaSemana) {
 }
 
 // A data de hoje no formato do banco (AAAA-MM-DD), no fuso do aparelho
+
+// Os dias que uma ação (mutirão criado no Palmar) cobre — do início ao fim
+function diasDaAcao(a) {
+  if (!a?.data) return [];
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  const dias = [];
+  const d = new Date(a.data + 'T12:00:00');
+  const alvo = new Date(fim + 'T12:00:00');
+  while (d <= alvo && dias.length < 120) {
+    dias.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+function acaoPegaODia(a, iso) {
+  if (!a?.data || !iso) return false;
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  return iso >= a.data && iso <= fim;
+}
+
 function dataISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -837,7 +857,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const semTriagem = todosPacientes.filter(p => !p.triagem);
   // A ação (mutirão) marcada para hoje no Palmar — o que for retirado do
   // estoque hoje entra no relatório de custos dela
-  const acaoDoDia = acoes.find(a => a.data === dataISO() && a.status !== 'encerrada') || null;
+  const acaoDoDia = acoes.find(a => acaoPegaODia(a, dataISO()) && a.status !== 'encerrada') || null;
+  const diasDeAcao = acoes.filter(a => a.status !== 'encerrada').flatMap(diasDaAcao);
 
   // Agenda do dia: o que a central mandou para hoje, e o que vem depois
   const hojeISO = dataISO();
@@ -1187,7 +1208,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
         {aba === 'agenda' && (
           <>
             <h2>Agenda da semana</h2>
-            <AgendaSemana agendamentos={agendamentos} corDaArea={corDaArea} duracaoDe={duracaoDe} aoAbrirFicha={setFichaId} />
+            <AgendaSemana agendamentos={agendamentos} corDaArea={corDaArea} duracaoDe={duracaoDe} aoAbrirFicha={setFichaId} diasDeAcao={diasDeAcao} />
           </>
         )}
         {aba === 'chat' && (

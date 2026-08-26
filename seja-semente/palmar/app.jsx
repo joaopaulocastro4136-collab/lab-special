@@ -143,6 +143,34 @@ function isoDe(v) {
   if (!d || isNaN(d)) return '';
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// Os dias que uma ação cobre (do início ao fim). Ações antigas, sem
+// `dataFim`, cobrem só o dia da data — continuam funcionando igual.
+function diasDaAcao(a) {
+  if (!a?.data) return [];
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  const dias = [];
+  const d = new Date(a.data + 'T12:00:00');
+  const alvo = new Date(fim + 'T12:00:00');
+  while (d <= alvo && dias.length < 120) {
+    dias.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+// A ação está acontecendo neste dia?
+function acaoPegaODia(a, iso) {
+  if (!a?.data || !iso) return false;
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  return iso >= a.data && iso <= fim;
+}
+// Texto do período: "sexta, 26/08" ou "26/08 a 28/08"
+function periodoBonito(a) {
+  if (!a?.data) return '';
+  if (!a.dataFim || a.dataFim === a.data) return dataBonita(a.data);
+  const curto = (iso) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+  return `${curto(a.data)} a ${curto(a.dataFim)} (${diasDaAcao(a).length} dias)`;
+}
+
 function dataBonita(iso) {
   if (!iso) return '';
   const [a, m, d] = iso.split('-').map(Number);
@@ -462,8 +490,17 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     // procedimentos lançados e o status encerrado
     const nova = {
       status: 'planejada', voluntariosUids: [], registros: [], retroativa: false,
-      ...f, criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '',
+      dataFim: f.data, ...f, criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '',
     };
+    // O que cada pessoa vai fazer na ação entra também no cadastro dela —
+    // é assim que o Seja Semente passa a oferecer aquele dentista na hora de
+    // agendar o procedimento
+    for (const [uid, procs] of Object.entries(f.procedimentosPorUid || {})) {
+      const v = voluntarios.find(x => x.id === uid);
+      if (!v || !procs.length) continue;
+      const juntos = [...new Set([...(v.procedimentos || []), ...procs])];
+      if (juntos.length !== (v.procedimentos || []).length) salvarVoluntario(v, { procedimentos: juntos });
+    }
     if (!CONFIGURADO) {
       const id = 'ac' + Math.floor(Math.random() * 1e9);
       setAcoes(as => [{ id, ...nova, criadaEm: new Date() }, ...as]);
@@ -734,7 +771,15 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     if (a) return <TelaAcao acao={a} equipe={equipeAtiva} pacientes={pacientes} atendimentos={atendimentos} movimentos={movimentos}
       todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente} custoAtendimento={custoAtendimento} procedimentos={procedimentos}
       notas={notas.filter(n => n.acaoId === a.id)} aoNovaNota={() => setTela({ novaNota: a.id })} aoExcluirNota={excluirNota}
-      aoSalvar={(campos) => salvarAcao(a, campos)} aoExcluir={() => excluirAcao(a)} aoVoltar={() => setTela(null)} />;
+      aoSalvar={(campos) => salvarAcao(a, campos)}
+      aoSalvarProcs={(v, procs) => {
+        // Guarda o que a pessoa faz NESTA ação e libera no cadastro dela,
+        // para o Seja Semente já oferecê-la ao agendar aquele procedimento
+        salvarAcao(a, { procedimentosPorUid: { ...(a.procedimentosPorUid || {}), [v.id]: procs } });
+        const juntos = [...new Set([...(v.procedimentos || []), ...procs])];
+        if (juntos.length !== (v.procedimentos || []).length) salvarVoluntario(v, { procedimentos: juntos });
+      }}
+      aoExcluir={() => excluirAcao(a)} aoVoltar={() => setTela(null)} />;
   }
   if (tela?.voluntario) {
     const v = voluntarios.find(x => x.id === tela.voluntario);
@@ -776,7 +821,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   const atendHoje = atendimentos.filter(a => isoDe(a.inicio) === hoje);
   const agendaHoje = agendamentos.filter(g => g.data === hoje);
   const totalGerado = atendimentos.filter(a => a.fim).reduce((s, a) => s + custoAtendimento(a), 0);
-  const acaoDeHoje = acoes.find(a => a.data === hoje);
+  const acaoDeHoje = acoes.find(a => acaoPegaODia(a, hoje) && a.status !== 'encerrada') || acoes.find(a => acaoPegaODia(a, hoje));
 
   return (
     <div className="tela-principal">
@@ -831,7 +876,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                   <strong>{a.retroativa ? '📚' : '🌱'} {a.titulo}</strong>
                   <span className={'chip ' + (a.status === 'iniciada' ? 'em-atendimento' : a.status === 'encerrada' ? 'concluído' : 'aguardando')}>{a.retroativa ? 'antiga' : a.status}</span>
                 </div>
-                <p className="obs" style={{ margin: 0 }}>{dataBonita(a.data)}{a.local ? ` · ${a.local}` : ''} · {(a.voluntariosUids || []).length} pessoa(s){(a.registros || []).length ? ` · ${(a.registros || []).length} lançamento(s)` : ''}</p>
+                <p className="obs" style={{ margin: 0 }}>{periodoBonito(a)}{a.local ? ` · ${a.local}` : ''} · {(a.voluntariosUids || []).length} pessoa(s){(a.registros || []).length ? ` · ${(a.registros || []).length} lançamento(s)` : ''}</p>
               </div>
             )) : <Vazio texto="Nenhuma ação criada ainda — toque em + Nova ação." />}
           </>
@@ -1054,8 +1099,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
 
 // ─── Nova ação ───
 function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCancelar, aoSalvar }) {
-  const [f, setF] = useState({ titulo: '', data: hojeISO(), local: '' });
+  const [f, setF] = useState({ titulo: '', data: hojeISO(), dataFim: hojeISO(), local: '' });
   const [escalados, setEscalados] = useState([]);
+  // O que cada pessoa vai fazer nesta ação: { uid: ['Profilaxia', ...] }
+  const [procsPorUid, setProcsPorUid] = useState({});
   // Ação ANTIGA: vai empilhando o que foi feito, especialidade por
   // especialidade (o valor sai da tabela de Valores, por dente quando marcado)
   const [itens, setItens] = useState([]);
@@ -1099,18 +1146,54 @@ function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCanc
           : 'Preencha os dados, marque a equipe e crie — depois o relatório vai se enchendo sozinho com o que os aplicativos registrarem no dia.'}
       </p>
       <Campo rotulo="Nome da ação"><input value={f.titulo} onChange={e => setF({ ...f, titulo: e.target.value })} placeholder="Ex.: Mutirão da Comunidade" /></Campo>
-      <Campo rotulo="Data"><input type="date" value={f.data} onChange={e => setF({ ...f, data: e.target.value })} /></Campo>
+      <div className="linha-botoes">
+        <Campo rotulo="Começa em"><input type="date" value={f.data}
+          onChange={e => setF({ ...f, data: e.target.value, dataFim: (f.dataFim && f.dataFim >= e.target.value) ? f.dataFim : e.target.value })} /></Campo>
+        <Campo rotulo="Termina em"><input type="date" value={f.dataFim} min={f.data}
+          onChange={e => setF({ ...f, dataFim: e.target.value })} /></Campo>
+      </div>
+      {f.dataFim > f.data && <p className="dica" style={{ margin: '0 0 8px' }}>🗓 {diasDaAcao(f).length} dias de atendimento — a agenda do Seja Semente abre em todos eles.</p>}
       <Campo rotulo={antiga ? 'Local' : 'Local (opcional)'}><input value={f.local} onChange={e => setF({ ...f, local: e.target.value })} placeholder="Ex.: Igreja Central" /></Campo>
 
-      <h3 style={{ margin: '14px 0 6px' }}>Quem participou ({escalados.length})</h3>
-      <p className="dica" style={{ margin: '0 0 8px' }}>Marque as pessoas — depois dá para abrir cada uma e ver o que ela fez.</p>
-      {equipe.length ? equipe.map(v => (
-        <label key={v.id} className={escalados.includes(v.id) ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
-          <input type="checkbox" checked={escalados.includes(v.id)} onChange={() => alternaEscala(v.id)} />
-          <Bolha nome={v.nome} />
-          <span style={{ flex: 1 }}><strong>{v.nome}</strong>{v.ministerio && <span className="obs" style={{ display: 'block' }}>{v.ministerio}</span>}</span>
-        </label>
-      )) : <p className="dica">Nenhum voluntário ativo cadastrado ainda.</p>}
+      <h3 style={{ margin: '14px 0 6px' }}>{antiga ? 'Quem participou' : 'Quem vai participar'} ({escalados.length})</h3>
+      <p className="dica" style={{ margin: '0 0 8px' }}>
+        {antiga
+          ? 'Marque as pessoas — depois dá para abrir cada uma e ver o que ela fez.'
+          : 'Marque as pessoas e, em cada uma, o que ela vai fazer nesta ação. Assim o Seja Semente já sabe quem agendar em cada procedimento.'}
+      </p>
+      {equipe.length ? equipe.map(v => {
+        const marcado = escalados.includes(v.id);
+        const meus = procsPorUid[v.id] || v.procedimentos || [];
+        const alternaProc = (nome) => setProcsPorUid(m => ({
+          ...m, [v.id]: (m[v.id] || v.procedimentos || []).includes(nome)
+            ? (m[v.id] || v.procedimentos || []).filter(x => x !== nome)
+            : [...(m[v.id] || v.procedimentos || []), nome],
+        }));
+        return (
+          <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'block', marginBottom: 8, width: '100%' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
+              <Bolha nome={v.nome} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <strong>{v.nome}</strong>
+                <span className="obs" style={{ display: 'block' }}>
+                  {marcado ? (meus.length ? `🦷 ${meus.join(' · ')}` : '⚠ marque o que ela vai fazer') : (v.ministerio || 'toque para incluir')}
+                </span>
+              </span>
+            </label>
+            {marcado && !antiga && (
+              <div className="caixas" style={{ marginTop: 8 }}>
+                {(todasAreas || []).map(nome => (
+                  <label key={nome} className={meus.includes(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '5px 10px', fontSize: 12.5 }}>
+                    <input type="checkbox" checked={meus.includes(nome)} onChange={() => alternaProc(nome)} />
+                    {nome}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }) : <p className="dica">Nenhum voluntário ativo cadastrado ainda.</p>}
 
       {antiga && (
         <>
@@ -1181,6 +1264,7 @@ function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCanc
         <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
         <button className="btn-principal" disabled={!podeSalvar} onClick={() => aoSalvar({
           ...f, voluntariosUids: escalados,
+          procedimentosPorUid: Object.fromEntries(escalados.map(uid => [uid, procsPorUid[uid] || equipe.find(v => v.id === uid)?.procedimentos || []])),
           ...(antiga ? { registros: itens, retroativa: true, status: 'encerrada' } : {}),
         })}>{antiga ? 'Salvar ação antiga' : 'Criar ação'}</button>
       </div>
@@ -1190,16 +1274,19 @@ function FormAcao({ antiga, equipe = [], todasAreas, valorDe, ehPorDente, aoCanc
 }
 
 // ─── A ação aberta: escala, status e relatório em tempo real ───
-function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], procedimentos = [], aoNovaNota, aoExcluirNota, aoSalvar, aoExcluir, aoVoltar }) {
+function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasAreas, valorDe, ehPorDente, custoAtendimento, notas = [], procedimentos = [], aoNovaNota, aoExcluirNota, aoSalvar, aoSalvarProcs, aoExcluir, aoVoltar }) {
   const escalados = acao.voluntariosUids || [];
   const alternaEscala = (id) => aoSalvar({ voluntariosUids: escalados.includes(id) ? escalados.filter(x => x !== id) : [...escalados, id] });
   // Quem está aberto na "ficha da pessoa" (o que ela fez nesta ação)
   const [vendoPessoa, setVendoPessoa] = useState(null);
+  const [editandoProcs, setEditandoProcs] = useState(null); // uid em edição
   // Os procedimentos registrados pelos dentistas no dia desta ação
-  const procsDoDia = procedimentos.filter(r => (r.data || isoDe(r.em || r.criadoEm)) === acao.data);
+  // O relatório cobre todos os dias da ação (de início a fim)
+  const diasDela = diasDaAcao(acao);
+  const procsDoDia = procedimentos.filter(r => diasDela.includes(r.data || isoDe(r.em || r.criadoEm)));
 
   // Relatório do dia da ação (em tempo real, vindo do Semeador/central)
-  const doDia = atendimentos.filter(a => isoDe(a.inicio) === acao.data);
+  const doDia = atendimentos.filter(a => diasDela.includes(isoDe(a.inicio)));
   // Só o atendimento JÁ CONCLUÍDO vira valor produzido e entra na contagem —
   // quem ainda está na cadeira aparece na lista, mas não no dinheiro
   const feitosDoDia = doDia.filter(a => a.fim);
@@ -1209,7 +1296,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
   // Materiais gastos na ação: os vinculados a ela E, para quem retirou sem
   // vínculo, os do MESMO DIA da ação (é o mutirão daquele dia)
   const gastosMateriais = movimentos.filter(m => deltaMov(m) < 0
-    && (m.acaoId === acao.id || (!m.acaoId && isoDe(m.em || m.criadoEm) === acao.data)));
+    && (m.acaoId === acao.id || (!m.acaoId && diasDela.includes(isoDe(m.em || m.criadoEm)))));
   const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
   const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
   // Quantidades: lançamentos manuais (ação antiga) contam pela quantidade
@@ -1251,7 +1338,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
             <Bolha nome={v.nome} />
             <div style={{ flex: 1 }}>
               <strong>{v.nome}</strong>
-              <p className="obs" style={{ margin: 0 }}>na ação {acao.titulo} · {dataBonita(acao.data)}</p>
+              <p className="obs" style={{ margin: 0 }}>na ação {acao.titulo} · {periodoBonito(acao)}</p>
             </div>
           </div>
         </div>
@@ -1323,7 +1410,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
       <div className="titulo-com-botao"><h2>{acao.retroativa ? '📚' : '🌱'} {acao.titulo}</h2>
         <span className={'chip ' + (acao.status === 'iniciada' ? 'em-atendimento' : acao.status === 'encerrada' ? 'concluído' : 'aguardando')}>{acao.retroativa ? 'antiga' : acao.status}</span>
       </div>
-      <p className="dica" style={{ marginTop: 0 }}>{dataBonita(acao.data)}{acao.local ? ` · ${acao.local}` : ''}{acao.retroativa ? ' · registro de mutirão anterior ao aplicativo' : ''}</p>
+      <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(acao)}{acao.local ? ` · ${acao.local}` : ''}{acao.retroativa ? ' · registro de mutirão anterior ao aplicativo' : ''}</p>
       {!acao.retroativa && (
         <div className="linha-botoes" style={{ marginBottom: 12 }}>
           {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
@@ -1341,7 +1428,8 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0) + manuaisDele.reduce((sm, r) => sm + Number(r.valor || 0), 0);
         const quantos = doDele.length + procsDele.length + manuaisDele.length;
         return (
-          <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, width: '100%' }}>
+          <div key={v.id} className={marcado ? 'caixa marcada' : 'caixa'} style={{ display: 'block', marginBottom: 8, width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <input type="checkbox" checked={marcado} onChange={() => alternaEscala(v.id)} />
             <Bolha nome={v.nome} />
             <button type="button" onClick={() => marcado && setVendoPessoa(v)}
@@ -1351,7 +1439,29 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
                 {marcado ? `${quantos} atendimento(s) · ${dinheiro(valorDele)} — toque para ver` : (v.ministerio || 'marque para incluir na ação')}
               </span>
             </button>
+            {marcado && (
+              <button type="button" className="btn-remover" title="O que ela vai fazer"
+                onClick={() => setEditandoProcs(editandoProcs === v.id ? null : v.id)}
+                style={{ background: '#E5F3EA', color: '#226343' }}>🦷</button>
+            )}
             {marcado && <ChevronRight size={18} strokeWidth={2.6} style={{ opacity: 0.5, flex: 'none' }} />}
+            </div>
+            {marcado && editandoProcs === v.id && (
+              <div className="caixas" style={{ marginTop: 8, width: '100%' }}>
+                {todasAreas.map(nome => {
+                  const meus = (acao.procedimentosPorUid || {})[v.id] || v.procedimentos || [];
+                  return (
+                    <label key={nome} className={meus.includes(nome) ? 'caixa marcada' : 'caixa'} style={{ margin: 0, padding: '5px 10px', fontSize: 12.5 }}>
+                      <input type="checkbox" checked={meus.includes(nome)} onChange={() => {
+                        const novos = meus.includes(nome) ? meus.filter(x => x !== nome) : [...meus, nome];
+                        aoSalvarProcs(v, novos);
+                      }} />
+                      {nome}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       }) : <p className="dica">Nenhum voluntário ativo para escalar.</p>}

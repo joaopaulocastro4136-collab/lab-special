@@ -28,7 +28,7 @@ function horaFim(hora, dur) {
   return hm(minutosDe(hora) + (dur || 30));
 }
 
-export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido, aoEscolherHorario, previa, aoMoverAgendamento }) {
+export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha, aoEscolherDia, diaEscolhido, aoEscolherHorario, previa, aoMoverAgendamento, diasDeAcao = [] }) {
   const hoje = dataISO();
   const domingo = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return dataISO(d); };
   const [inicio, setInicio] = useState(domingo);
@@ -118,6 +118,7 @@ export function AgendaSemana({ agendamentos, corDaArea, duracaoDe, aoAbrirFicha,
   const classeDia = (iso, base) => [
     base,
     iso === hoje ? 'hoje' : '',
+    diasDeAcao.includes(iso) ? 'de-acao' : '',
     (aoEscolherDia || aoEscolherHorario) && iso === diaEscolhido ? 'escolhido' : '',
     (aoEscolherDia || aoEscolherHorario) ? 'clicavel' : '',
   ].filter(Boolean).join(' ');
