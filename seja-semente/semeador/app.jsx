@@ -1267,8 +1267,6 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
               <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
               <SeletorAvatar nome={usuario.nome} foto={usuario.foto} avatar={usuario.avatar} aoSalvar={aoSalvarPerfil} />
             </div>
-            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaDepo('lista')}>💬 Depoimentos dos pacientes</button>
-            <p className="dica" style={{ marginBottom: 12 }}>Registre o que a pessoa falou depois do atendimento — aparece em primeiro lugar para quem apoia o projeto. 💚</p>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaJogos(true)}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
