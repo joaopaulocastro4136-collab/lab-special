@@ -227,20 +227,34 @@ for (const app of APPS) {
     declId = d2.json.data?.id || null;
   }
   if (declId) {
-    // A Apple muda as perguntas de tempos em tempos. Se ela recusar um campo
-    // que não existe mais, tira esse campo e tenta de novo — melhor perder
-    // uma pergunta do que deixar a faixa etária inteira em branco.
-    let campos = { ...idade };
+    // A Apple muda as perguntas deste formulário de tempos em tempos, e ela
+    // exige TODAS as respostas de uma vez. Por isso a gente lê o formulário
+    // dela primeiro e só troca por cima o que nos interessa — assim as
+    // perguntas novas, que a gente nem conhece, vão junto com o valor que
+    // já estava lá.
+    const atual = await api('GET', `/v1/ageRatingDeclarations/${declId}`);
+    let campos = { ...(atual.json.data?.attributes || {}), ...idade };
     let r = null;
-    for (let volta = 0; volta < 6; volta++) {
+    for (let volta = 0; volta < 8; volta++) {
       r = await api('PATCH', `/v1/ageRatingDeclarations/${declId}`, {
         data: { type: 'ageRatingDeclarations', id: declId, attributes: campos },
       });
       if (r.status < 300) break;
-      const recusado = String(r.json?.errors?.[0]?.detail || '').match(/'([A-Za-z]+)' is not an attribute/);
-      if (!recusado || !(recusado[1] in campos)) break;
-      console.log(`    (a Apple não usa mais "${recusado[1]}" — tirei e tentei de novo)`);
-      delete campos[recusado[1]];
+      const detalhe = String(r.json?.errors?.[0]?.detail || '');
+      const sobrando = detalhe.match(/'([A-Za-z]+)' is not an attribute/);
+      if (sobrando && sobrando[1] in campos) {
+        console.log(`    (a Apple não usa mais "${sobrando[1]}" — tirei)`);
+        delete campos[sobrando[1]];
+        continue;
+      }
+      const faltando = detalhe.match(/must provide a value for the attribute '([A-Za-z]+)'/);
+      if (faltando && campos[faltando[1]] === undefined) {
+        // Pergunta nova que a gente não conhece: responde o mais inofensivo
+        console.log(`    (pergunta nova "${faltando[1]}" — respondi que não)`);
+        campos[faltando[1]] = false;
+        continue;
+      }
+      break;
     }
     conta(r, 'faixa etária');
   } else {
