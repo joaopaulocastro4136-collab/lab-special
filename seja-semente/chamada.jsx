@@ -4,6 +4,7 @@
 // (a vibração só funciona em Android — o iPhone não deixa sites vibrarem;
 // lá fica a tela pulsando + som). A tela só sai quando a pessoa toca.
 import { useEffect, useRef, useState } from 'react';
+import { useVoz, ControlesDaVoz } from './voz.jsx';
 import { ChevronLeft, BellRing } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 
@@ -32,11 +33,21 @@ function tocarBipe(ctx) {
   } catch (e) { /* sem som */ }
 }
 
-export function TelaChamada({ chamada, aoAtender }) {
+export function TelaChamada({ chamada, aoAtender, fb, usuario }) {
   const audioRef = useRef(null);
+  // Depois de atender, a tela vira a LIGAÇÃO em si: o microfone abre e a
+  // pessoa fala com quem chamou, sem precisar largar o que está fazendo.
+  const [atendida, setAtendida] = useState(false);
+  const voz = useVoz({
+    fb, chamadaId: chamada?.id, meuUid: usuario?.uid, meuNome: usuario?.nome,
+    ligado: atendida && !!fb && !!chamada?.id,
+  });
+
+  useEffect(() => { setAtendida(false); }, [chamada?.id]);
 
   useEffect(() => {
     // Vibra e toca sem parar enquanto a chamada estiver na tela
+    if (atendida) return;   // atendeu: para de tocar, começa a falar
     let ctx = null;
     try { ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume?.(); } catch (e) {}
     audioRef.current = ctx;
@@ -45,7 +56,7 @@ export function TelaChamada({ chamada, aoAtender }) {
     vibra(); toca();
     const t = setInterval(() => { vibra(); toca(); }, 1400);
     return () => { clearInterval(t); try { navigator.vibrate?.(0); } catch (e) {} try { ctx?.close(); } catch (e) {} };
-  }, [chamada?.id]);
+  }, [chamada?.id, atendida]);
 
   if (!chamada) return null;
   // Chamada de STAFF: quem aparece grande é quem está chamando — a tela só
@@ -66,9 +77,40 @@ export function TelaChamada({ chamada, aoAtender }) {
           ? `${chamada.chamadoPorNome || 'A equipe'} está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''}`
           : `está chamando você${chamada.paraNome ? `, ${String(chamada.paraNome).split(' ')[0]}` : ''} — vá até lá`)
         : `chamado por ${chamada.chamadoPorNome || 'alguém da equipe'}`}</p>
-      <button className="chamada-atender" onClick={() => aoAtender(chamada)}>
-        {ehStaff ? '✅ Estou indo' : '✅ OK, estou levando'}
-      </button>
+      {atendida ? (
+        <ControlesDaVoz voz={voz} rotuloDesligar="Encerrar" aoDesligar={() => aoAtender(chamada)} />
+      ) : (
+        <button className="chamada-atender" onClick={() => { setAtendida(true); aoAtender(chamada, true); }}>
+          {ehStaff ? '✅ Atender' : '✅ Atender e ir buscar'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── A tela de quem CHAMOU: fica na ligação esperando atenderem ───
+export function TelaChamando({ chamada, fb, usuario, aoDesligar }) {
+  const voz = useVoz({
+    fb, chamadaId: chamada?.id, meuUid: usuario?.uid, meuNome: usuario?.nome,
+    ligado: !!fb && !!chamada?.id,
+  });
+  if (!chamada) return null;
+  const outros = voz.participantes.filter(p => p.uid !== usuario?.uid);
+  const titulo = chamada.motivo || chamada.paraNome || chamada.pacienteNome || 'Chamando';
+  return (
+    <div className="chamada-tela" role="alertdialog" aria-label="Ligação em andamento">
+      <p className="chamada-rotulo">📞 Você está chamando</p>
+      <div className="chamada-pulso">
+        <i /><i /><i />
+        <Bolha nome={titulo} foto={chamada.pacienteFoto || ''} />
+      </div>
+      <h1>{titulo}</h1>
+      <p className="chamada-quem">
+        {outros.length
+          ? `${outros.map(p => String(p.nome || '').split(' ')[0]).join(', ')} ${outros.length > 1 ? 'entraram' : 'entrou'} na ligação`
+          : 'Tocando… assim que atenderem, vocês se falam.'}
+      </p>
+      <ControlesDaVoz voz={voz} rotuloDesligar="Encerrar" aoDesligar={aoDesligar} />
     </div>
   );
 }

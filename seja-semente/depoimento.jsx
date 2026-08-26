@@ -7,7 +7,7 @@
 //  agradecimento de quem recebeu.
 //  Coleção: depoimentos.
 // ═══════════════════════════════════════════════════════════════════════════
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, Quote, Video, Images } from 'lucide-react';
 import { Bolha } from './logo.jsx';
 import { comprimirImagem } from './ficha.jsx';
@@ -15,20 +15,37 @@ import { comprimirImagem } from './ficha.jsx';
 // O vídeo não cabe dentro do banco (uma foto cabe, um vídeo não), então ele
 // vai para o depósito de arquivos do Firebase e o depoimento guarda só o
 // endereço. Sobe aos pedaços, mostrando o quanto já foi.
-export async function subirVideo(fb, arquivo, aoProgresso) {
+const DEPOSITO = 'gs://seja-semente-arquivos';
+
+export async function subirVideo(fb, arquivo, aoProgresso, guardaTarefa) {
   const mod = await import('firebase/storage');
   // Depósito próprio do projeto (o nome padrão do Firebase é um domínio
   // reservado pelo Google, que não dá para criar por fora)
-  const deposito = mod.getStorage(fb.app, 'gs://seja-semente-arquivos');
+  const deposito = mod.getStorage(fb.app, DEPOSITO);
   const limpo = String(arquivo.name || 'video').replace(/[^\w.-]/g, '_').slice(-40);
-  const lugar = mod.ref(deposito, `depoimentos/${Date.now()}-${limpo}`);
+  const caminho = `depoimentos/${Date.now()}-${limpo}`;
+  const lugar = mod.ref(deposito, caminho);
   const tarefa = mod.uploadBytesResumable(lugar, arquivo, { contentType: arquivo.type || 'video/mp4' });
+  if (guardaTarefa) guardaTarefa(tarefa);
   await new Promise((pronto, deuRuim) => {
     tarefa.on('state_changed',
       p => aoProgresso && aoProgresso(Math.round((p.bytesTransferred / (p.totalBytes || 1)) * 100)),
       deuRuim, pronto);
   });
-  return await mod.getDownloadURL(lugar);
+  const url = await mod.getDownloadURL(lugar);
+  // Guardamos TAMBÉM o caminho: é por ele que o vídeo é apagado de verdade
+  // quando o depoimento sai do ar. Sem isso, o arquivo ficaria para sempre.
+  return { url, caminho };
+}
+
+// Apaga o vídeo do depósito. Chamado junto com o depoimento — se a pessoa
+// tirar a autorização, o arquivo some mesmo, não só o registro.
+export async function apagarVideo(fb, caminho) {
+  if (!fb || !caminho) return;
+  try {
+    const mod = await import('firebase/storage');
+    await mod.deleteObject(mod.ref(mod.getStorage(fb.app, DEPOSITO), caminho));
+  } catch (e) { /* já não existia */ }
 }
 
 // Formulário: quem falou, o que disse e (se quiser) a foto ou o VÍDEO do sorriso
@@ -39,7 +56,11 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, fb = nu
   const [video, setVideo] = useState(null);          // o arquivo escolhido
   const [videoPrevia, setVideoPrevia] = useState(''); // para assistir antes de salvar
   const [enviando, setEnviando] = useState(-1);      // % do envio do vídeo
-  const [autoriza, setAutoriza] = useState(true);
+  const tarefaVideo = useRef(null);                  // para cancelar se sair
+  useEffect(() => () => { try { tarefaVideo.current?.cancel(); } catch (e) { /* já acabou */ } }, []);
+  // Consentimento NUNCA vem pronto: quem marca é a pessoa da equipe,
+  // depois de perguntar ao paciente. Sem isso o depoimento não sai daqui.
+  const [autoriza, setAutoriza] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -58,8 +79,8 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, fb = nu
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    // 200 MB é o teto do depósito — um recado de celular cabe folgado
-    if (f.size > 200 * 1024 * 1024) { setErro('Esse vídeo é grande demais (máximo 200 MB). Grave um mais curto.'); return; }
+    // 80 MB: um recado de celular cabe folgado, e sobe rápido no 4G
+    if (f.size > 80 * 1024 * 1024) { setErro('Esse vídeo é grande demais (máximo 80 MB). Grave um mais curto — um recado de meio minuto cabe folgado.'); return; }
     setErro('');
     setVideo(f);
     setVideoPrevia(URL.createObjectURL(f));
@@ -156,24 +177,29 @@ export function FormDepoimento({ pacientes = [], pacienteInicial = null, fb = nu
       <label className={autoriza ? 'caixa marcada' : 'caixa'} onClick={() => setAutoriza(!autoriza)} style={{ alignSelf: 'flex-start' }}>
         ✅ A pessoa autorizou mostrar este depoimento
       </label>
-      <p className="dica" style={{ margin: '4px 0 10px' }}>Sem a autorização o depoimento fica guardado, mas não aparece para quem apoia o projeto.</p>
+      <p className="dica" style={{ margin: '4px 0 10px' }}>Sem a autorização o depoimento não é guardado. Pergunte à pessoa antes de marcar.</p>
 
       {!video && <div className="erro">Falta o vídeo — é ele que faz o depoimento.</div>}
+      {video && !autoriza && <div className="erro">Marque a autorização da pessoa — sem ela o depoimento não pode ser guardado.</div>}
       {erro && <div className="erro">{erro}</div>}
       <div className="linha-botoes">
-        <button className="btn-secundario" onClick={aoCancelar}>Cancelar</button>
-        <button className="btn-principal" disabled={salvando || !paciente || !video} onClick={async () => {
+        <button className="btn-secundario" disabled={enviando >= 0} onClick={aoCancelar}>Cancelar</button>
+        <button className="btn-principal" disabled={salvando || !paciente || !video || !autoriza} onClick={async () => {
           setSalvando(true); setErro('');
           try {
             let videoUrl = '';
+            let videoCaminho = '';
             if (video && fb) {
               setEnviando(0);
-              videoUrl = await subirVideo(fb, video, setEnviando);
+              const subiu = await subirVideo(fb, video, setEnviando, t => { tarefaVideo.current = t; });
+              videoUrl = subiu.url; videoCaminho = subiu.caminho;
+              tarefaVideo.current = null;
               setEnviando(-1);
             }
             await aoSalvar({
-              texto: texto.trim(), foto, videoUrl,
-              pacienteId: paciente.id, pacienteNome: paciente.nome || '',
+              texto: texto.trim(), foto, videoUrl, videoCaminho,
+              // primeiro nome só: o cartão é mostrado a quem apoia o projeto
+              pacienteId: paciente.id, pacienteNome: String(paciente.nome || '').trim().split(/\s+/)[0] || '',
               pacienteFoto: paciente.fotoMini || '', autorizado: autoriza,
             });
           } catch (e) {
@@ -201,7 +227,7 @@ export function CartaoDepoimento({ depoimento: d, destaque, aoTocar }) {
       )}
       {d.texto && <p className="depo-texto">{d.texto}</p>}
       <div className="depo-quem">
-        <Bolha nome={d.pacienteNome} foto={d.foto || d.pacienteFoto} />
+        <Bolha nome={String(d.pacienteNome || '').split(' ')[0]} foto={d.foto || d.pacienteFoto} />
         <span>
           <strong>{String(d.pacienteNome || '').split(' ')[0]}</strong>
           {d.autorNome && <i>registrado por {String(d.autorNome).split(' ')[0]}</i>}

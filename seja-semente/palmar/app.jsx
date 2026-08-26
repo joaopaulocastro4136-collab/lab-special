@@ -12,14 +12,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho, MacaAppleLogo } from '../logo.jsx';
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2, Camera, Images } from 'lucide-react';
-import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
+import { TelaChamada, TelaChamando, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { comprimirImagem } from '../ficha.jsx';
 import { SeletorUnidade, Contador } from '../estoque.jsx';
 import { Arcada } from '../dentes.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 
 // Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
 // a nota é real; quando o QR traz o valor, ele entra sozinho)
@@ -245,6 +247,38 @@ function TelaLogin({ aoEntrarDemo }) {
   const [novaConta, setNovaConta] = useState(false);
   const [verSenha, setVerSenha] = useState(false);
 
+  // ENTRAR COM A APPLE — exigido pela Apple (diretriz 4.8) para quem
+  // oferece login do Google. Quem esconde o e-mail recebe um endereço de
+  // repasse da própria Apple, e o aplicativo funciona igual com ele.
+  async function entrarApple() {
+    setErro('');
+    if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
+    setCarregando(true);
+    try {
+      if (window.__loginAppleNativo) {
+        const c = await window.__loginAppleNativo();
+        const p = new fb.fns.OAuthProvider('apple.com');
+        await fb.fns.signInWithCredential(fb.auth, p.credential({ idToken: c.idToken, rawNonce: c.nonce || undefined }));
+      } else {
+        const p = new fb.fns.OAuthProvider('apple.com');
+        p.addScope('email'); p.addScope('name');
+        try {
+          await fb.fns.signInWithPopup(fb.auth, p);
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') { setCarregando(false); return; }
+          if (cod === 'auth/popup-blocked') { await fb.fns.signInWithRedirect(fb.auth, p); return; }
+          throw e2;
+        }
+      }
+    } catch (e) {
+      setCarregando(false);
+      const m = String(e?.message || e);
+      if (m.includes('cancel')) return;
+      setErro('A Apple não entrou — código: ' + (e?.code || '?'));
+    }
+  }
+
   async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
@@ -304,6 +338,9 @@ function TelaLogin({ aoEntrarDemo }) {
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <GoogleG tamanho={23} /> Entrar com Google
       </button>
+      <button className="btn-apple" onClick={entrarApple} disabled={carregando}>
+        <MacaAppleLogo /> Entrar com a Apple
+      </button>
       {CONFIGURADO && (
         <>
           <div className="separador">ou com e-mail</div>
@@ -329,7 +366,7 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -353,6 +390,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair }) {
       {erro && <div className="erro">{erro}</div>}
       <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -363,7 +401,7 @@ function Campo({ rotulo, children }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal, com as abas ───
-function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
   const [aba, setAba] = useState('painel');
   const [tela, setTela] = useState(null);
   const temInternet = usarTemInternet();
@@ -515,9 +553,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       setTela({ acao: id });
       return;
     }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'acoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-    if (ref) setTela({ acao: ref.id });
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'acoes'));
+    setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela({ acao: ref.id });
   }
   async function salvarAcao(a, campos) {
     if (!CONFIGURADO) { setAcoes(as => as.map(x => x.id === a.id ? { ...x, ...campos } : x)); return; }
@@ -581,21 +620,44 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
   }
   const emFalta = estoque.filter(i => qtdEstoque(i) <= Number(i.minimo || 0));
 
-  // ─── Investidores (patrocinadores — a Colheita vai ler isto depois) ───
+  // ─── Investidores (patrocinadores — é a Colheita que lê isto) ───
+  // O e-mail é a chave da porta da Colheita. Um espaço a mais ou uma letra
+  // maiúscula deixava a pessoa trancada para sempre no "Quase lá", pedindo
+  // justamente o e-mail que já estava cadastrado. Por isso: sempre limpo e
+  // em minúsculas, aqui e lá.
+  const emailLimpo = (e) => String(e || '').trim().toLowerCase();
+
+  // A chave de entrada fica num documento com o nome do e-mail. É esse
+  // documento que a Colheita consegue ler (e só o dela), sem precisar
+  // vasculhar a lista inteira de investidores.
+  function abrirPorta(email, dados) {
+    if (!CONFIGURADO || !email) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'apoiadores', email), { nome: dados?.nome || '', desde: serverTimestamp() }, { merge: true }).catch(() => {});
+  }
+  function fecharPorta(email) {
+    if (!CONFIGURADO || !email) return;
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'apoiadores', email)).catch(() => {});
+  }
+
   async function criarInvestidor(f) {
     const acao = acoes.find(a => a.id === f.acaoId);
-    const dados = { ...f, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...f, email: emailLimpo(f.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => [...is, { id: 'i' + Math.floor(Math.random() * 1e9), ...dados, criadaEm: new Date() }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'investidores'), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(collection(fb.db, 'investidores')), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function salvarInvestidor(i, campos) {
     const acao = acoes.find(a => a.id === campos.acaoId);
-    const dados = { ...campos, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...campos, email: emailLimpo(campos.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => is.map(x => x.id === i.id ? { ...x, ...dados } : x)); setTela(null); return; }
     const { doc, updateDoc } = fb.fns;
     updateDoc(doc(fb.db, 'investidores', i.id), dados).catch(() => {});
+    // Trocou o e-mail? A porta antiga fecha e a nova abre
+    if (emailLimpo(i.email) && emailLimpo(i.email) !== dados.email) fecharPorta(emailLimpo(i.email));
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function excluirInvestidor(i) {
@@ -603,6 +665,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     if (!CONFIGURADO) { setInvestidores(is => is.filter(x => x.id !== i.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'investidores', i.id)).catch(() => {});
+    fecharPorta(emailLimpo(i.email));
   }
 
   // ─── Notas fiscais (foto ou QR — a Colheita vai ler isto depois) ───
@@ -620,14 +683,28 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
   }
 
-  // ─── Código de acesso ao Palmar (gerado no Perfil) ───
+  // ─── Códigos de convite (gerados no Perfil) ───
+  //   PM- abre o PALMAR (outro gestor)
+  //   CH- abre a COLHEITA (quem apoia o projeto e quer ver a prestação
+  //       de contas sem precisar ser cadastrado pelo e-mail)
   const [codigoGerado, setCodigoGerado] = useState('');
+  const [codigoColheita, setCodigoColheita] = useState('');
+  function sorteia(prefixo) {
+    return prefixo + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+  }
   async function gerarCodigo() {
-    const cod = 'PM-' + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    const cod = sorteia('PM-');
     setCodigoGerado(cod);
     if (!CONFIGURADO) return;
     const { doc, setDoc, serverTimestamp } = fb.fns;
-    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
+    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+  async function gerarCodigoColheita() {
+    const cod = sorteia('CH-');
+    setCodigoColheita(cod);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'colheita-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // ═══ TELAS CHEIAS ═══
@@ -659,9 +736,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
         setTela({ convocacao: id });
         return;
       }
-      const { collection, addDoc, serverTimestamp } = fb.fns;
-      const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-      if (ref) setTela({ convocacao: ref.id });
+      const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+      const ref = doc(collection(fb.db, 'convocacoes'));
+      setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+      setTela({ convocacao: ref.id });
     }}
     aoAbrir={(c) => setTela({ convocacao: c.id })}
     aoExcluir={(c) => {
@@ -1084,7 +1162,20 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                 <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigo}>Gerar código de acesso</button>
               )}
             </div>
+            <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <strong>Convidar quem apoia o projeto</strong>
+              <p className="dica" style={{ margin: 0 }}>Gere um código e passe para quem doou. Ele entra na Colheita com a conta dele e vê a prestação de contas — sem precisar estar cadastrado pelo e-mail. Cada código serve uma vez.</p>
+              {codigoColheita ? (
+                <>
+                  <div className="codigo-grande">{codigoColheita}</div>
+                  <button className="btn-secundario" onClick={() => { navigator.clipboard?.writeText(codigoColheita); }}>Copiar</button>
+                </>
+              ) : (
+                <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigoColheita}>Gerar convite da Colheita</button>
+              )}
+            </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -2207,7 +2298,14 @@ function App() {
     let cancelado = false;
     const lembrete = 'pm-ja-entrou-' + usuario.uid;
     const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
-    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
+    // O lembrete deste aparelho só vale quando foi a INTERNET que falhou.
+    // Se o banco RESPONDEU que a pessoa não tem mais acesso, o lembrete é
+    // apagado — antes, quem perdia o acesso continuava entrando para sempre.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('pedir'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir');
+    };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
@@ -2221,14 +2319,8 @@ function App() {
             return;
           }
         }
-        const algum = await getDocs(query(collection(fb.db, 'palmar-usuarios'), limit(1)));
-        if (algum.empty) {
-          setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
-          libera();
-          return;
-        }
-        nega();
-      } catch (e) { nega(); }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -2237,11 +2329,18 @@ function App() {
     const cod = codigo.trim().toUpperCase();
     const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
     const ref = doc(fb.db, 'palmar-codigos', cod);
-    const snap = await getDoc(ref);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'gestor', criadoEm: serverTimestamp() }).catch(() => {});
-    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    // Gastar o código PRIMEIRO, e esperar: é essa marca no banco que prova,
+    // para as regras de segurança, que a pessoa tem direito de entrar.
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'gestor', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
     gravarLocal('pm-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
@@ -2278,6 +2377,19 @@ function App() {
     setUsuario(null);
   }
 
+  // Apagar a conta: some o acesso de gestor e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  async function apagarMinhaConta(senha) {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'palmar-usuarios', id: usuario.uid },
+       { colecao: 'palmar-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['pm-usuario', 'pm-ja-entrou-' + usuario.uid], senha);
+    if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
+    setApagandoConta(false);
+    setUsuario(null);
+  }
+
   // ─── Chamadas (paciente e staff): a mesma tela de ligação dos outros ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -2293,6 +2405,27 @@ function App() {
       }));
     });
   }, [usuario?.uid]);
+  // ─── A LIGAÇÃO em si ───
+  // Quem chama fica numa ligação aberta esperando atenderem; quem atende
+  // entra na mesma conversa. Guardamos aqui qual chamada é a "minha".
+  const [minhaChamadaId, setMinhaChamadaId] = useState('');
+  const chamandoAgora = chamadas.find(c => c.id === minhaChamadaId && c.ativa !== false) || null;
+  function desligarMinhaChamada() {
+    const c = chamandoAgora;
+    setMinhaChamadaId('');
+    if (!c || !CONFIGURADO) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), { ativa: false, encerradaEm: fb.fns.serverTimestamp() }).catch(() => {});
+  }
+  // Atendeu: entra na conversa, mas a chamada continua de pé enquanto as
+  // pessoas falam. Quem desliga é quem chamou (ou o próprio, no Encerrar).
+  function marcarAtendida(c) {
+    if (!CONFIGURADO || !c) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), {
+      atendidaPorUid: usuario?.uid, atendidaEm: fb.fns.serverTimestamp(),
+      ...(c.tipo === 'staff' ? {} : { ativa: false }),
+    }).catch(() => {});
+  }
+
   function encerrarChamada(c, atendida) {
     setChamadasVistas(v => [...v, c.id]);
     if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
@@ -2312,8 +2445,10 @@ function App() {
       ...(motivo ? { motivo, convocacaoId } : {}),
     };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'chamadas'));
+    setDoc(ref, { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    setMinhaChamadaId(ref.id);   // eu entro na minha própria ligação
   }
   useEffect(() => {
     window.__atenderChamada = (id) => encerrarChamada({ id }, true);
@@ -2357,13 +2492,28 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoChamarStaff={chamarStaff} />;
-  return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
+    oQueFica="As ações, o estoque, as notas e o histórico do projeto continuam — são registros do trabalho, não dados seus. Se você era o único gestor, gere um código de acesso para outra pessoa ANTES de apagar."
+    aoVoltar={() => setApagandoConta(false)} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoChamarStaff={chamarStaff} />;
+  // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
+  // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
+  // desligar (segunda chamada, sem a marca) é que fecha a tela.
+  const naLigacao = (c, entrando) => {
+    if (entrando) { marcarAtendida(c); return; }
+    encerrarChamada(c, true);
+  };
+  return <>{conteudo}
+    {chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={naLigacao}
+      fb={CONFIGURADO ? fb : null} usuario={{ uid: usuario?.uid, nome: usuario?.nome }} />}
+    {chamandoAgora && <TelaChamando chamada={chamandoAgora} fb={CONFIGURADO ? fb : null}
+      usuario={{ uid: usuario?.uid, nome: usuario?.nome }} aoDesligar={() => desligarMinhaChamada()} />}
+    {abertura}</>;
 }
 
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar();
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

@@ -274,8 +274,10 @@
   .caixa input { accent-color: #2F7D4E; margin: 0; }
   .caixa.marcada { border-color: #2F7D4E; background: #E5F3EA; box-shadow: 0 2px 8px rgba(47,125,78,0.18); }
   .saude { margin-top: 9px !important; font-size: 14px; color: #8A5A16; background: #FFF3D9; border-radius: 11px; padding: 8px 12px; }
-  .linha-botoes { display: flex; gap: 10px; margin-top: 10px; }
+  .linha-botoes { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
   .linha-botoes .btn-principal { flex: 1; max-width: none; }
+  .linha-botoes > .campo { flex: 1 1 150px; min-width: 0; }
+  .linha-botoes > .campo input, .linha-botoes > .campo select { min-width: 0; }
   .btn-secundario { flex: 1; padding: 15px; border: 1.5px solid #DBE3D8; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 800; color: #55645A; cursor: pointer; }
 
   /* ── Agenda por dia (estilo Google Agenda) ── */
@@ -536,6 +538,20 @@
   .foto-ad-tem { position: relative; }
   .foto-ad-tem img { width: 100%; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
   .foto-ad-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+  .btn-apagar-conta { display: block; width: 100%; margin-top: 18px; padding: 13px; border: 1.5px solid #E8A08C; border-radius: 14px;
+    background: #fff; color: #B3402A; font-size: 15px; font-weight: 800; cursor: pointer; }
+  /* ── A voz dentro da ligação ── */
+  .btn-apple { width: 100%; max-width: 330px; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px; border: none; border-radius: 14px; background: #000; color: #fff; font-size: 16.5px; font-weight: 700;
+    cursor: pointer; margin-top: 8px; }
+  .btn-apple:disabled { opacity: 0.55; }
+  .voz-controles { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
+  .voz-aviso { margin: 0; font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.9); text-align: center; }
+  .voz-botoes { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .voz-botao { border: 1.5px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.14); color: #fff;
+    border-radius: 999px; padding: 13px 22px; font-size: 15.5px; font-weight: 800; cursor: pointer; }
+  .voz-botao.mudo { background: rgba(255,255,255,0.9); color: #1E2B22; }
+  .voz-botao.desligar { background: #C7402A; border-color: #C7402A; }
   .video-depo { position: relative; margin: 8px 0; }
   .video-depo video { width: 100%; max-height: 320px; border-radius: 14px; display: block; background: #1E2B22; }
   .video-depo .btn-remover { position: absolute; top: 8px; right: 8px; }
@@ -642,6 +658,14 @@
   .caixa-menu-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .caixa-menu-texto strong { font-size: 16px; }
   .caixa-menu-valor { flex: none; font-size: 15.5px; font-weight: 800; color: #226343; }
+
+  /* Número com setinhas (− valor +) */
+  .contador { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .contador input { flex: 1 1 0; min-width: 0; width: 100%; text-align: center; font-weight: 800; font-size: 17px;
+    padding: 13px 4px; border: 1.5px solid #DBE3D8; border-radius: 12px; background: #fff; }
+  .contador-passo { flex: none; width: 40px; height: 48px; border: 1.5px solid #DBE3D8; border-radius: 12px;
+    background: #fff; font-size: 21px; font-weight: 800; color: #226343; cursor: pointer; line-height: 1; padding: 0; }
+  .contador-passo:active { background: #E5F3EA; }
 
   /* Foto do material no estoque e nos relatórios */
   .estoque-foto { flex: none; width: 46px; height: 46px; object-fit: cover; border-radius: 12px; display: block; }

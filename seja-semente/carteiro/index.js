@@ -74,6 +74,26 @@ exports.carteiroChamadas = onDocumentCreated(
     if (chamada.tipo === 'staff') alvos = alvos.filter((a) => a.uid === chamada.paraUid);
     // Nunca avisar o aparelho de quem fez a chamada
     alvos = alvos.filter((a) => !chamada.chamadoPorAparelho || a.aparelho !== chamada.chamadoPorAparelho);
+
+    // O nome do paciente aparece na tela BLOQUEADA de quem receber. Então,
+    // antes de mandar, o carteiro confere aparelho por aparelho se aquela
+    // pessoa é mesmo da equipe: voluntário aprovado, coordenação ou gestor.
+    // Quem está esperando aprovação, foi recusado ou saiu não recebe nada.
+    const daEquipe = async (uid) => {
+      if (!uid) return false;
+      const [vol, central, gestor] = await Promise.all([
+        db.collection('voluntarios').doc(uid).get(),
+        db.collection('central-usuarios').doc(uid).get(),
+        db.collection('palmar-usuarios').doc(uid).get(),
+      ]);
+      if (central.exists || gestor.exists) return true;
+      return vol.exists && vol.data().status === 'ativo';
+    };
+    const permitidos = await Promise.all(alvos.map((a) => daEquipe(a.uid)));
+    const barrados = alvos.filter((a, i) => !permitidos[i]);
+    alvos = alvos.filter((a, i) => permitidos[i]);
+    if (barrados.length) console.log(`Barrados (não são da equipe): ${barrados.length}`);
+
     if (!alvos.length) { console.log('Nenhum aparelho para avisar.'); return; }
 
     const titulo = chamada.tipo === 'staff'
