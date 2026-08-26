@@ -70,7 +70,7 @@ async function ligarFirebase() {
   } catch (e) {
     db = modFs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   }
-  fb = { auth, db, fns: { ...modAuth, ...modFs } };
+  fb = { app, auth, db, fns: { ...modAuth, ...modFs } };
 }
 
 // ─── Dados de exemplo do modo demonstração ───
@@ -539,10 +539,18 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   // O último atendimento encerrado (nas últimas 24h) que ficou sem registro
   function atendimentoSemRegistro() {
     const limite = Date.now() - 24 * 60 * 60 * 1000;
+    const quando = v => { const d = v?.toDate ? v.toDate() : new Date(v); return isNaN(d) ? 0 : d.getTime(); };
+    // Já existe registro meu desse paciente feito DEPOIS que o atendimento
+    // começou? Então está registrado, ponto — mesmo que a marca no
+    // atendimento não tenha sido gravada (foi o que acontecia antes, e
+    // fazia o app pedir tudo de novo).
+    const jaRegistrado = (a) => meusRegistros.some(r =>
+      r.pacienteId === a.pacienteId && quando(r.criadoEm || r.em) >= quando(a.inicio) - 60000);
     return meusAtendimentos.find(a => {
       if (!a.fim || a.registrado) return false;
-      const fim = a.fim?.toDate ? a.fim.toDate() : new Date(a.fim);
-      return !isNaN(fim) && fim.getTime() >= limite;
+      const fim = quando(a.fim);
+      if (!fim || fim < limite) return false;
+      return !jaRegistrado(a);
     }) || null;
   }
 
@@ -563,7 +571,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       if (fotoDepois) novosArq.push({ id: 'fd' + Math.floor(Math.random() * 1e9), dataUrl: fotoDepois, legenda: `Depois — ${rotuloArea}`, autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: new Date() });
       if (novosArq.length) setDemoArquivos(a => ({ ...a, [t.pacienteId]: [...novosArq, ...(a[t.pacienteId] || [])] }));
       setDemoRegistros(r => ({ ...r, [t.pacienteId]: [{ id: 'r' + Math.floor(Math.random() * 1e9), ...registro, fotoAntesId: novosArq[0]?.id || '', fotoDepoisId: novosArq[1]?.id || '', criadoEm: new Date() }, ...(r[t.pacienteId] || [])] }));
-      if (t.atendimentoId) setMeusAtendimentos(as => as.map(a => a.id === t.atendimentoId ? { ...a, registrado: true } : a));
+      setMeusAtendimentos(as => as.map(a => (a.id === t.atendimentoId || (a.pacienteId === t.pacienteId && a.fim)) ? { ...a, registrado: true } : a));
       return;
     }
     const { collection, addDoc, doc, setDoc, updateDoc, serverTimestamp } = fb.fns;
@@ -594,7 +602,13 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       ...registro, pacienteId: t.pacienteId, fotoAntesId, fotoDepoisId,
       data: dataISO(), criadoEm: serverTimestamp(), em: serverTimestamp(),
     }).catch(() => {});
-    if (t.atendimentoId) updateDoc(doc(fb.db, 'atendimentos', t.atendimentoId), { registrado: true }).catch(() => {});
+    // Marca o atendimento de onde veio E qualquer outro pendente do mesmo
+    // paciente (dá para registrar pela ficha, sem passar por um atendimento)
+    const paraMarcar = new Set(t.atendimentoId ? [t.atendimentoId] : []);
+    for (const a of meusAtendimentos) {
+      if (a.pacienteId === t.pacienteId && a.fim && !a.registrado) paraMarcar.add(a.id);
+    }
+    for (const id of paraMarcar) updateDoc(doc(fb.db, 'atendimentos', id), { registrado: true }).catch(() => {});
   }
 
   // Registrou o que foi feito? Então o paciente já foi atendido: o horário
@@ -765,6 +779,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   const [telaProtese, setTelaProtese] = useState(false); // pasta da Prótese
   const [acoes, setAcoes] = useState([]);                // mutirões (vêm do Palmar)
   const [depoimentos, setDepoimentos] = useState([]);    // a voz dos pacientes
+  // O que EU já registrei (a mesma coleção que o Palmar lê). Serve para o
+  // app nunca pedir de novo um registro que já existe.
+  const [meusRegistros, setMeusRegistros] = useState([]);
   const [telaDepo, setTelaDepo] = useState(null);        // 'lista' | {novo: paciente}
 
   // Depoimento: o que o paciente falou depois do atendimento (vai para a
@@ -946,6 +963,10 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     const paraAcoes = onSnapshot(collection(fb.db, 'acoes'), snap => setAcoes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const paraDepo = onSnapshot(query(collection(fb.db, 'depoimentos'), orderBy('criadoEm', 'desc')),
       snap => setDepoimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    // Os registros que eu fiz — o app usa para saber que um atendimento já
+    // foi registrado mesmo que a marca no atendimento não tenha pegado
+    const paraMeusRegistros = onSnapshot(collection(fb.db, 'procedimentos-feitos'),
+      snap => setMeusRegistros(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.autorUid === usuario.uid)));
     const paraAtendimentos = onSnapshot(
       query(collection(fb.db, 'atendimentos'), orderBy('inicio', 'desc')),
       snap => setMeusAtendimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -961,7 +982,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       query(collection(fb.db, 'central-usuarios'), orderBy('nome')),
       snap => setCentralGente(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); paraAcoes(); paraDepo(); };
+    return () => { paraAvisos(); paraAgenda(); paraPacientes(); paraCentral(); paraChat(); paraEquipe(); paraAtendimentos(); paraCentralGente(); paraAcoes(); paraDepo(); paraMeusRegistros(); };
   }, [usuario.uid]);
 
 
@@ -977,7 +998,7 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
     aoSalvar={async dados => { await salvarRegistro(telaRegistro, dados); const d = telaRegistro.depois; setTelaRegistro(null); if (d) chamarPaciente(d, true); }} />;
 
   // Pasta da Prótese: só destrava para quem tem Prótese nos procedimentos
-  if (telaDepo?.novo !== undefined) return <FormDepoimento pacientes={todosPacientes} pacienteInicial={telaDepo.novo}
+  if (telaDepo?.novo !== undefined) return <FormDepoimento pacientes={todosPacientes} pacienteInicial={telaDepo.novo} fb={CONFIGURADO ? fb : null}
     aoCancelar={() => setTelaDepo('lista')} aoSalvar={salvarDepoimento} />;
   if (telaDepo === 'lista') return <TelaDepoimentos depoimentos={depoimentos} pacientes={todosPacientes}
     aoNovo={() => setTelaDepo({ novo: null })} aoExcluir={apagarDepoimento} aoVoltar={() => setTelaDepo(null)} />;
@@ -1246,8 +1267,6 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
               <strong style={{ display: 'block', marginBottom: 8 }}>Minha foto no chat</strong>
               <SeletorAvatar nome={usuario.nome} foto={usuario.foto} avatar={usuario.avatar} aoSalvar={aoSalvarPerfil} />
             </div>
-            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaDepo('lista')}>💬 Depoimentos dos pacientes</button>
-            <p className="dica" style={{ marginBottom: 12 }}>Registre o que a pessoa falou depois do atendimento — aparece em primeiro lugar para quem apoia o projeto. 💚</p>
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaJogos(true)}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
