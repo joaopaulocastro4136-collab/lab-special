@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
 import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, Home } from 'lucide-react';
@@ -828,10 +829,12 @@ function App() {
 
   // Apagar a conta: some o cadastro de investidor e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
-  async function apagarMinhaConta() {
+  async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
-      [{ colecao: 'investidores', porEmail: true }],
-      ['ch-usuario', 'ch-ja-entrou-' + usuario.uid]);
+      [{ colecao: 'investidores', porEmail: true },
+       { colecao: 'apoiadores', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(ehGestor ? [{ colecao: 'palmar-usuarios', id: usuario.uid }] : [])],
+      ['ch-usuario', 'ch-ja-entrou-' + usuario.uid], senha);
     if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
     setApagandoConta(false);
     setUsuario(null);
@@ -865,5 +868,5 @@ function App() {
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar();
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

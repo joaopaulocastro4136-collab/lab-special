@@ -16,6 +16,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package } from 'lucide-react';
@@ -752,7 +753,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() });
+    addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() }).catch(() => {});
     setTela('depoimentos');
   }
   function apagarDepoimento(d) {
@@ -799,7 +800,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
   async function salvarPerfil(campos) {
     if (!CONFIGURADO) { setMeuPerfil(p => ({ ...p, ...campos })); return; }
     const { doc, setDoc } = fb.fns;
-    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', ...campos }, { merge: true });
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', ...campos }, { merge: true }).catch(() => {});
   }
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-pacientes', pacientes); }, [pacientes]);
@@ -884,7 +885,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // Primeiro espaço livre na agenda de quem aceita (08h–17h): emenda no fim
@@ -933,9 +934,9 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) });
-    if (novoAg) await addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() });
-    await updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    if (novoAg) addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() }).catch(() => {});
+    updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
   }
 
   useEffect(() => {
@@ -1072,7 +1073,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'agendamentos', g.id), { data, hora });
+    updateDoc(doc(fb.db, 'agendamentos', g.id), { data, hora }).catch(() => {});
   }
 
   async function removerAgendamento(g) {
@@ -1091,7 +1092,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos });
+    updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos }).catch(() => {});
   }
 
   async function responderSolicitacao(v, aprovar) {
@@ -1225,9 +1226,10 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamar
       setTela({ convocacao: id });
       return;
     }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-    if (ref) setTela({ convocacao: ref.id });
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'convocacoes'));
+    setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela({ convocacao: ref.id });
   }
   function chamarConvocados(conv, selecionadas) {
     if (!selecionadas.length) return;
@@ -1917,10 +1919,12 @@ function App() {
 
   // Apagar a conta: some o cadastro da central e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
-  async function apagarMinhaConta() {
+  async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
-      [{ colecao: 'central-usuarios', id: usuario.uid }],
-      ['ss-usuario', 'ss-perfil', 'ss-ja-entrou-' + usuario.uid]);
+      [{ colecao: 'central-usuarios', id: usuario.uid },
+       { colecao: 'central-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['ss-usuario', 'ss-perfil', 'ss-ja-entrou-' + usuario.uid], senha);
     try { await window.__sairNativoGoogle?.(); } catch (e) { /* sem ponte */ }
     setApagandoConta(false);
     setUsuario(null);
@@ -2037,5 +2041,5 @@ function App() {
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

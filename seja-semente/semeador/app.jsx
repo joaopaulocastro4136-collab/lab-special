@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { Home, CalendarDays, User, Megaphone, TriangleAlert, Mail, Lock, Eye, EyeOff, Stethoscope, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Scan, Tag, Clock, Inbox, ChevronLeft, ChevronRight, MessagesSquare, Package } from 'lucide-react';
@@ -806,7 +807,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() });
+    addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() }).catch(() => {});
     setTelaDepo('lista');
   }
   function apagarDepoimento(d) {
@@ -832,7 +833,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChama
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'agendamentos'), { ...novo, criadoEm: serverTimestamp() }).catch(() => {});
+    addDoc(collection(fb.db, 'agendamentos'), { ...novo, criadoEm: serverTimestamp() }).catch(() => {});
   }
   const [buscaArea, setBuscaArea] = useState('');
   const [buscaTriagem, setBuscaTriagem] = useState(''); // pesquisa geral de paciente na aba Triagem
@@ -1391,11 +1392,12 @@ function App() {
 
   // Apagar a conta: some o cadastro de voluntário e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
-  async function apagarMinhaConta() {
+  async function apagarMinhaConta(senha) {
     calarAparelho();
     await apagarConta(CONFIGURADO ? fb : null, conta,
-      [{ colecao: 'voluntarios', id: conta.uid }],
-      ['sd-conta', 'sd-cadastro']);
+      [{ colecao: 'voluntarios', id: conta.uid },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['sd-conta', 'sd-cadastro', 'sd-chat-visto'], senha);
     try { await window.__sairNativoGoogle?.(); } catch (e) { /* sem ponte */ }
     setApagandoConta(false);
     setConta(null);
@@ -1508,5 +1510,5 @@ function App() {
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
 import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2, Camera, Images } from 'lucide-react';
@@ -517,9 +518,10 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
       setTela({ acao: id });
       return;
     }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'acoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-    if (ref) setTela({ acao: ref.id });
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'acoes'));
+    setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela({ acao: ref.id });
   }
   async function salvarAcao(a, campos) {
     if (!CONFIGURADO) { setAcoes(as => as.map(x => x.id === a.id ? { ...x, ...campos } : x)); return; }
@@ -661,9 +663,10 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
         setTela({ convocacao: id });
         return;
       }
-      const { collection, addDoc, serverTimestamp } = fb.fns;
-      const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-      if (ref) setTela({ convocacao: ref.id });
+      const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+      const ref = doc(collection(fb.db, 'convocacoes'));
+      setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+      setTela({ convocacao: ref.id });
     }}
     aoAbrir={(c) => setTela({ convocacao: c.id })}
     aoExcluir={(c) => {
@@ -2283,10 +2286,12 @@ function App() {
 
   // Apagar a conta: some o acesso de gestor e a conta de entrada
   const [apagandoConta, setApagandoConta] = useState(false);
-  async function apagarMinhaConta() {
+  async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
-      [{ colecao: 'palmar-usuarios', id: usuario.uid }],
-      ['pm-usuario', 'pm-ja-entrou-' + usuario.uid]);
+      [{ colecao: 'palmar-usuarios', id: usuario.uid },
+       { colecao: 'palmar-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['pm-usuario', 'pm-ja-entrou-' + usuario.uid], senha);
     if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
     setApagandoConta(false);
     setUsuario(null);
@@ -2382,5 +2387,5 @@ function App() {
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar();
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }
