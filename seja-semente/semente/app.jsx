@@ -140,6 +140,25 @@ const DEMO = {
 };
 
 function hojeISO() { return new Date().toISOString().slice(0, 10); }
+// Os dias que uma ação (mutirão criado no Palmar) cobre — do início ao fim
+function diasDaAcao(a) {
+  if (!a?.data) return [];
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  const dias = [];
+  const d = new Date(a.data + 'T12:00:00');
+  const alvo = new Date(fim + 'T12:00:00');
+  while (d <= alvo && dias.length < 120) {
+    dias.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+function acaoPegaODia(a, iso) {
+  if (!a?.data || !iso) return false;
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  return iso >= a.data && iso <= fim;
+}
+
 function somaDias(iso, n) {
   const [a, m, d] = iso.split('-').map(Number);
   const dt = new Date(a, m - 1, d + n);
@@ -473,7 +492,7 @@ function EspecialidadesVoluntario({ voluntario, todasAreas, aoSalvar }) {
 // AGENDAMENTO: paciente + voluntário. CADA procedimento marcado vira UM
 // agendamento próprio — os horários se emendam pelo tempo de cada um, e
 // cada linha pode ter a hora ajustada à mão.
-function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, areaInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar, aoMover }) {
+function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacienteInicial, areaInicial, todasAreas, duracaoDe, aoSalvar, aoCancelar, aoMover, diasDeAcao = [], acoes = [] }) {
   const triados = pacientes.filter(p => p.triagem)
     .sort((a, b) => (b.prioridade ? 1 : 0) - (a.prioridade ? 1 : 0)); // prioridade primeiro
   const primeiro = pacienteInicial || triados[0];
@@ -605,6 +624,11 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
       {soUma && habilitados.length === 0 && (
         <p className="dica">Nenhum voluntário marcado para {areaInicial} ainda — mostrando todos. Marque os procedimentos de cada um na aba Voluntár., tocando no voluntário.</p>
       )}
+      {acoes.length > 0 && (
+        <div className="banner-ok" style={{ marginBottom: 10 }}>
+          🌱 Mutirão marcado: <b>{acoes.map(a => a.titulo).join(', ')}</b> — os dias verdes com 🌱 na agenda são os dias de atendimento.
+        </div>
+      )}
       <div className="campo">
         <span>Agenda de {prof ? prof.nome.split(' ')[0] : 'quem atende'} — toque no quadradinho do horário para marcar; segure e arraste um paciente para mudá-lo de lugar</span>
         <AgendaSemana
@@ -612,6 +636,7 @@ function FormMarcar({ pacientes, voluntarios, agendamentos, dataInicial, pacient
           corDaArea={nome => todasAreas.find(a => a.nome === nome)?.cor || corDoNome(nome || '')}
           duracaoDe={duracaoDe}
           diaEscolhido={f.data}
+          diasDeAcao={diasDeAcao}
           aoEscolherHorario={(iso, hora) => { pularSugestaoRef.current = true; setHorasProprias({}); setF(atual => ({ ...atual, data: iso, horaInicio: hora })); }}
           previa={(() => {
             // A prévia acompanha a SEQUÊNCIA de verdade: mudar o horário ali
@@ -1081,7 +1106,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
 
   const profissionais = voluntarios.filter(v => v.status === 'ativo' || v.ativo === true);
   // A ação (mutirão) marcada para hoje no Palmar
-  const acaoDoDia = acoes.find(a => a.data === hojeISO() && a.status !== 'encerrada') || null;
+  const acaoDoDia = acoes.find(a => acaoPegaODia(a, hojeISO()) && a.status !== 'encerrada') || null;
+  // Todos os dias de mutirão marcados no Palmar — a agenda os destaca
+  const diasDeAcao = acoes.filter(a => a.status !== 'encerrada').flatMap(diasDaAcao);
   // Todo mundo com conta no Seja Semente (voluntários + central), menos eu
   const pessoasChamaveis = (() => {
     const mapa = new Map();
@@ -1173,7 +1200,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })}
     procedimentosFeitos={fichaProcedimentos}
     aoDepoimento={() => fichaPaciente && setTela({ novoDepoimento: fichaPaciente })} />;
-  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
+  if (tela === 'marcar' || tela?.marcarPaciente) return <FormMarcar pacientes={pacientes} voluntarios={profissionais} agendamentos={agendamentos} dataInicial={dia} pacienteInicial={tela?.marcarPaciente || null} areaInicial={tela?.marcarArea || null} todasAreas={todasAreas} duracaoDe={duracaoDe} aoMover={mudarHorarioAgendamento} diasDeAcao={diasDeAcao} acoes={acoes.filter(a => a.status !== 'encerrada')} aoCancelar={() => setTela(tela?.voltarPara || null)} aoSalvar={async lista => { for (const f of lista) await salvar('agendamentos', f, { origem: 'central', criadoEm: new Date(), marcadoPorUid: usuario.uid, marcadoPorNome: usuario.nome || '' }, setAgendamentos); setTela(tela?.voltarPara || null); }} />;
   // ─── Chamadas de grupo (convocações) ───
   async function criarConvocacao(titulo) {
     const nova = { titulo, criadaPorUid: usuario.uid, criadaPorNome: usuario.nome || '', chamados: {} };
