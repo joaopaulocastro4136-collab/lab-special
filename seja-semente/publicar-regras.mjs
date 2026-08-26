@@ -67,7 +67,21 @@ service cloud.firestore {
     match /atendimentos/{doc}  { allow read, write: if ehEquipe(); }
     match /chat/{doc}          { allow read, write: if ehEquipe(); }
     match /avisos/{doc}        { allow read, write: if ehEquipe(); }
-    match /chamadas/{doc}      { allow read, write: if ehEquipe(); }
+    match /chamadas/{doc} {
+      allow read, write: if ehEquipe();
+      // A VOZ da ligação: cada pessoa diz que entrou e troca com as outras
+      // o recado técnico de como falar (endereço e formato do áudio). A voz
+      // em si vai direto de um celular para o outro, não passa por aqui.
+      match /participantes/{uid} {
+        allow read: if ehEquipe();
+        allow write: if ehEquipe() && request.auth.uid == uid;
+      }
+      match /sinais/{trilha} {
+        allow read: if ehEquipe();
+        allow write: if ehEquipe();
+        match /pedacos/{pedaco} { allow read, write: if ehEquipe(); }
+      }
+    }
     match /convocacoes/{doc}   { allow read, write: if ehEquipe(); }
     match /aparelhos/{doc}     { allow read, write: if entrou(); }
     match /estoque/{doc}       { allow read, write: if ehEquipe(); }

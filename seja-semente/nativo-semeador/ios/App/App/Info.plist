@@ -71,6 +71,6 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Permite salvar fotos dos atendimentos na galeria.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>O microfone pode ser solicitado pela câmera do aparelho ao registrar fotos e vídeos.</string>
+	<string>O microfone é usado nas ligações entre a equipe durante o mutirão — quando o dentista chama alguém, os dois conseguem se falar — e para gravar o vídeo de depoimento do paciente.</string>
 </dict>
 </plist>
