@@ -31,7 +31,9 @@ async function token() {
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const corpo = b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64({
     iss: SA.client_email,
-    scope: 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform',
+    // Uma permissão só, a mais ampla: pedir a lista inteira fazia o Google
+    // recusar o pedido e o robô ficava sem chave nenhuma (todo 403, vazio)
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
     aud: SA.token_uri, iat: agora, exp: agora + 3600,
   });
   const assin = crypto.sign('RSA-SHA256', Buffer.from(corpo), SA.private_key).toString('base64url');
@@ -42,6 +44,7 @@ async function token() {
   return (await r.json()).access_token;
 }
 const TK = await token();
+if (!TK) { console.log('✗ Não consegui a chave do Google — confira a conta de serviço.'); process.exit(1); }
 const pedir = async (metodo, url, corpo) => {
   const r = await fetch(url, {
     method: metodo,
