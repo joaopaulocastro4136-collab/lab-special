@@ -20,6 +20,7 @@ import { comprimirImagem } from '../ficha.jsx';
 import { SeletorUnidade, Contador } from '../estoque.jsx';
 import { Arcada } from '../dentes.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 
 // Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
 // a nota é real; quando o QR traz o valor, ele entra sozinho)
@@ -329,7 +330,7 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -353,6 +354,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair }) {
       {erro && <div className="erro">{erro}</div>}
       <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -363,7 +365,7 @@ function Campo({ rotulo, children }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal, com as abas ───
-function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoChamarStaff }) {
   const [aba, setAba] = useState('painel');
   const [tela, setTela] = useState(null);
   const temInternet = usarTemInternet();
@@ -1085,6 +1087,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
               )}
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -2278,6 +2281,17 @@ function App() {
     setUsuario(null);
   }
 
+  // Apagar a conta: some o acesso de gestor e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  async function apagarMinhaConta() {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'palmar-usuarios', id: usuario.uid }],
+      ['pm-usuario', 'pm-ja-entrou-' + usuario.uid]);
+    if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
+    setApagandoConta(false);
+    setUsuario(null);
+  }
+
   // ─── Chamadas (paciente e staff): a mesma tela de ligação dos outros ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -2357,8 +2371,11 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoChamarStaff={chamarStaff} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
+    oQueFica="As ações, o estoque, as notas e o histórico do projeto continuam — são registros do trabalho, não dados seus. Se você era o único gestor, gere um código de acesso para outra pessoa ANTES de apagar."
+    aoVoltar={() => setApagandoConta(false)} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoChamarStaff={chamarStaff} />;
   return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 

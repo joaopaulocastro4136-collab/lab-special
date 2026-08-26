@@ -29,6 +29,7 @@ import { TelaJogos } from '../ludo.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
 import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -734,7 +735,7 @@ function NovoProcedimento({ aoAdicionar }) {
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
   const [aba, setAba] = useState('cadastro');
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -1723,6 +1724,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
             </div>
 
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -1779,7 +1781,7 @@ function CartaoConvite({ aoAutorizar }) {
 
 // Tela pedida quando a pessoa entrou com o Google mas ainda não tem acesso
 // à central — precisa do código que a coordenação gerou
-function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -1805,6 +1807,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair }) {
       {erro && <div className="erro">{erro}</div>}
       <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -1909,6 +1912,17 @@ function App() {
     setUsuario(null);
   }
 
+  // Apagar a conta: some o cadastro da central e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  async function apagarMinhaConta() {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'central-usuarios', id: usuario.uid }],
+      ['ss-usuario', 'ss-perfil', 'ss-ja-entrou-' + usuario.uid]);
+    try { await window.__sairNativoGoogle?.(); } catch (e) { /* sem ponte */ }
+    setApagandoConta(false);
+    setUsuario(null);
+  }
+
   // ─── Chamada de paciente: toca em TODOS os celulares logados até atender ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -2009,8 +2023,9 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
   return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 

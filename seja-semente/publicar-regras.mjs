@@ -1,6 +1,15 @@
-// Publica as regras de segurança do Firestore do seja-semente-app:
-// só quem estiver logado (Google ou e-mail/senha) lê e escreve.
-// Fase de teste — depois refinamos por papel (central × voluntário).
+// Publica as regras de segurança do Firestore do seja-semente-app.
+//
+// Antes: qualquer conta criada lia e escrevia TUDO — inclusive nome, CPF,
+// endereço, telefone e as fotos de todos os pacientes. Bastava criar uma
+// conta com e-mail e senha na tela de entrada.
+//
+// Agora vale o papel de cada um: a ficha do paciente é dado de saúde e fica
+// com a EQUIPE (coordenação, voluntário ativo, gestor). Quem APOIA o projeto
+// (investidor cadastrado pelo Palmar) enxerga só o que a Colheita mostra —
+// as fotos do antes e depois, os procedimentos, as ações, as notas e os
+// depoimentos —, e nunca o cadastro do paciente. O que não estiver escrito
+// aqui fica trancado.
 import crypto from 'crypto';
 
 const SA = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -9,11 +18,105 @@ const PROJETO = 'seja-semente-app';
 const REGRAS = `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ─── Quem é quem ───
+    // A pessoa é da COORDENAÇÃO, é VOLUNTÁRIA ativa, é GESTORA, ou é
+    // APOIADORA (investidor cadastrado pelo Palmar). Cada papel enxerga só
+    // o que precisa. Ficha de paciente é dado de saúde: fica com a equipe.
+    function entrou() { return request.auth != null; }
+    function meuEmail() { return request.auth.token.email; }
+    function ehCentral() { return entrou() && exists(/databases/$(database)/documents/central-usuarios/$(request.auth.uid)); }
+    function ehGestor()  { return entrou() && exists(/databases/$(database)/documents/palmar-usuarios/$(request.auth.uid)); }
+    function ehVoluntario() {
+      return entrou()
+        && exists(/databases/$(database)/documents/voluntarios/$(request.auth.uid))
+        && get(/databases/$(database)/documents/voluntarios/$(request.auth.uid)).data.status == 'ativo';
     }
+    function ehEquipe() { return ehCentral() || ehGestor() || ehVoluntario(); }
+    function ehApoiador() {
+      return entrou() && meuEmail() != null
+        && exists(/databases/$(database)/documents/apoiadores/$(meuEmail()));
+    }
+
+    // ─── Fichas dos pacientes: só a equipe ───
+    match /pacientes/{paciente} {
+      allow read, write: if ehEquipe();
+
+      // As FOTOS e os PROCEDIMENTOS também abrem para quem apoia o projeto —
+      // é o antes e depois que a Colheita mostra. O cadastro do paciente
+      // (nome inteiro, CPF, endereço, telefone) fica de fora.
+      match /arquivos/{arquivo} {
+        allow read: if ehEquipe() || ehApoiador();
+        allow write: if ehEquipe();
+      }
+      match /procedimentos/{procedimento} {
+        allow read: if ehEquipe() || ehApoiador();
+        allow write: if ehEquipe();
+      }
+      match /{resto=**} {
+        allow read, write: if ehEquipe();
+      }
+    }
+    // A Colheita lê os procedimentos de todos os pacientes de uma vez
+    match /{caminho=**}/procedimentos/{procedimento} {
+      allow read: if ehEquipe() || ehApoiador();
+    }
+
+    // ─── O trabalho do dia: só a equipe ───
+    match /agendamentos/{doc}  { allow read, write: if ehEquipe(); }
+    match /atendimentos/{doc}  { allow read, write: if ehEquipe(); }
+    match /chat/{doc}          { allow read, write: if ehEquipe(); }
+    match /avisos/{doc}        { allow read, write: if ehEquipe(); }
+    match /chamadas/{doc}      { allow read, write: if ehEquipe(); }
+    match /convocacoes/{doc}   { allow read, write: if ehEquipe(); }
+    match /aparelhos/{doc}     { allow read, write: if entrou(); }
+    match /estoque/{doc}       { allow read, write: if ehEquipe(); }
+    match /denuncias/{doc}     { allow create: if entrou(); allow read, write: if ehCentral() || ehGestor(); }
+
+    // ─── O que a Colheita mostra a quem apoia ───
+    match /procedimentos-feitos/{doc} { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
+    match /acoes/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
+    match /notas/{doc}                { allow read: if ehEquipe() || ehApoiador(); allow write: if ehCentral() || ehGestor(); }
+    match /estoque-movimentos/{doc}   { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
+    match /depoimentos/{doc}          { allow read: if ehEquipe() || ehApoiador(); allow write: if ehEquipe(); }
+    match /config/{doc}               { allow read: if entrou(); allow write: if ehCentral() || ehGestor(); }
+
+    // ─── Quem é da casa ───
+    // Cada um lê e escreve o PRÓPRIO cadastro (é assim que a pessoa se
+    // cadastra e é assim que ela apaga a conta). A equipe vê a lista.
+    match /voluntarios/{uid} {
+      allow read: if ehEquipe() || request.auth.uid == uid;
+      allow create, update, delete: if request.auth.uid == uid || ehCentral() || ehGestor();
+    }
+    match /central-usuarios/{uid} {
+      allow read: if ehEquipe() || request.auth.uid == uid;
+      allow create, update, delete: if request.auth.uid == uid || ehCentral();
+    }
+    match /palmar-usuarios/{uid} {
+      allow read: if ehEquipe() || request.auth.uid == uid;
+      allow create, update, delete: if request.auth.uid == uid || ehGestor();
+    }
+    match /investidores/{doc} {
+      allow read, write: if ehCentral() || ehGestor();
+    }
+    // A chave de entrada da Colheita: um documento por e-mail de apoiador.
+    // A pessoa só consegue ver o SEU (é o que destranca o aplicativo dela).
+    match /apoiadores/{email} {
+      allow read: if ehEquipe() || (entrou() && meuEmail() == email);
+      allow write: if ehCentral() || ehGestor();
+    }
+
+    // ─── Códigos de acesso: quem tem o código na mão pode gastá-lo ───
+    match /codigos-acesso/{codigo}   { allow read, update: if entrou(); allow create, delete: if ehCentral(); }
+    match /palmar-codigos/{codigo}   { allow read, update: if entrou(); allow create, delete: if ehGestor(); }
+    match /central-autorizados/{doc} { allow read: if entrou(); allow write: if ehCentral(); }
+    match /palmar-autorizados/{doc}  { allow read: if entrou(); allow write: if ehGestor(); }
+
+    // ─── Qualquer coisa não prevista fica trancada ───
+    match /{document=**} { allow read, write: if false; }
   }
 }`;
+
 
 async function token() {
   const agora = Math.floor(Date.now() / 1000);

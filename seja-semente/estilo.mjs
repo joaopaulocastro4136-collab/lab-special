@@ -525,6 +525,8 @@ export const CSS = `
   .foto-ad-tem { position: relative; }
   .foto-ad-tem img { width: 100%; height: 110px; object-fit: cover; border-radius: 14px; display: block; }
   .foto-ad-tem .btn-remover { position: absolute; top: 6px; right: 6px; }
+  .btn-apagar-conta { display: block; width: 100%; margin-top: 18px; padding: 13px; border: 1.5px solid #E8A08C; border-radius: 14px;
+    background: #fff; color: #B3402A; font-size: 15px; font-weight: 800; cursor: pointer; }
   .video-depo { position: relative; margin: 8px 0; }
   .video-depo video { width: 100%; max-height: 320px; border-radius: 14px; display: block; background: #1E2B22; }
   .video-depo .btn-remover { position: absolute; top: 8px; right: 8px; }

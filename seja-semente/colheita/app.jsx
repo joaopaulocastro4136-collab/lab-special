@@ -19,6 +19,7 @@ import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, 
 import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, Home } from 'lucide-react';
 import { SobreOProjeto } from '../projeto.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 
 // Logo da Colheita: a mão dourada com o coração — a mesma do ecossistema
 function LogoApp({ tamanho = 120 }) {
@@ -228,7 +229,7 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaSemAcesso({ usuario, aoSair }) {
+function TelaSemAcesso({ usuario, aoSair, aoApagarConta }) {
   return (
     <div className="tela-login">
       <LogoApp tamanho={104} />
@@ -239,6 +240,7 @@ function TelaSemAcesso({ usuario, aoSair }) {
         seu acesso abre sozinho, sem precisar de senha nova.
       </p>
       <button className="link-troca" onClick={aoSair}>Sair / entrar com outra conta</button>
+      <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>
     </div>
   );
 }
@@ -246,7 +248,7 @@ function TelaSemAcesso({ usuario, aoSair }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal ───
-function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
+function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta }) {
   const [aba, setAba] = useState('inicio');
   const [tela, setTela] = useState(null);
   const [soMinhaAcao, setSoMinhaAcao] = useState(!!investidor?.acaoId);
@@ -728,6 +730,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
               </p>
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -819,6 +822,19 @@ function App() {
     setEhGestor(false);
   }
 
+  // Apagar a conta: some o cadastro de investidor e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  async function apagarMinhaConta() {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'investidores', porEmail: true }],
+      ['ch-usuario', 'ch-ja-entrou-' + usuario.uid]);
+    if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
+    setApagandoConta(false);
+    setUsuario(null);
+    setInvestidor(null);
+    setEhGestor(false);
+  }
+
   const [abrindo, setAbrindo] = useState(true);
   const abertura = abrindo ? <Abertura tema="dourado" nome="Colheita" frase="o que a semente virou" aoTerminar={() => setAbrindo(false)} /> : null;
 
@@ -833,9 +849,12 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
+    oQueFica="O relatório do projeto continua — ele é do Seja Semente, não seu. O seu cadastro de apoiador é que sai."
+    aoVoltar={() => setApagandoConta(false)} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} />;
+  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
   return <>{conteudo}{abertura}</>;
 }
 

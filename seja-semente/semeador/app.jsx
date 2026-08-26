@@ -22,6 +22,7 @@ import { FormRegistro } from '../registro.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
 import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
 import icone from '../icones/icone-semeador-1024.png';
 
 // A logo do aplicativo (a mesma do ícone), em tamanho de tela
@@ -313,7 +314,7 @@ function TelaLogin({ aoEntrarDemo }) {
 
 // ─── Primeira entrada: o voluntário preenche o cadastro, que vira uma
 //     solicitação para a central Seja Semente aprovar ───
-function TelaCadastro({ usuario, aoEnviar, aoSair }) {
+function TelaCadastro({ usuario, aoEnviar, aoSair, aoApagarConta }) {
   const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '' });
   const [av, setAv] = useState({ foto: '', fotoMini: '', avatar: '' });
   const muda = k => e => setF({ ...f, [k]: e.target.value });
@@ -337,7 +338,7 @@ function TelaCadastro({ usuario, aoEnviar, aoSair }) {
   );
 }
 
-function TelaAguardando({ usuario, aoSair, aoSimularAprovacao }) {
+function TelaAguardando({ usuario, aoSair, aoApagarConta, aoSimularAprovacao }) {
   return (
     <div className="tela-login">
       <LogoApp tamanho={110} />
@@ -345,17 +346,19 @@ function TelaAguardando({ usuario, aoSair, aoSimularAprovacao }) {
       <p className="login-sub">Seu cadastro foi enviado para a central Seja Semente.<br />Assim que a coordenação aprovar, você entra como voluntário — o aplicativo libera sozinho, na hora.</p>
       {!CONFIGURADO && <button className="btn-principal" onClick={aoSimularAprovacao}>(demonstração) Simular aprovação da central</button>}
       <button className="btn-sair" onClick={aoSair}>Sair</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
 
-function TelaRecusado({ aoSair }) {
+function TelaRecusado({ aoSair, aoApagarConta }) {
   return (
     <div className="tela-login">
       <LogoApp tamanho={110} />
       <h1>Cadastro não aprovado</h1>
       <p className="login-sub">A central Seja Semente não aprovou esta solicitação.<br />Fale com a coordenação se achar que foi um engano.</p>
       <button className="btn-sair" onClick={aoSair}>Sair</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -517,7 +520,7 @@ function FormTriagem({ paciente, areas, condicoes, aoAdicionarTipo, aoAdicionarC
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSalvarPerfil, aoChamarStaff }) {
   const [aba, setAba] = useState('inicio');
   const temInternet = usarTemInternet();
   const [avisos, setAvisos] = useState(CONFIGURADO ? [] : DEMO.avisos);
@@ -1270,6 +1273,8 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 4 }} onClick={() => setTelaJogos(true)}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 12 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -1364,6 +1369,18 @@ function App() {
     setCadastro(null);
   }
 
+  // Apagar a conta: some o cadastro de voluntário e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  async function apagarMinhaConta() {
+    await apagarConta(CONFIGURADO ? fb : null, conta,
+      [{ colecao: 'voluntarios', id: conta.uid }],
+      ['sd-conta', 'sd-cadastro']);
+    try { await window.__sairNativoGoogle?.(); } catch (e) { /* sem ponte */ }
+    setApagandoConta(false);
+    setConta(null);
+    setCadastro(null);
+  }
+
   // ─── Chamada de paciente: toca em TODOS os celulares logados até atender ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -1454,10 +1471,11 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!conta) conteudo = <TelaLogin aoEntrarDemo={setConta} />;
-  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} />;
-  else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
-  else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro, uid: conta.uid }} aoSair={sair} aoSalvarPerfil={salvarPerfil} aoChamarStaff={chamarStaff} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={conta} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
+  else if (!cadastro) conteudo = <TelaCadastro usuario={conta} aoEnviar={enviarCadastro} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else if (cadastro.status === 'pendente') conteudo = <TelaAguardando usuario={conta} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSimularAprovacao={() => setCadastro({ ...cadastro, status: 'ativo', ativo: true })} />;
+  else if (cadastro.status === 'recusado') conteudo = <TelaRecusado aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
+  else conteudo = <TelaPrincipal usuario={{ ...conta, ...cadastro, uid: conta.uid }} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSalvarPerfil={salvarPerfil} aoChamarStaff={chamarStaff} />;
   return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
 }
 
