@@ -75,6 +75,31 @@ function isoDe(v) {
   if (!d || isNaN(d)) return '';
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// Os dias que uma ação cobre (início → fim) e o texto do período
+function diasDaAcao(a) {
+  if (!a?.data) return [];
+  const fim = a.dataFim && a.dataFim >= a.data ? a.dataFim : a.data;
+  const dias = [];
+  const d = new Date(a.data + 'T12:00:00');
+  const alvo = new Date(fim + 'T12:00:00');
+  while (d <= alvo && dias.length < 120) {
+    dias.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+function periodoBonito(a) {
+  if (!a?.data) return '';
+  if (!a.dataFim || a.dataFim === a.data) return dataBonita(a.data);
+  const curto = (iso) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+  return `${curto(a.data)} a ${curto(a.dataFim)} (${diasDaAcao(a).length} dias)`;
+}
+function quandoBonito(v) {
+  const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+  if (!d || isNaN(d)) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} às ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 function dataBonita(iso) {
   if (!iso) return '';
   const [a, m, d] = String(iso).split('-').map(Number);
@@ -297,13 +322,13 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   // Recorte: a ação que o investidor apoiou (pela data) ou o projeto todo
   const minhaAcao = investidor?.acaoId ? acoes.find(a => a.id === investidor.acaoId) : null;
   const filtrando = soMinhaAcao && !!minhaAcao;
-  const sorrisosVisiveis = filtrando ? sorrisos.filter(s => isoDe(s.criadoEm) === minhaAcao.data) : sorrisos;
+  const sorrisosVisiveis = filtrando ? sorrisos.filter(s => diasDaAcao(minhaAcao).includes(isoDe(s.criadoEm))) : sorrisos;
   const notasVisiveis = filtrando ? notas.filter(n => n.acaoId === minhaAcao.id) : notas;
   const acoesVisiveis = filtrando ? acoes.filter(a => a.id === minhaAcao.id) : acoes;
   const movimentosVisiveis = filtrando ? movimentos.filter(m => m.acaoId === minhaAcao.id) : movimentos;
   // Só depoimentos autorizados aparecem para quem apoia o projeto
   const depoimentosVisiveis = depoimentos.filter(d => d.autorizado !== false)
-    .filter(d => !filtrando || isoDe(d.criadoEm) === minhaAcao.data);
+    .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)));
 
   const pessoas = new Set(sorrisosVisiveis.map(s => s.pacienteId)).size;
   const produzido = sorrisosVisiveis.reduce((s, x) => s + valorDoSorriso(x), 0);
@@ -418,7 +443,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   if (tela?.acao) {
     const a = acoes.find(x => x.id === tela.acao);
     if (a) {
-      const daAcao = sorrisos.filter(s => isoDe(s.criadoEm) === a.data);
+      const diasDela = diasDaAcao(a);
+      const daAcao = sorrisos.filter(s => diasDela.includes(isoDe(s.criadoEm)));
       const porArea = {};
       for (const s of daAcao) {
         const chave = s.area || 'Outros';
@@ -435,7 +461,18 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
         <div className="folha">
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
           <h2>🌱 {a.titulo}</h2>
-          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(a.data)}{a.local ? ` · ${a.local}` : ''}</p>
+          <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(a)}{a.local ? ` · ${a.local}` : ''}</p>
+          {a.status === 'encerrada' && (
+            <div className="cartao" style={{ border: '1.5px solid #BFDCC9', background: '#E9F5EE' }}>
+              <strong style={{ display: 'block', color: '#1E6B41' }}>✅ Ação concluída</strong>
+              <p className="obs" style={{ margin: '4px 0 0' }}>
+                Começou em <b>{dataBonita(a.data)}</b>
+                {a.dataFim && a.dataFim !== a.data ? <> e terminou em <b>{dataBonita(a.dataFim)}</b></> : null}
+                {a.encerradaEm ? <> · encerrada {quandoBonito(a.encerradaEm)}</> : null}.
+              </p>
+              <p className="obs" style={{ margin: '4px 0 0' }}>Tudo o que está aqui embaixo é o resultado final desta ação.</p>
+            </div>
+          )}
           <div className="grade-numeros">
             <div className="cartao-numero"><strong>{new Set(daAcao.map(s => s.pacienteId)).size}</strong><span>pessoas atendidas</span></div>
             <div className="cartao-numero"><strong>{daAcao.length}</strong><span>procedimentos</span></div>
@@ -590,14 +627,18 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
             <h2>Ações</h2>
             <p className="dica" style={{ marginTop: 0 }}>Toque numa ação para ver o relatório completo — quem foi atendido, quanto foi entregue e quanto custou.</p>
             {acoesVisiveis.length ? acoesVisiveis.map(a => {
-              const daAcao = sorrisos.filter(s => isoDe(s.criadoEm) === a.data);
+              const dias = diasDaAcao(a);
+              const daAcao = sorrisos.filter(s => dias.includes(isoDe(s.criadoEm)));
               return (
                 <button className="cartao" key={a.id} style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }} onClick={() => setTela({ acao: a.id })}>
                   <div className="cartao-topo">
                     <strong>🌱 {a.titulo}</strong>
-                    <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />
+                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {a.status === 'encerrada' && <span className="chip concluído">concluída</span>}
+                      <ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} />
+                    </span>
                   </div>
-                  <p className="obs" style={{ margin: 0 }}>{dataBonita(a.data)}{a.local ? ` · ${a.local}` : ''} · {new Set(daAcao.map(s => s.pacienteId)).size} pessoa(s) atendida(s)</p>
+                  <p className="obs" style={{ margin: 0 }}>{periodoBonito(a)}{a.local ? ` · ${a.local}` : ''} · {new Set(daAcao.map(s => s.pacienteId)).size} pessoa(s) atendida(s)</p>
                 </button>
               );
             }) : <Vazio texto="Nenhuma ação registrada ainda." />}
@@ -660,7 +701,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
             {minhaAcao && (
               <div className="cartao">
                 <div className="cartao-topo"><strong>🌱 Você apoiou</strong></div>
-                <p style={{ margin: '6px 0 0' }}>{minhaAcao.titulo} · {dataBonita(minhaAcao.data)}</p>
+                <p style={{ margin: '6px 0 0' }}>{minhaAcao.titulo} · {periodoBonito(minhaAcao)}</p>
               </div>
             )}
             <div className="cartao">

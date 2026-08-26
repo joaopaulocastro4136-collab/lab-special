@@ -164,6 +164,13 @@ function acaoPegaODia(a, iso) {
   return iso >= a.data && iso <= fim;
 }
 // Texto do período: "sexta, 26/08" ou "26/08 a 28/08"
+// Data com hora, para o registro de início/encerramento
+function quandoBonito(v) {
+  const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null);
+  if (!d || isNaN(d)) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} às ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 function periodoBonito(a) {
   if (!a?.data) return '';
   if (!a.dataFim || a.dataFim === a.data) return dataBonita(a.data);
@@ -771,7 +778,9 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     if (a) return <TelaAcao acao={a} equipe={equipeAtiva} pacientes={pacientes} atendimentos={atendimentos} movimentos={movimentos}
       todasAreas={todasAreas} valorDe={valorDe} ehPorDente={ehPorDente} custoAtendimento={custoAtendimento} procedimentos={procedimentos}
       notas={notas.filter(n => n.acaoId === a.id)} aoNovaNota={() => setTela({ novaNota: a.id })} aoExcluirNota={excluirNota}
-      aoSalvar={(campos) => salvarAcao(a, campos)}
+      aoSalvar={(campos) => salvarAcao(a, campos.status === 'encerrada'
+        ? { ...campos, encerradaPorNome: usuario.nome || '' }
+        : campos)}
       aoSalvarProcs={(v, procs) => {
         // Guarda o que a pessoa faz NESTA ação e libera no cadastro dela,
         // para o Seja Semente já oferecê-la ao agendar aquele procedimento
@@ -1412,10 +1421,35 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
       </div>
       <p className="dica" style={{ marginTop: 0 }}>{periodoBonito(acao)}{acao.local ? ` · ${acao.local}` : ''}{acao.retroativa ? ' · registro de mutirão anterior ao aplicativo' : ''}</p>
       {!acao.retroativa && (
-        <div className="linha-botoes" style={{ marginBottom: 12 }}>
-          {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
-          {acao.status === 'iniciada' && <button className="btn-secundario" onClick={() => aoSalvar({ status: 'encerrada', encerradaEm: new Date() })}>⏹ Encerrar ação</button>}
-        </div>
+        <>
+          {acao.status === 'encerrada' ? (
+            <div className="cartao" style={{ border: '1.5px solid #E8A08C', background: '#FBE3DA' }}>
+              <strong style={{ display: 'block', color: '#8F2F1B' }}>⏹ Ação encerrada</strong>
+              <p className="obs" style={{ margin: '4px 0 0' }}>
+                {acao.iniciadaEm ? `Começou ${quandoBonito(acao.iniciadaEm)} · ` : ''}
+                Encerrada {quandoBonito(acao.encerradaEm)}
+                {acao.encerradaPorNome ? ` por ${String(acao.encerradaPorNome).split(' ')[0]}` : ''}.
+              </p>
+              <p className="obs" style={{ margin: '4px 0 0' }}>Ninguém agenda nem atende mais nestes dias — no Seja Semente e no Semeador já está fechado, e a Colheita mostra o encerramento.</p>
+              <button className="btn-secundario" style={{ width: '100%', marginTop: 10 }} onClick={() => {
+                if (window.confirm('Reabrir esta ação? A equipe volta a agendar e atender nos dias dela.')) {
+                  aoSalvar({ status: 'iniciada', encerradaEm: null, encerradaPorNome: '', reabertaEm: new Date() });
+                }
+              }}>↩ Reabrir ação</button>
+            </div>
+          ) : (
+            <div className="linha-botoes" style={{ marginBottom: 12 }}>
+              {acao.status !== 'iniciada' && <button className="btn-principal" onClick={() => aoSalvar({ status: 'iniciada', iniciadaEm: new Date() })}>▶ Iniciar ação</button>}
+              {acao.status === 'iniciada' && (
+                <button className="btn-secundario" onClick={() => {
+                  if (window.confirm('Encerrar a ação?\n\nDepois de encerrada ninguém consegue agendar nem chamar paciente nos dias dela. Dá para reabrir se precisar.')) {
+                    aoSalvar({ status: 'encerrada', encerradaEm: new Date(), encerradaPorNome: acao.encerradaPorNome || '' });
+                  }
+                }}>⏹ Encerrar ação</button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <h3 style={{ margin: '10px 0 8px' }}>Equipe da ação ({escalados.length})</h3>

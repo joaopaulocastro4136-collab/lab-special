@@ -859,6 +859,9 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   // estoque hoje entra no relatório de custos dela
   const acaoDoDia = acoes.find(a => acaoPegaODia(a, dataISO()) && a.status !== 'encerrada') || null;
   const diasDeAcao = acoes.filter(a => a.status !== 'encerrada').flatMap(diasDaAcao);
+  // Hoje é dia de um mutirão JÁ ENCERRADO? Então os atendimentos pararam
+  const acaoEncerradaHoje = acoes.find(a => a.status === 'encerrada' && acaoPegaODia(a, dataISO())
+    && !acoes.some(o => o.status !== 'encerrada' && acaoPegaODia(o, dataISO()))) || null;
 
   // Agenda do dia: o que a central mandou para hoje, e o que vem depois
   const hojeISO = dataISO();
@@ -990,8 +993,10 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
   // qualquer paciente
   const agendadoComigo = !!fichaPaciente && agendamentos.some(g => g.pacienteId === fichaPaciente.id);
   if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
-    aoChamar={agendadoComigo ? () => chamarPaciente(fichaPaciente) : undefined}
-    avisoChamar={fichaPaciente && !agendadoComigo ? '🔔 Só o dentista com este paciente agendado pode chamá-lo para o atendimento.' : ''}
+    aoChamar={agendadoComigo && !acaoEncerradaHoje ? () => chamarPaciente(fichaPaciente) : undefined}
+    avisoChamar={acaoEncerradaHoje
+      ? `⏹ O mutirão "${acaoEncerradaHoje.titulo}" foi encerrado — os atendimentos de hoje já foram fechados na gestão.`
+      : (fichaPaciente && !agendadoComigo ? '🔔 Só o dentista com este paciente agendado pode chamá-lo para o atendimento.' : '')}
     atendimentoAberto={atendimentoAberto && atendimentoAberto.pacienteId === fichaId ? atendimentoAberto : null}
     aoEncerrar={encerrarAtendimento}
     procedimentosFeitos={fichaProcedimentos}
@@ -1075,6 +1080,11 @@ function TelaPrincipal({ usuario, aoSair, aoSalvarPerfil, aoChamarStaff }) {
       <main className={aba === 'chat' ? 'com-chat' : undefined}>
         {aba === 'inicio' && (
           <>
+            {acaoEncerradaHoje && (
+              <div className="faixa-registro" style={{ cursor: 'default' }}>
+                ⏹ <b>Mutirão "{acaoEncerradaHoje.titulo}" encerrado.</b> Os atendimentos de hoje foram fechados pela gestão — não dá para chamar mais pacientes. Se foi engano, peça para reabrir no Palmar.
+              </div>
+            )}
             {(() => {
               const pend = atendimentoSemRegistro();
               return pend && (
