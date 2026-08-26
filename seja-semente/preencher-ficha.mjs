@@ -208,7 +208,8 @@ for (const app of APPS) {
     gambling: false,
     unrestrictedWebAccess: false,
     kidsAgeBand: null,
-    seventeenPlus: false,
+    // 'seventeenPlus' saiu do formulário da Apple: mandar junto derruba a
+    // gravação inteira com 409 e a faixa etária ficava sem resposta.
   };
   // 3. Categoria, subtítulo e política de privacidade (ficha do app)
   const infos = await api('GET', `/v1/apps/${appId}/appInfos`);
@@ -226,9 +227,22 @@ for (const app of APPS) {
     declId = d2.json.data?.id || null;
   }
   if (declId) {
-    conta(await api('PATCH', `/v1/ageRatingDeclarations/${declId}`, {
-      data: { type: 'ageRatingDeclarations', id: declId, attributes: idade },
-    }), 'faixa etária');
+    // A Apple muda as perguntas de tempos em tempos. Se ela recusar um campo
+    // que não existe mais, tira esse campo e tenta de novo — melhor perder
+    // uma pergunta do que deixar a faixa etária inteira em branco.
+    let campos = { ...idade };
+    let r = null;
+    for (let volta = 0; volta < 6; volta++) {
+      r = await api('PATCH', `/v1/ageRatingDeclarations/${declId}`, {
+        data: { type: 'ageRatingDeclarations', id: declId, attributes: campos },
+      });
+      if (r.status < 300) break;
+      const recusado = String(r.json?.errors?.[0]?.detail || '').match(/'([A-Za-z]+)' is not an attribute/);
+      if (!recusado || !(recusado[1] in campos)) break;
+      console.log(`    (a Apple não usa mais "${recusado[1]}" — tirei e tentei de novo)`);
+      delete campos[recusado[1]];
+    }
+    conta(r, 'faixa etária');
   } else {
     console.log('  ✗ faixa etária: a Apple não devolveu o formulário por nenhum caminho');
   }
