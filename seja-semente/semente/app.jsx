@@ -1697,9 +1697,6 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('procedimentos')}>🦷 Procedimentos e tempos</button>
             <p className="dica" style={{ marginBottom: 16 }}>Adicione procedimentos novos e mude o tempo médio de cada um — a agenda usa esses tempos para encaixar os pacientes.</p>
 
-            <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('depoimentos')}>💬 Depoimentos dos pacientes</button>
-            <p className="dica" style={{ marginBottom: 16 }}>A voz de quem foi atendido — aparece em primeiro lugar na Colheita, para quem apoia o projeto. 💚</p>
-
             <button className="btn-principal" style={{ maxWidth: 'none', marginBottom: 10 }} onClick={() => setTela('jogos')}>🎮 Jogos</button>
             <p className="dica" style={{ marginBottom: 16 }}>Ludo dos Dentes: o jogo online da equipe — até 4 jogadores por sala. 🦷🎲</p>
 
