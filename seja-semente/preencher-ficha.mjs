@@ -45,7 +45,7 @@ REMOTE CONTENT: the app ships a complete, working web bundle inside the binary a
 const APPS = [
   {
     bundle: 'com.sejasemente.central',
-    temConversa: true,
+    temConversa: true,  temConteudoDeGente: true,  temSaude: true,
     notas: COMUM + '\n\n' + `CALLS (CallKit / PushKit). During a clinic the team is spread across rooms and a shout does not reach. When someone calls a colleague, the app places a REAL VOICE CALL between the two people: the recipient answers and they talk (WebRTC audio, peer to peer). That is why the app declares UIBackgroundModes: voip — it is genuine person-to-person voice, not a notification dressed up as a call. Every VoIP push is reported to CXProvider as required. The push payload carries only an opaque call id, no patient data (4.5.4).
 
 TO TEST THE CALL: sign in on two devices (the central account and the Semeador account, both listed in these notes), open a patient and tap the bell, "Chamar paciente". The second device rings full screen even when locked; answering connects the audio.
@@ -72,7 +72,7 @@ Fale com a gente: ${ONG.email}`,
   },
   {
     bundle: 'com.sejasemente.semeador',
-    temConversa: true,
+    temConversa: true,  temConteudoDeGente: true,  temSaude: true,
     notas: COMUM + '\n\n' + `WHAT IT DOES: the volunteer dentist's app — the day's schedule, the patient's screening, calling the next patient, and recording the procedure performed, with before/after photos and, optionally, a video testimonial from the patient.
 
 PHOTOS AND VIDEO: taken by the volunteer during treatment, always with the patient's consent, which is recorded in the app and can be withdrawn at any time. The photo library permission exists because a volunteer often takes the photo on their own phone camera app first and attaches it afterwards. Photos are used for the patient's own record and, only when explicitly authorized, to show donors the result of their donation.
@@ -99,7 +99,7 @@ Fale com a gente: ${ONG.email}`,
   },
   {
     bundle: 'com.sejasemente.palmar',
-    temConversa: false,
+    temConversa: false, temConteudoDeGente: false, temSaude: false,
     notas: COMUM + '\n\n' + `WHAT IT DOES: the management app for the project's coordinators — field clinics (dates, team, report), volunteers, materials stock, invoices, and the value of treatment the project delivered.
 
 NO PATIENT RECORDS: this app shows aggregate numbers and the team's work. The camera is used only for invoices, barcode scanning and photos of materials.
@@ -126,7 +126,7 @@ Fale com a gente: ${ONG.email}`,
   },
   {
     bundle: 'com.sejasemente.colheita',
-    temConversa: false,
+    temConversa: false, temConteudoDeGente: true,  temSaude: true,
     notas: COMUM + '\n\n' + `WHAT IT DOES: the app for people who donate to the project. It shows what their donation turned into — before/after photos of treated patients, video testimonials, what was spent per procedure, and the invoices.
 
 NO PATIENT RECORDS HERE: this app has no access to patient files. It receives only the patient's FIRST NAME, the treatment photos and the testimonial, and only for cases where the patient gave written, revocable, purpose-specific consent to have their image shown.
@@ -216,9 +216,18 @@ for (const app of APPS) {
     lootBox: false,
     ageAssurance: false,
     gunsOrOtherWeapons: 'NONE',
-    // O Seja Semente e o Semeador têm conversa entre a equipe; o Palmar e a
-    // Colheita não têm. Vale dizer que tem — é conteúdo escrito por gente.
+    parentalControls: false,
+    advertising: false,
+    // ATENÇÃO: estas três são declaração para a Apple, e declaração errada
+    // derruba aplicativo depois de publicado. Responder o que É, não o que
+    // dá menos trabalho.
+    // Conversa entre pessoas: tem no Seja Semente e no Semeador.
     messagingAndChat: !!app.temConversa,
+    // Conteúdo feito por gente: mensagem no chat, foto do tratamento e
+    // depoimento em vídeo do paciente.
+    userGeneratedContent: !!app.temConteudoDeGente,
+    // Assunto de saúde: os três que mostram tratamento odontológico.
+    healthOrWellnessTopics: !!app.temSaude,
     // 'seventeenPlus' saiu do formulário da Apple: mandar junto derruba a
     // gravação inteira com 409 e a faixa etária ficava sem resposta.
   };
@@ -268,8 +277,14 @@ for (const app of APPS) {
       // A Apple diz que tipo ela espera naquela resposta — obedecer
       const tipo = detalhe.match(/type provided for attribute '([A-Za-z]+)'\. Expected a (STRING|BOOLEAN)/);
       if (tipo) {
-        campos[tipo[1]] = tipo[2] === 'STRING' ? 'NONE' : false;
-        console.log(`    ("${tipo[1]}" pedia ${tipo[2] === 'STRING' ? 'texto' : 'sim/não'} — corrigi)`);
+        // Trocar o tipo sem trocar o SENTIDO: um "sim" vira "acontece, leve",
+        // não vira "nenhum". Marcar nenhum onde a resposta é sim seria
+        // declaração falsa para a Apple.
+        const era = campos[tipo[1]];
+        campos[tipo[1]] = tipo[2] === 'STRING'
+          ? (era === true ? 'INFREQUENT_OR_MILD' : 'NONE')
+          : (typeof era === 'string' ? era !== 'NONE' : !!era);
+        console.log(`    ("${tipo[1]}" pedia ${tipo[2] === 'STRING' ? 'texto' : 'sim/não'} — pus ${JSON.stringify(campos[tipo[1]])})`);
         continue;
       }
       break;
