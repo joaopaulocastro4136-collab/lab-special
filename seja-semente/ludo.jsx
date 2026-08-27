@@ -418,9 +418,10 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
   }, [salaId]);
 
   async function criarSala() {
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'jogos-ludo'), { ...novaSalaLudo(usuario), criadoEm: serverTimestamp() }).catch(() => null);
-    if (ref) setSalaId(ref.id);
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'jogos-ludo'));
+    setDoc(ref, { ...novaSalaLudo(usuario), criadoEm: serverTimestamp() }).catch(() => {});
+    setSalaId(ref.id);
   }
   function gravar(s, campos) {
     const { doc, updateDoc, serverTimestamp } = fb.fns;

@@ -34,10 +34,6 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>armv7</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -65,12 +61,10 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>A câmera é usada para registrar fotos dos atendimentos na ficha do paciente.</string>
+	<string>A câmera é usada pelo dentista voluntário para fotografar a boca e o rosto do paciente durante o atendimento gratuito — por exemplo, o antes e o depois de uma extração — e para gravar o vídeo do depoimento de quem foi atendido. Só com a autorização da pessoa.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>A galeria é usada para escolher fotos dos atendimentos.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Permite salvar fotos dos atendimentos na galeria.</string>
+	<string>A galeria é usada para você anexar ao atendimento uma foto ou um vídeo que já está no aparelho — por exemplo, o antes que você tirou pela câmera do celular no meio do procedimento.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>O microfone pode ser solicitado pela câmera do aparelho ao registrar fotos e vídeos.</string>
+	<string>O microfone é usado nas ligações entre a equipe durante o mutirão — quando o dentista chama alguém, os dois conseguem se falar — e para gravar o vídeo de depoimento do paciente.</string>
 </dict>
 </plist>

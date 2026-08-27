@@ -16,19 +16,22 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
-import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package } from 'lucide-react';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho, MacaAppleLogo } from '../logo.jsx';
+import { UserPlus, Stethoscope, ClipboardList, CalendarDays, Users, User, Megaphone, Bell, TriangleAlert, Sparkles, HeartPulse, Wrench, Syringe, Scissors, Crown, ClipboardCheck, Plus, ChevronLeft, ChevronRight, Scan, Camera, Tag, Clock, Inbox, Mail, Lock, Eye, EyeOff, Flag, ArrowRightLeft, MessagesSquare, Package, Trash2 } from 'lucide-react';
 import { FichaPaciente, comprimirImagem } from '../ficha.jsx';
 import { Chat } from '../chat.jsx';
-import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
+import { TelaChamada, TelaChamando, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { AgendaSemana } from '../agenda-semana.jsx';
 import { Arcada } from '../dentes.jsx';
 import { SeletorAvatar } from '../avatar.jsx';
 import { TelaJogos } from '../ludo.jsx';
 import { TelaProtese } from '../protese.jsx';
 import { Estoque } from '../estoque.jsx';
-import { FormDepoimento, TelaDepoimentos } from '../depoimento.jsx';
+import { FormDepoimento, TelaDepoimentos, apagarVideo } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 import icone from '../icones/icone-central-1024.png';
 
 function LogoApp({ tamanho = 120 }) {
@@ -189,6 +192,41 @@ function TelaLogin({ aoEntrarDemo }) {
   const [carregando, setCarregando] = useState(false);
   const [novaConta, setNovaConta] = useState(false);
 
+  // ENTRAR COM A APPLE — exigido pela Apple (diretriz 4.8) para quem
+  // oferece login do Google. Quem esconde o e-mail recebe um endereço de
+  // repasse da própria Apple, e o aplicativo funciona igual com ele.
+  async function entrarApple() {
+    setErro('');
+    if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
+    setCarregando(true);
+    try {
+      if (window.__loginAppleNativo) {
+        const c = await window.__loginAppleNativo();
+        const p = new fb.fns.OAuthProvider('apple.com');
+        await fb.fns.signInWithCredential(fb.auth, p.credential({ idToken: c.idToken, rawNonce: c.nonce || undefined }));
+      } else {
+        const p = new fb.fns.OAuthProvider('apple.com');
+        p.addScope('email'); p.addScope('name');
+        try {
+          await fb.fns.signInWithPopup(fb.auth, p);
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') { setCarregando(false); return; }
+          if (cod === 'auth/popup-blocked') { await fb.fns.signInWithRedirect(fb.auth, p); return; }
+          throw e2;
+        }
+      }
+    } catch (e) {
+      setCarregando(false);
+      const m = String(e?.message || e);
+      if (m.includes('cancel')) return;
+      // Mostrar o motivo INTEIRO. Só o código não dizia nada: erro de plugin
+      // costuma vir sem código, e aparecia "código: ?" na tela — sem isso não
+      // dá para saber se o problema é a permissão, o provedor ou o aparelho.
+      setErro('A Apple não entrou. Motivo: ' + (e?.code ? e.code + ' · ' : '') + m.slice(0, 220));
+    }
+  }
+
   async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) {
@@ -248,6 +286,22 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  // Esqueceu a senha: o Firebase manda um link no e-mail. Sem isto, quem
+  // errasse a senha ficava trancado do lado de fora para sempre.
+  async function esqueciSenha() {
+    setErro('');
+    const alvo = email.trim();
+    if (!alvo) { setErro('Escreva o seu e-mail aí em cima primeiro.'); return; }
+    setCarregando(true);
+    try {
+      await fb.fns.sendPasswordResetEmail(fb.auth, alvo);
+      setErro('Pronto: se essa conta existe, o link para criar uma senha nova chegou em ' + alvo + '. Olhe também o lixo eletrônico.');
+    } catch (e) {
+      setErro('Não consegui enviar agora. Confira o e-mail e a internet.');
+    }
+    setCarregando(false);
+  }
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
@@ -275,6 +329,9 @@ function TelaLogin({ aoEntrarDemo }) {
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <GoogleG tamanho={23} /> Entrar com Google
       </button>
+      <button className="btn-apple" onClick={entrarApple} disabled={carregando}>
+        <MacaAppleLogo /> Entrar com a Apple
+      </button>
       {CONFIGURADO && (
         <>
           <div className="separador">ou com e-mail</div>
@@ -295,6 +352,11 @@ function TelaLogin({ aoEntrarDemo }) {
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
+          {!novaConta && (
+            <button className="link-troca" onClick={esqueciSenha} disabled={carregando}>
+              Esqueci minha senha
+            </button>
+          )}
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
@@ -734,7 +796,7 @@ function NovoProcedimento({ aoAdicionar }) {
   );
 }
 
-function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [], aoChamarPaciente, aoEncerrarChamada, aoChamarStaff }) {
   const [aba, setAba] = useState('cadastro');
   const temInternet = usarTemInternet();
   const [tela, setTela] = useState(null); // null | 'avisos' | 'novoAviso' | 'marcar' | {triagem} | {area} | {voluntario}
@@ -751,13 +813,16 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() });
+    addDoc(collection(fb.db, 'depoimentos'), { ...dados, criadoEm: serverTimestamp(), em: serverTimestamp() }).catch(() => {});
     setTela('depoimentos');
   }
   function apagarDepoimento(d) {
     if (!CONFIGURADO) { setDepoimentos(ds => ds.filter(x => x.id !== d.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'depoimentos', d.id)).catch(() => {});
+    // O vídeo sai do depósito junto: tirar a autorização tem que apagar
+    // o arquivo de verdade, não só o registro
+    apagarVideo(fb, d.videoCaminho);
   }
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
@@ -795,7 +860,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
   async function salvarPerfil(campos) {
     if (!CONFIGURADO) { setMeuPerfil(p => ({ ...p, ...campos })); return; }
     const { doc, setDoc } = fb.fns;
-    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', ...campos }, { merge: true });
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', ...campos }, { merge: true }).catch(() => {});
   }
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-pacientes', pacientes); }, [pacientes]);
@@ -870,6 +935,47 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
     return () => soltar.forEach(s => s());
   }, []);
 
+  // A Apple exige, onde há conteúdo escrito por gente (diretriz 1.2):
+  // apagar o que é seu, denunciar e bloquear. O bloqueio fica no aparelho
+  // de quem bloqueou; a denúncia chega à coordenação.
+  // ─── Denúncias (a Apple exige resposta em até 24 horas) ───
+  const [denuncias, setDenuncias] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO) { setDenuncias([]); return; }
+    const { collection, onSnapshot } = fb.fns;
+    return onSnapshot(collection(fb.db, 'denuncias'),
+      snap => setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.resolvida)));
+  }, []);
+  function resolverDenuncia(d, apagouConteudo) {
+    if (!CONFIGURADO) { setDenuncias(ds => ds.filter(x => x.id !== d.id)); return; }
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'denuncias', d.id), {
+      resolvida: true, apagouConteudo: !!apagouConteudo,
+      resolvidaPorNome: usuario.nome || '', resolvidaEm: fb.fns.serverTimestamp(),
+    }).catch(() => {});
+    if (apagouConteudo) {
+      if (d.tipo === 'chat' && d.mensagemId) fb.fns.deleteDoc(fb.fns.doc(fb.db, 'chat', d.mensagemId)).catch(() => {});
+      if (d.tipo === 'depoimento' && d.depoimentoId) fb.fns.deleteDoc(fb.fns.doc(fb.db, 'depoimentos', d.depoimentoId)).catch(() => {});
+    }
+  }
+
+  function apagarMensagem(m) {
+    if (!CONFIGURADO) { setMensagens(ms => ms.filter(x => x.id !== m.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'chat', m.id)).catch(() => {});
+  }
+  function denunciarMensagem(m) {
+    const motivo = window.prompt('O que há de errado nesta mensagem? A coordenação vai receber e responder em até 24 horas.');
+    if (motivo === null) return;
+    if (CONFIGURADO) {
+      fb.fns.addDoc(fb.fns.collection(fb.db, 'denuncias'), {
+        tipo: 'chat', mensagemId: m.id, texto: String(m.texto || '').slice(0, 500),
+        autorDenunciadoUid: m.autorUid || '', autorDenunciadoNome: m.autorNome || '',
+        motivo: String(motivo).slice(0, 500),
+        deUid: usuario.uid, deNome: usuario.nome || '', criadoEm: fb.fns.serverTimestamp(),
+      }).catch(() => {});
+    }
+    window.alert('Denúncia enviada à coordenação. Obrigado — vamos olhar em até 24 horas.');
+  }
+
   async function enviarMensagem(m) {
     const dados = {
       ...m, autorUid: usuario.uid, autorNome: usuario.nome || '',
@@ -880,7 +986,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       return;
     }
     const { collection, addDoc, serverTimestamp } = fb.fns;
-    await addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() });
+    addDoc(collection(fb.db, 'chat'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // Primeiro espaço livre na agenda de quem aceita (08h–17h): emenda no fim
@@ -929,9 +1035,9 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    await updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) });
-    if (novoAg) await addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() });
-    await updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() });
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    if (novoAg) addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() }).catch(() => {});
+    updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
   }
 
   useEffect(() => {
@@ -1068,7 +1174,7 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'agendamentos', g.id), { data, hora });
+    updateDoc(doc(fb.db, 'agendamentos', g.id), { data, hora }).catch(() => {});
   }
 
   async function removerAgendamento(g) {
@@ -1087,7 +1193,21 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       return;
     }
     const { doc, updateDoc } = fb.fns;
-    await updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos });
+    updateDoc(doc(fb.db, 'voluntarios', v.id), { procedimentos }).catch(() => {});
+  }
+
+  // Mudar o estado de um voluntário: aprovar, recusar, desativar, reativar
+  // ou remover. Antes só existia aprovar e recusar — e uma recusa por engano
+  // não tinha volta, porque o cartão sumia da tela.
+  async function mudarVoluntario(v, mudanca) {
+    if (!CONFIGURADO) { setVoluntarios(vs => vs.map(x => x.id === v.id ? { ...x, ...mudanca } : x)); return; }
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'voluntarios', v.id), mudanca).catch(() => {});
+  }
+  async function removerVoluntario(v) {
+    if (!window.confirm(`Remover ${v.nome} da equipe? O cadastro dele sai do sistema.`)) return;
+    setTela(null);
+    if (!CONFIGURADO) { setVoluntarios(vs => vs.filter(x => x.id !== v.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'voluntarios', v.id)).catch(() => {});
   }
 
   async function responderSolicitacao(v, aprovar) {
@@ -1221,9 +1341,10 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
       setTela({ convocacao: id });
       return;
     }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-    if (ref) setTela({ convocacao: ref.id });
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'convocacoes'));
+    setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela({ convocacao: ref.id });
   }
   function chamarConvocados(conv, selecionadas) {
     if (!selecionadas.length) return;
@@ -1396,6 +1517,19 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
           </div>
         </div>
         <EspecialidadesVoluntario key={v.id} voluntario={v} todasAreas={todasAreas} aoSalvar={p => salvarProcedimentosVoluntario(v, p)} />
+        <div className="linha-acoes">
+          {v.status === 'recusado' ? (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'ativo', ativo: true }); setTela(null); }}>↩ Desfazer recusa e aprovar</button>
+          ) : v.ativo === false ? (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'ativo', ativo: true }); setTela(null); }}>✅ Reativar</button>
+          ) : (
+            <button className="btn-acao" onClick={() => { mudarVoluntario(v, { status: 'inativo', ativo: false }); setTela(null); }}>⏸ Desativar</button>
+          )}
+          <button className="btn-acao vermelho" onClick={() => removerVoluntario(v)}><Trash2 size={16} /> Remover</button>
+        </div>
+        <p className="dica" style={{ marginTop: 0 }}>
+          Desativar tira o acesso, mas guarda o histórico da pessoa. Remover apaga o cadastro dela.
+        </p>
         {(() => {
           // ⏱ Tempos de atendimento: alimentado pelo botão "Chamar paciente"
           // do Semeador — chamou o próximo, fecha o tempo do anterior
@@ -1611,13 +1745,15 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
         })()}
 
         {aba === 'chat' && (
-          <Chat cheio usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
+          <Chat cheio aoApagarMensagem={apagarMensagem} aoDenunciar={denunciarMensagem} usuario={usuario} mensagens={mensagens} pacientes={pacientes} pessoas={profissionais}
             areas={todasAreas} aoEnviar={enviarMensagem} aoAceitar={aceitarSugestao} aoAbrirPaciente={setFichaId} />
         )}
 
         {aba === 'voluntarios' && (() => {
           const pendentes = voluntarios.filter(v => v.status === 'pendente');
           const equipe = voluntarios.filter(v => v.status !== 'pendente' && v.status !== 'recusado');
+          // Os recusados ficam à mão: uma recusa por engano tem volta
+          const recusados = voluntarios.filter(v => v.status === 'recusado');
           return (
             <>
               {pendentes.length > 0 && (
@@ -1670,6 +1806,23 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
                   </div>
                 </div>
               )) : <div className="vazio">Nenhum voluntário cadastrado ainda.</div>}
+              {recusados.length > 0 && (
+                <details className="ja-atendidos" style={{ marginTop: 14 }}>
+                  <summary>🚫 Recusados ({recusados.length})</summary>
+                  <p className="dica" style={{ margin: '8px 0' }}>Recusou sem querer? Toque na pessoa e desfaça.</p>
+                  {recusados.map(v => (
+                    <div className="cartao" key={v.id} onClick={() => setTela({ voluntario: v })} style={{ cursor: 'pointer', opacity: 0.75 }}>
+                      <div className="cartao-linha">
+                        <Bolha nome={v.nome} />
+                        <div>
+                          <strong>{v.nome}</strong>
+                          <p className="obs">{[v.ministerio, v.email].filter(Boolean).join(' · ')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </details>
+              )}
             </>
           );
         })()}
@@ -1722,7 +1875,29 @@ function TelaPrincipal({ usuario, aoSair, chamadas = [], aoChamarPaciente, aoEnc
               )}
             </div>
 
+            {denuncias.length > 0 && (
+              <div className="cartao" style={{ border: '1.5px solid #E8A08C' }}>
+                <strong style={{ display: 'block', marginBottom: 6 }}>🚩 Denúncias a responder ({denuncias.length})</strong>
+                <p className="dica" style={{ margin: '0 0 8px' }}>A gente se compromete a olhar cada uma em até 24 horas.</p>
+                {denuncias.map(d => (
+                  <div key={d.id} style={{ borderTop: '1px solid #EEF2ED', paddingTop: 8, marginTop: 8 }}>
+                    <p className="obs" style={{ margin: 0 }}>
+                      {d.tipo === 'chat' ? 'Mensagem do chat' : 'Depoimento'} · denunciado por {String(d.deNome || '').split(' ')[0] || 'alguém'}
+                    </p>
+                    <p style={{ margin: '4px 0' }}><b>Motivo:</b> {d.motivo}</p>
+                    {d.texto && <p className="obs" style={{ margin: '4px 0' }}>“{d.texto}”</p>}
+                    <div className="linha-botoes">
+                      <button className="btn-secundario" onClick={() => resolverDenuncia(d, false)}>Está tudo bem</button>
+                      <button className="btn-principal" style={{ background: '#B3402A', boxShadow: 'none' }}
+                        onClick={() => { if (window.confirm('Apagar o conteúdo denunciado?')) resolverDenuncia(d, true); }}>Apagar o conteúdo</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -1779,7 +1954,7 @@ function CartaoConvite({ aoAutorizar }) {
 
 // Tela pedida quando a pessoa entrou com o Google mas ainda não tem acesso
 // à central — precisa do código que a coordenação gerou
-function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -1805,6 +1980,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair }) {
       {erro && <div className="erro">{erro}</div>}
       <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -1827,7 +2003,14 @@ function App() {
     // conferência de verdade acontece de novo quando a conexão voltar.
     const lembrete = 'ss-ja-entrou-' + usuario.uid;
     const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
-    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
+    // O lembrete deste aparelho só vale quando foi a INTERNET que falhou.
+    // Se o banco RESPONDEU que a pessoa não tem mais acesso, o lembrete é
+    // apagado — antes, quem perdia o acesso continuava entrando para sempre.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('pedir'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir');
+    };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
@@ -1847,14 +2030,8 @@ function App() {
             return;
           }
         }
-        const algum = await getDocs(query(collection(fb.db, 'central-usuarios'), limit(1)));
-        if (algum.empty) {
-          setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
-          libera();
-          return;
-        }
-        nega();
-      } catch (e) { nega(); }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -1863,11 +2040,18 @@ function App() {
     const cod = codigo.trim().toUpperCase();
     const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
     const ref = doc(fb.db, 'codigos-acesso', cod);
-    const snap = await getDoc(ref);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
-    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    // Gastar o código PRIMEIRO, e esperar: é essa marca no banco que prova,
+    // para as regras de segurança, que a pessoa tem direito de entrar.
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
     gravarLocal('ss-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
@@ -1909,6 +2093,20 @@ function App() {
     setUsuario(null);
   }
 
+  // Apagar a conta: some o cadastro da central e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
+  async function apagarMinhaConta(senha) {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'central-usuarios', id: usuario.uid },
+       { colecao: 'central-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['ss-usuario', 'ss-perfil', 'ss-ja-entrou-' + usuario.uid], senha);
+    try { await window.__sairNativoGoogle?.(); } catch (e) { /* sem ponte */ }
+    setApagandoConta(false);
+    setUsuario(null);
+  }
+
   // ─── Chamada de paciente: toca em TODOS os celulares logados até atender ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -1925,6 +2123,27 @@ function App() {
       }));
     });
   }, [usuario?.uid]);
+  // ─── A LIGAÇÃO em si ───
+  // Quem chama fica numa ligação aberta esperando atenderem; quem atende
+  // entra na mesma conversa. Guardamos aqui qual chamada é a "minha".
+  const [minhaChamadaId, setMinhaChamadaId] = useState('');
+  const chamandoAgora = chamadas.find(c => c.id === minhaChamadaId && c.ativa !== false) || null;
+  function desligarMinhaChamada() {
+    const c = chamandoAgora;
+    setMinhaChamadaId('');
+    if (!c || !CONFIGURADO) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), { ativa: false, encerradaEm: fb.fns.serverTimestamp() }).catch(() => {});
+  }
+  // Atendeu: entra na conversa, mas a chamada continua de pé enquanto as
+  // pessoas falam. Quem desliga é quem chamou (ou o próprio, no Encerrar).
+  function marcarAtendida(c) {
+    if (!CONFIGURADO || !c) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), {
+      atendidaPorUid: usuario?.uid, atendidaEm: fb.fns.serverTimestamp(),
+      ...(c.tipo === 'staff' ? {} : { ativa: false }),
+    }).catch(() => {});
+  }
+
   function encerrarChamada(c, atendida) {
     setChamadasVistas(v => [...v, c.id]);
     if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
@@ -1942,8 +2161,10 @@ function App() {
   function chamarPaciente(p) {
     const dados = { pacienteId: p.id, pacienteNome: p.nome, pacienteFoto: p.foto || '', pacienteCodigo: p.codigo || '', chamadoPorUid: usuario?.uid || '', chamadoPorNome: usuario?.nome || '', chamadoPorAparelho: idAparelho(), ativa: true };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'chamadas'));
+    setDoc(ref, { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    setMinhaChamadaId(ref.id);   // eu entro na minha própria ligação
   }
   // ─── Push: no aplicativo instalado, registra este iPhone para receber a
   // chamada mesmo com o app fechado (a casca expõe __registrarPush; o token
@@ -1990,8 +2211,10 @@ function App() {
       ...(motivo ? { motivo, convocacaoId } : {}),
     };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'chamadas'));
+    setDoc(ref, { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    setMinhaChamadaId(ref.id);   // eu entro na minha própria ligação
   }
   // A abertura animada cobre a tela nos primeiros ~3s de cada entrada do zero
   const [abrindo, setAbrindo] = useState(true);
@@ -2009,9 +2232,23 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
-  return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Seja Semente" aoVoltar={() => setVendoSuporte(false)} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
+  // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
+  // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
+  // desligar (segunda chamada, sem a marca) é que fecha a tela.
+  const naLigacao = (c, entrando) => {
+    if (entrando) { marcarAtendida(c); return; }
+    encerrarChamada(c, true);
+  };
+  return <>{conteudo}
+    {chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={naLigacao}
+      fb={CONFIGURADO ? fb : null} usuario={{ uid: usuario?.uid, nome: usuario?.nome }} />}
+    {chamandoAgora && <TelaChamando chamada={chamandoAgora} fb={CONFIGURADO ? fb : null}
+      usuario={{ uid: usuario?.uid, nome: usuario?.nome }} aoDesligar={() => desligarMinhaChamada()} />}
+    {abertura}</>;
 }
 
 // A trava __appJaSubiu impede o app de subir duas vezes na casca viva do
@@ -2019,5 +2256,5 @@ function App() {
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar(); // arrastar da esquerda para a direita = voltar
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

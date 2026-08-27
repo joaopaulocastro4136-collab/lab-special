@@ -194,7 +194,15 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
     setFolhaA4(dataUrl);
   }
 
-  if (!paciente) return null;
+  // O paciente pode ter sido apagado em outro aparelho enquanto esta tela
+  // estava aberta. Antes ficava uma tela BRANCA sem botão nenhum: a pessoa
+  // só saía fechando o aplicativo.
+  if (!paciente) return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoVoltar}><ChevronLeft size={18} /> Voltar</button>
+      <div className="vazio">Não encontrei este paciente. Ele pode ter sido apagado, ou ainda não chegou neste aparelho.</div>
+    </div>
+  );
   const t = paciente.triagem;
   const areas = areasDaTriagem(t);
 

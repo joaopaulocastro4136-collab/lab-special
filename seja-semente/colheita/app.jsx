@@ -14,11 +14,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, MacaAppleLogo } from '../logo.jsx';
 import { Sparkles, Flag, Receipt, User, ChevronLeft, ChevronRight, Mail, Lock, Eye, EyeOff, Home } from 'lucide-react';
 import { SobreOProjeto } from '../projeto.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 
 // Logo da Colheita: a mão dourada com o coração — a mesma do ecossistema
 function LogoApp({ tamanho = 120 }) {
@@ -112,6 +115,9 @@ const dinheiro = (v) => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 // A privacidade do paciente vem primeiro: para quem investiu, o sorriso
 // aparece pelo PRIMEIRO NOME — a identificação completa fica com a equipe
 const primeiroNome = (n) => String(n || 'Paciente').trim().split(/\s+/)[0];
+// Registro novo já vem com o primeiro nome; registro antigo é cortado aqui
+const nomeDoSorriso = (s) => s.pacientePrimeiro || primeiroNome(s.pacienteNome);
+const nomeDeQuemFez = (s) => s.autorPrimeiro || primeiroNome(s.autorNome);
 
 // ─── Modo demonstração ───
 const fotoFalsa = (texto, cor) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -147,6 +153,41 @@ function TelaLogin({ aoEntrarDemo }) {
   const [novaConta, setNovaConta] = useState(false);
   const [verSenha, setVerSenha] = useState(false);
 
+  // ENTRAR COM A APPLE — exigido pela Apple (diretriz 4.8) para quem
+  // oferece login do Google. Quem esconde o e-mail recebe um endereço de
+  // repasse da própria Apple, e o aplicativo funciona igual com ele.
+  async function entrarApple() {
+    setErro('');
+    if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
+    setCarregando(true);
+    try {
+      if (window.__loginAppleNativo) {
+        const c = await window.__loginAppleNativo();
+        const p = new fb.fns.OAuthProvider('apple.com');
+        await fb.fns.signInWithCredential(fb.auth, p.credential({ idToken: c.idToken, rawNonce: c.nonce || undefined }));
+      } else {
+        const p = new fb.fns.OAuthProvider('apple.com');
+        p.addScope('email'); p.addScope('name');
+        try {
+          await fb.fns.signInWithPopup(fb.auth, p);
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') { setCarregando(false); return; }
+          if (cod === 'auth/popup-blocked') { await fb.fns.signInWithRedirect(fb.auth, p); return; }
+          throw e2;
+        }
+      }
+    } catch (e) {
+      setCarregando(false);
+      const m = String(e?.message || e);
+      if (m.includes('cancel')) return;
+      // Mostrar o motivo INTEIRO. Só o código não dizia nada: erro de plugin
+      // costuma vir sem código, e aparecia "código: ?" na tela — sem isso não
+      // dá para saber se o problema é a permissão, o provedor ou o aparelho.
+      setErro('A Apple não entrou. Motivo: ' + (e?.code ? e.code + ' · ' : '') + m.slice(0, 220));
+    }
+  }
+
   async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
@@ -178,6 +219,22 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  // Esqueceu a senha: o Firebase manda um link no e-mail. Sem isto, quem
+  // errasse a senha ficava trancado do lado de fora para sempre.
+  async function esqueciSenha() {
+    setErro('');
+    const alvo = email.trim();
+    if (!alvo) { setErro('Escreva o seu e-mail aí em cima primeiro.'); return; }
+    setCarregando(true);
+    try {
+      await fb.fns.sendPasswordResetEmail(fb.auth, alvo);
+      setErro('Pronto: se essa conta existe, o link para criar uma senha nova chegou em ' + alvo + '. Olhe também o lixo eletrônico.');
+    } catch (e) {
+      setErro('Não consegui enviar agora. Confira o e-mail e a internet.');
+    }
+    setCarregando(false);
+  }
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
@@ -203,6 +260,9 @@ function TelaLogin({ aoEntrarDemo }) {
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <GoogleG tamanho={23} /> Entrar com Google
       </button>
+      <button className="btn-apple" onClick={entrarApple} disabled={carregando}>
+        <MacaAppleLogo /> Entrar com a Apple
+      </button>
       {CONFIGURADO && (
         <>
           <div className="separador">ou com e-mail</div>
@@ -221,6 +281,11 @@ function TelaLogin({ aoEntrarDemo }) {
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
+          {!novaConta && (
+            <button className="link-troca" onClick={esqueciSenha} disabled={carregando}>
+              Esqueci minha senha
+            </button>
+          )}
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
@@ -228,17 +293,35 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaSemAcesso({ usuario, aoSair }) {
+function TelaSemAcesso({ usuario, aoResgatar, aoSair, aoApagarConta, aoSuporte }) {
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState('');
+  const [tentando, setTentando] = useState(false);
   return (
     <div className="tela-login">
       <LogoApp tamanho={104} />
       <h1>Quase lá</h1>
       <p className="missao">
         Olá, {usuario.nome?.split(' ')[0] || 'tudo bem'}! A Colheita é para quem apoia o projeto.
-        Peça à coordenação para cadastrar o e-mail <b>{usuario.email}</b> na lista de investidores — aí o
-        seu acesso abre sozinho, sem precisar de senha nova.
+        Se você recebeu um <b>código de convite</b>, digite abaixo. Ou peça à coordenação para cadastrar
+        o e-mail <b>{usuario.email}</b> — aí o seu acesso abre sozinho, sem código nenhum.
       </p>
+      <div className="campo" style={{ width: '100%', maxWidth: 330 }}>
+        <span>Código de convite</span>
+        <input value={codigo} onChange={e => { setCodigo(e.target.value); setErro(''); }}
+          placeholder="CH-XXXXXX" autoCapitalize="characters" style={{ textAlign: 'center', letterSpacing: 2, fontWeight: 800 }} />
+      </div>
+      {erro && <div className="erro" style={{ maxWidth: 330 }}>{erro}</div>}
+      <button className="btn-principal" disabled={!codigo.trim() || tentando}
+        onClick={async () => {
+          setTentando(true); setErro('');
+          const r = await aoResgatar(codigo).catch(e => e?.message || 'Não consegui agora.');
+          if (r) setErro(r);
+          setTentando(false);
+        }}>{tentando ? 'Conferindo…' : 'Entrar com o código'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / entrar com outra conta</button>
+      <button className="link-troca" onClick={aoSuporte}>Ajuda e contato</button>
+      <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>
     </div>
   );
 }
@@ -246,7 +329,7 @@ function TelaSemAcesso({ usuario, aoSair }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal ───
-function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
+function TelaPrincipal({ usuario, investidor, ehGestor, aoSair, aoApagarConta, aoSuporte }) {
   const [aba, setAba] = useState('inicio');
   const [tela, setTela] = useState(null);
   const [soMinhaAcao, setSoMinhaAcao] = useState(!!investidor?.acaoId);
@@ -263,13 +346,20 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   // Escutas em tempo real (só leitura)
   useEffect(() => {
     if (!CONFIGURADO) return;
-    const { collection, collectionGroup, doc, onSnapshot, query, orderBy, getDoc } = fb.fns;
+    const { collection, collectionGroup, doc, onSnapshot, query, orderBy, where, getDoc } = fb.fns;
     const escuta = (col, ord, poe) => onSnapshot(query(collection(fb.db, col), orderBy(...ord)), s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    // Depoimento é vídeo de gente. Só pede ao banco os AUTORIZADOS: antes o
+    // aplicativo baixava todos e escondia os outros na tela — quem soubesse
+    // olhar o tráfego via o vídeo de quem nunca autorizou. Sem ordenar aqui
+    // (ordenar junto com o filtro exigiria um índice novo); a ordem sai na tela.
+    const escutaAutorizados = (poe) => onSnapshot(
+      query(collection(fb.db, 'depoimentos'), where('autorizado', '==', true)),
+      s => poe(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const soltar = [
       escuta('acoes', ['data', 'desc'], setAcoes),
       escuta('notas', ['criadaEm', 'desc'], setNotas),
       // A voz de quem foi atendido — o que abre o Plante Sorriso
-      escuta('depoimentos', ['criadoEm', 'desc'], setDepoimentos),
+      escutaAutorizados(setDepoimentos),
       escuta('estoque-movimentos', ['em', 'desc'], setMovimentos),
       onSnapshot(doc(fb.db, 'config', 'procedimentos'), snap => {
         if (snap.exists()) setConfigProc({ valores: {}, porDente: {}, ...snap.data() });
@@ -310,7 +400,22 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   };
 
   // O depoimento daquela pessoa (se ela deixou um)
-  const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado !== false) || null;
+  // A Apple exige (diretriz 1.2) caminho para denunciar conteúdo de gente.
+  // Aqui o conteúdo é o depoimento do paciente, visto por quem apoia.
+  function denunciarDepoimento(d) {
+    const motivo = window.prompt('O que há de errado neste depoimento? A coordenação recebe e responde em até 24 horas.');
+    if (motivo === null) return;
+    if (CONFIGURADO) {
+      fb.fns.addDoc(fb.fns.collection(fb.db, 'denuncias'), {
+        tipo: 'depoimento', depoimentoId: d.id, pacienteId: d.pacienteId || '',
+        motivo: String(motivo).slice(0, 500),
+        deUid: usuario?.uid || '', deNome: usuario?.nome || '', criadoEm: fb.fns.serverTimestamp(),
+      }).catch(() => {});
+    }
+    window.alert('Denúncia enviada à coordenação. Obrigado — vamos olhar em até 24 horas.');
+  }
+
+  const depoimentoDe = (pid) => depoimentos.find(d => d.pacienteId === pid && d.autorizado === true) || null;
   const valorDe = (nome) => Number(configProc.valores?.[nome] || 0);
   const ehPorDente = (nome) => !!configProc.porDente?.[nome];
   const valorDoSorriso = (s) => {
@@ -326,9 +431,11 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
   const notasVisiveis = filtrando ? notas.filter(n => n.acaoId === minhaAcao.id) : notas;
   const acoesVisiveis = filtrando ? acoes.filter(a => a.id === minhaAcao.id) : acoes;
   const movimentosVisiveis = filtrando ? movimentos.filter(m => m.acaoId === minhaAcao.id) : movimentos;
-  // Só depoimentos autorizados aparecem para quem apoia o projeto
-  const depoimentosVisiveis = depoimentos.filter(d => d.autorizado !== false)
-    .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)));
+  // Só depoimentos AUTORIZADOS aparecem para quem apoia o projeto. Tem que
+  // ser === true: um depoimento antigo, sem o campo, não vale como permissão.
+  const depoimentosVisiveis = depoimentos.filter(d => d.autorizado === true)
+    .filter(d => !filtrando || diasDaAcao(minhaAcao).includes(isoDe(d.criadoEm)))
+    .sort((a, b) => String(isoDe(b.criadoEm)).localeCompare(String(isoDe(a.criadoEm))));
 
   const pessoas = new Set(sorrisosVisiveis.map(s => s.pacienteId)).size;
   const produzido = sorrisosVisiveis.reduce((s, x) => s + valorDoSorriso(x), 0);
@@ -375,8 +482,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
       return (
         <div className="folha">
           <button className="btn-voltar" onClick={() => setTela(null)}><ChevronLeft size={18} /> Voltar</button>
-          <h2>O sorriso de {primeiroNome(s.pacienteNome)}</h2>
-          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{s.autorNome ? ` · cuidado por ${s.autorNome}` : ''}</p>
+          <h2>O sorriso de {nomeDoSorriso(s)}</h2>
+          <p className="dica" style={{ marginTop: 0 }}>{dataBonita(isoDe(s.criadoEm))}{(s.autorPrimeiro || s.autorNome) ? ` · cuidado por ${nomeDeQuemFez(s)}` : ''}</p>
           {(antes || depois) ? (
             <div className="plante-antesdepois">
               <figure>{antes ? <img src={antes} alt="Antes" /> : <span className="plante-sem">🦷</span>}<figcaption>ANTES</figcaption></figure>
@@ -391,8 +498,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
           </div>
           {depoimentoDe(s.pacienteId) && (
             <>
-              <h3 style={{ margin: '16px 0 8px' }}>O que {primeiroNome(s.pacienteNome)} disse</h3>
-              <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque />
+              <h3 style={{ margin: '16px 0 8px' }}>O que {nomeDoSorriso(s)} disse</h3>
+              <CartaoDepoimento depoimento={depoimentoDe(s.pacienteId)} destaque aoDenunciar={denunciarDepoimento} />
             </>
           )}
           <p className="dica" style={{ marginTop: 12 }}>Foi a sua semente que devolveu este sorriso. 💚</p>
@@ -535,7 +642,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
               <h3 style={{ margin: '16px 0 8px' }}>😁 Os sorrisos desta ação</h3>
               {daAcao.map(s => (
                 <button className="cartao" key={s.id} style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }} onClick={() => setTela({ sorriso: s.id })}>
-                  <div className="cartao-topo"><strong>{primeiroNome(s.pacienteNome)}</strong><ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} /></div>
+                  <div className="cartao-topo"><strong>{nomeDoSorriso(s)}</strong><ChevronRight size={18} strokeWidth={2.6} style={{ color: '#9AA79F' }} /></div>
                   <p className="obs" style={{ margin: 0 }}>{s.area}{s.descricao ? ` · ${String(s.descricao).slice(0, 60)}` : ''}</p>
                 </button>
               ))}
@@ -592,10 +699,10 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
                 <p className="dica" style={{ marginTop: 0 }}>Palavras de quem sentou na cadeira. {depoimentosVisiveis.length > 1 ? 'Arraste para o lado. 👉' : ''}</p>
                 {depoimentosVisiveis.length > 1 ? (
                   <div className="depo-faixa">
-                    {depoimentosVisiveis.slice(0, 8).map(d => <CartaoDepoimento key={d.id} depoimento={d} destaque />)}
+                    {depoimentosVisiveis.slice(0, 8).map(d => <CartaoDepoimento key={d.id} depoimento={d} destaque aoDenunciar={denunciarDepoimento} />)}
                   </div>
                 ) : (
-                  <CartaoDepoimento depoimento={depoimentosVisiveis[0]} destaque />
+                  <CartaoDepoimento depoimento={depoimentosVisiveis[0]} destaque aoDenunciar={denunciarDepoimento} />
                 )}
               </>
             )}
@@ -619,7 +726,7 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
                             <span className="plante-seta">→</span>
                           </span>
                           <span className="plante-pe">
-                            <strong>{primeiroNome(s.pacienteNome)}</strong>
+                            <strong>{nomeDoSorriso(s)}</strong>
                             <span className="plante-area" style={{ background: cor + '1C', color: cor }}>{s.area || 'Atendimento'}</span>
                           </span>
                         </button>
@@ -728,6 +835,8 @@ function TelaPrincipal({ usuario, investidor, ehGestor, aoSair }) {
               </p>
             </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -755,20 +864,30 @@ function App() {
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ch-usuario', usuario); }, [usuario]);
 
-  // Quem entra: investidor cadastrado no Palmar (pelo e-mail) ou gestor
+  // Quem entra: quem o Palmar cadastrou como apoiador (a chave é o e-mail),
+  // quem gastou um código de convite, ou um gestor do projeto.
   useEffect(() => {
     if (!CONFIGURADO) { setAcesso('liberado'); return; }
     if (!usuario) { setAcesso('checando'); return; }
     let cancelado = false;
     const lembrete = 'ch-ja-entrou-' + usuario.uid;
+    // O lembrete deste aparelho só vale quando faltou INTERNET. Se o banco
+    // respondeu que a pessoa não está mais na lista, o lembrete é apagado.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('sem-acesso'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
+    };
     (async () => {
       try {
-        const { collection, query, where, getDocs, doc, getDoc, limit } = fb.fns;
-        const email = String(usuario.email || '').toLowerCase();
+        const { doc, getDoc } = fb.fns;
+        const email = String(usuario.email || '').trim().toLowerCase();
         if (email) {
-          const achou = await getDocs(query(collection(fb.db, 'investidores'), where('email', '==', email), limit(1)));
-          if (!achou.empty && !cancelado) {
-            setInvestidor({ id: achou.docs[0].id, ...achou.docs[0].data() });
+          // Um documento com o nome do e-mail: é a chave da porta. Assim a
+          // pessoa lê só o dela, sem vasculhar a lista de apoiadores.
+          const porta = await getDoc(doc(fb.db, 'apoiadores', email));
+          if (porta.exists() && !cancelado) {
+            setInvestidor({ id: email, email, ...porta.data() });
             gravarLocal(lembrete, true);
             setAcesso('liberado');
             return;
@@ -781,13 +900,34 @@ function App() {
           setAcesso('liberado');
           return;
         }
-        if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
-      } catch (e) {
-        if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'sem-acesso');
-      }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
+
+  // Convite por código: a coordenação gera no Palmar e passa para o apoiador
+  async function resgatarCodigo(codigo) {
+    const cod = String(codigo || '').trim().toUpperCase();
+    if (!cod) return 'Digite o código.';
+    const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
+    const ref = doc(fb.db, 'colheita-codigos', cod);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
+    if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
+    if (snap.data().usadoPor) return 'Esse código já foi usado.';
+    const email = String(usuario.email || '').trim().toLowerCase();
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoPorEmail: email, usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'apoiadores', email), { nome: usuario.nome || '', codigo: cod, desde: serverTimestamp() }, { merge: true }).catch(() => {});
+    setInvestidor({ id: email, email, nome: usuario.nome || '' });
+    gravarLocal('ch-ja-entrou-' + usuario.uid, true);
+    setAcesso('liberado');
+    return '';
+  }
 
   useEffect(() => {
     if (!CONFIGURADO) return;
@@ -819,6 +959,22 @@ function App() {
     setEhGestor(false);
   }
 
+  // Apagar a conta: some o cadastro de investidor e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
+  async function apagarMinhaConta(senha) {
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'investidores', porEmail: true },
+       { colecao: 'apoiadores', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(ehGestor ? [{ colecao: 'palmar-usuarios', id: usuario.uid }] : [])],
+      ['ch-usuario', 'ch-ja-entrou-' + usuario.uid], senha);
+    if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
+    setApagandoConta(false);
+    setUsuario(null);
+    setInvestidor(null);
+    setEhGestor(false);
+  }
+
   const [abrindo, setAbrindo] = useState(true);
   const abertura = abrindo ? <Abertura tema="dourado" nome="Colheita" frase="o que a semente virou" aoTerminar={() => setAbrindo(false)} /> : null;
 
@@ -833,14 +989,18 @@ function App() {
   );
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Colheita" aoVoltar={() => setVendoSuporte(false)} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
+    oQueFica="O relatório do projeto continua — ele é do Seja Semente, não seu. O seu cadastro de apoiador é que sai."
+    aoVoltar={() => setApagandoConta(false)} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} />;
+  else if (acesso === 'sem-acesso') conteudo = <TelaSemAcesso usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} investidor={investidor} ehGestor={ehGestor} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
   return <>{conteudo}{abertura}</>;
 }
 
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar();
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

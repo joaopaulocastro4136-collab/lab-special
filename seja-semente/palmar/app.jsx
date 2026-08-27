@@ -12,14 +12,17 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RedeDeSeguranca } from '../rede.jsx';
 import { FIREBASE_CONFIG } from '../firebase-config.js';
-import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho } from '../logo.jsx';
+import { Bolha, lerLocal, gravarLocal, corDoNome, Abertura, GoogleG, BrotoMini, ligarGestoVoltar, usarTemInternet, idAparelho, MacaAppleLogo } from '../logo.jsx';
 import { Home, Flag, Users, Package, Wallet, User, ChevronLeft, ChevronRight, Clock, Tag, Plus, Mail, Lock, Eye, EyeOff, BellRing, Megaphone, TriangleAlert, CalendarDays, Pencil, Trash2, Camera, Images } from 'lucide-react';
-import { TelaChamada, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
+import { TelaChamada, TelaChamando, TelaChamarStaff, TelaConvocacoes, TelaConvocacao } from '../chamada.jsx';
 import { comprimirImagem } from '../ficha.jsx';
 import { SeletorUnidade, Contador } from '../estoque.jsx';
 import { Arcada } from '../dentes.jsx';
 import { CartaoDepoimento } from '../depoimento.jsx';
+import { TelaApagarConta, BotaoApagarConta, apagarConta } from '../conta.jsx';
+import { TelaSuporte, BotaoSuporte } from '../suporte.jsx';
 
 // Lê o QR CODE da nota fiscal com a câmera (a chave de 44 dígitos prova que
 // a nota é real; quando o QR traz o valor, ele entra sozinho)
@@ -138,7 +141,10 @@ async function ligarFirebase() {
 const AREAS_FIXAS = ['Profilaxia', 'Periodontia', 'Dentística', 'Endodontia', 'Cirurgia', 'Prótese', 'Raio-X', 'Avaliação'];
 const DURACAO_PADRAO = 30;
 
-function hojeISO() { return new Date().toISOString().slice(0, 10); }
+// O dia de hoje no relógio de quem está usando. Antes isto usava a hora de
+// Londres: das 21h à meia-noite o aplicativo já achava que era amanhã, e a
+// agenda do dia aparecia vazia bem na hora do mutirão.
+function hojeISO() { return isoDe(new Date()); }
 function isoDe(v) {
   const d = v?.toDate ? v.toDate() : (v ? new Date(v) : null);
   if (!d || isNaN(d)) return '';
@@ -245,6 +251,41 @@ function TelaLogin({ aoEntrarDemo }) {
   const [novaConta, setNovaConta] = useState(false);
   const [verSenha, setVerSenha] = useState(false);
 
+  // ENTRAR COM A APPLE — exigido pela Apple (diretriz 4.8) para quem
+  // oferece login do Google. Quem esconde o e-mail recebe um endereço de
+  // repasse da própria Apple, e o aplicativo funciona igual com ele.
+  async function entrarApple() {
+    setErro('');
+    if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
+    setCarregando(true);
+    try {
+      if (window.__loginAppleNativo) {
+        const c = await window.__loginAppleNativo();
+        const p = new fb.fns.OAuthProvider('apple.com');
+        await fb.fns.signInWithCredential(fb.auth, p.credential({ idToken: c.idToken, rawNonce: c.nonce || undefined }));
+      } else {
+        const p = new fb.fns.OAuthProvider('apple.com');
+        p.addScope('email'); p.addScope('name');
+        try {
+          await fb.fns.signInWithPopup(fb.auth, p);
+        } catch (e2) {
+          const cod = e2?.code || '';
+          if (cod === 'auth/popup-closed-by-user' || cod === 'auth/cancelled-popup-request') { setCarregando(false); return; }
+          if (cod === 'auth/popup-blocked') { await fb.fns.signInWithRedirect(fb.auth, p); return; }
+          throw e2;
+        }
+      }
+    } catch (e) {
+      setCarregando(false);
+      const m = String(e?.message || e);
+      if (m.includes('cancel')) return;
+      // Mostrar o motivo INTEIRO. Só o código não dizia nada: erro de plugin
+      // costuma vir sem código, e aparecia "código: ?" na tela — sem isso não
+      // dá para saber se o problema é a permissão, o provedor ou o aparelho.
+      setErro('A Apple não entrou. Motivo: ' + (e?.code ? e.code + ' · ' : '') + m.slice(0, 220));
+    }
+  }
+
   async function entrarGoogle() {
     setErro('');
     if (!CONFIGURADO) { aoEntrarDemo({ ...DEMO.usuario }); return; }
@@ -279,6 +320,22 @@ function TelaLogin({ aoEntrarDemo }) {
     setCarregando(false);
   }
 
+  // Esqueceu a senha: o Firebase manda um link no e-mail. Sem isto, quem
+  // errasse a senha ficava trancado do lado de fora para sempre.
+  async function esqueciSenha() {
+    setErro('');
+    const alvo = email.trim();
+    if (!alvo) { setErro('Escreva o seu e-mail aí em cima primeiro.'); return; }
+    setCarregando(true);
+    try {
+      await fb.fns.sendPasswordResetEmail(fb.auth, alvo);
+      setErro('Pronto: se essa conta existe, o link para criar uma senha nova chegou em ' + alvo + '. Olhe também o lixo eletrônico.');
+    } catch (e) {
+      setErro('Não consegui enviar agora. Confira o e-mail e a internet.');
+    }
+    setCarregando(false);
+  }
+
   async function entrarEmail() {
     setErro('');
     setCarregando(true);
@@ -304,6 +361,9 @@ function TelaLogin({ aoEntrarDemo }) {
       <button className="btn-google" onClick={entrarGoogle} disabled={carregando}>
         <GoogleG tamanho={23} /> Entrar com Google
       </button>
+      <button className="btn-apple" onClick={entrarApple} disabled={carregando}>
+        <MacaAppleLogo /> Entrar com a Apple
+      </button>
       {CONFIGURADO && (
         <>
           <div className="separador">ou com e-mail</div>
@@ -322,6 +382,11 @@ function TelaLogin({ aoEntrarDemo }) {
           <button className="link-troca" onClick={() => { setNovaConta(!novaConta); setErro(''); }}>
             {novaConta ? 'Já tenho conta — entrar' : 'Primeira vez? Criar conta com e-mail'}
           </button>
+          {!novaConta && (
+            <button className="link-troca" onClick={esqueciSenha} disabled={carregando}>
+              Esqueci minha senha
+            </button>
+          )}
         </>
       )}
       {erro && <div className="erro">{erro}</div>}
@@ -329,7 +394,7 @@ function TelaLogin({ aoEntrarDemo }) {
   );
 }
 
-function TelaCodigo({ usuario, aoResgatar, aoSair }) {
+function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -353,6 +418,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair }) {
       {erro && <div className="erro">{erro}</div>}
       <button className="btn-principal" disabled={!codigo.trim() || carregando} onClick={enviar}>{carregando ? 'Verificando…' : 'Entrar'}</button>
       <button className="link-troca" onClick={aoSair}>Sair / trocar de conta</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
     </div>
   );
 }
@@ -363,7 +429,7 @@ function Campo({ rotulo, children }) {
 function Vazio({ texto }) { return <div className="vazio">{texto}</div>; }
 
 // ─── A tela principal, com as abas ───
-function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
+function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoChamarStaff }) {
   const [aba, setAba] = useState('painel');
   const [tela, setTela] = useState(null);
   const temInternet = usarTemInternet();
@@ -434,18 +500,31 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     setConfigProc(nova);
     if (!CONFIGURADO) return;
     const { doc, setDoc } = fb.fns;
-    setDoc(doc(fb.db, 'config', 'procedimentos'), nova).catch(() => {});
+    // Mesclar: se a configuração ainda não terminou de chegar, gravar por cima
+    // apagaria os valores dos outros procedimentos.
+    setDoc(doc(fb.db, 'config', 'procedimentos'), nova, { merge: true }).catch(() => {});
   }
 
   // ─── Custos: quanto "vale" cada atendimento feito ───
-  function dentesDoPaciente(pid) {
-    const p = pacientes.find(x => x.id === pid);
-    return p?.triagem?.dentes?.length || 0;
+  // Quantos dentes ESTE atendimento tratou. O certo é o que o dentista marcou
+  // no registro do procedimento. Antes isto usava a triagem — que lista todos
+  // os dentes que a pessoa precisa tratar na vida inteira — e então UM
+  // atendimento valia pelo tratamento completo, em cada área, toda vez. O
+  // valor do projeto saía inflado várias vezes.
+  function dentesDoAtendimento(a) {
+    const diaDele = isoDe(a.inicio);
+    const casa = (r) => (a.id && r.atendimentoId === a.id)
+      || (!r.atendimentoId && r.pacienteId === a.pacienteId && r.area === a.area
+          && (r.data || isoDe(r.em || r.criadoEm)) === diaDele);
+    const n = procedimentos.filter(casa).reduce((s, r) => s + (r.dentes || []).length, 0);
+    // Ainda sem registro (o dentista pode registrar mais tarde): conta um só.
+    // Quando o registro chegar, o número se corrige sozinho.
+    return n || 1;
   }
   function custoAtendimento(a) {
     const v = valorDe(a.area);
     if (!v) return 0;
-    return ehPorDente(a.area) ? v * Math.max(1, dentesDoPaciente(a.pacienteId)) : v;
+    return ehPorDente(a.area) ? v * Math.max(1, dentesDoAtendimento(a)) : v;
   }
 
   // ─── Pessoas chamáveis (sino e chamada de grupo) ───
@@ -470,6 +549,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     updateDoc(doc(fb.db, 'voluntarios', v.id), campos).catch(() => {});
   }
   async function removerVoluntario(v) {
+    if (!window.confirm(`Remover ${v.nome || 'esta pessoa'} da equipe?\n\nEla perde o acesso ao Semeador. O trabalho já registrado continua no histórico.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setVoluntarios(vs => vs.filter(x => x.id !== v.id)); return; }
     const { doc, deleteDoc } = fb.fns;
@@ -515,9 +595,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       setTela({ acao: id });
       return;
     }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    const ref = await addDoc(collection(fb.db, 'acoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-    if (ref) setTela({ acao: ref.id });
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'acoes'));
+    setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+    setTela({ acao: ref.id });
   }
   async function salvarAcao(a, campos) {
     if (!CONFIGURADO) { setAcoes(as => as.map(x => x.id === a.id ? { ...x, ...campos } : x)); return; }
@@ -525,6 +606,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     setDoc(doc(fb.db, 'acoes', a.id), campos, { merge: true }).catch(() => {});
   }
   async function excluirAcao(a) {
+    if (!window.confirm(`Excluir a ação "${a.titulo || 'sem título'}"?\n\nNão tem como desfazer.`)) return;
     setTela(null);
     setAba('acoes');
     if (!CONFIGURADO) { setAcoes(as => as.filter(x => x.id !== a.id)); return; }
@@ -550,6 +632,7 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     updateDoc(doc(fb.db, 'estoque', item.id), campos).catch(() => {});
   }
   async function excluirItem(item) {
+    if (!window.confirm(`Excluir "${item.nome || 'este material'}" do estoque?\n\nNão tem como desfazer.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setEstoque(es => es.filter(x => x.id !== item.id)); return; }
     const { doc, deleteDoc } = fb.fns;
@@ -575,34 +658,62 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
       setMovimentos(ms => [{ id: 'm' + Math.floor(Math.random() * 1e9), ...registro, em: new Date() }, ...ms]);
       return;
     }
-    const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: novaQtd, qtd: novaQtd }).catch(() => {});
+    const { doc, updateDoc, collection, addDoc, serverTimestamp, increment } = fb.fns;
+    // Somar a diferença em vez de regravar o total: se duas pessoas retirarem
+    // material ao mesmo tempo, as duas baixas contam. Regravando o total, a
+    // segunda apagava a primeira e o estoque ficava mentindo.
+    updateDoc(doc(fb.db, 'estoque', item.id), { quantidade: increment(delta), qtd: increment(delta) }).catch(() => {});
     addDoc(collection(fb.db, 'estoque-movimentos'), { ...registro, em: serverTimestamp(), criadoEm: serverTimestamp() }).catch(() => {});
   }
   const emFalta = estoque.filter(i => qtdEstoque(i) <= Number(i.minimo || 0));
 
-  // ─── Investidores (patrocinadores — a Colheita vai ler isto depois) ───
+  // ─── Investidores (patrocinadores — é a Colheita que lê isto) ───
+  // O e-mail é a chave da porta da Colheita. Um espaço a mais ou uma letra
+  // maiúscula deixava a pessoa trancada para sempre no "Quase lá", pedindo
+  // justamente o e-mail que já estava cadastrado. Por isso: sempre limpo e
+  // em minúsculas, aqui e lá.
+  const emailLimpo = (e) => String(e || '').trim().toLowerCase();
+
+  // A chave de entrada fica num documento com o nome do e-mail. É esse
+  // documento que a Colheita consegue ler (e só o dela), sem precisar
+  // vasculhar a lista inteira de investidores.
+  function abrirPorta(email, dados) {
+    if (!CONFIGURADO || !email) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'apoiadores', email), { nome: dados?.nome || '', desde: serverTimestamp() }, { merge: true }).catch(() => {});
+  }
+  function fecharPorta(email) {
+    if (!CONFIGURADO || !email) return;
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'apoiadores', email)).catch(() => {});
+  }
+
   async function criarInvestidor(f) {
     const acao = acoes.find(a => a.id === f.acaoId);
-    const dados = { ...f, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...f, email: emailLimpo(f.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => [...is, { id: 'i' + Math.floor(Math.random() * 1e9), ...dados, criadaEm: new Date() }].sort((a, b) => a.nome.localeCompare(b.nome))); setTela(null); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'investidores'), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(collection(fb.db, 'investidores')), { ...dados, criadaEm: serverTimestamp() }).catch(() => {});
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function salvarInvestidor(i, campos) {
     const acao = acoes.find(a => a.id === campos.acaoId);
-    const dados = { ...campos, acaoTitulo: acao?.titulo || '' };
+    const dados = { ...campos, email: emailLimpo(campos.email), acaoTitulo: acao?.titulo || '' };
     if (!CONFIGURADO) { setInvestidores(is => is.map(x => x.id === i.id ? { ...x, ...dados } : x)); setTela(null); return; }
     const { doc, updateDoc } = fb.fns;
     updateDoc(doc(fb.db, 'investidores', i.id), dados).catch(() => {});
+    // Trocou o e-mail? A porta antiga fecha e a nova abre
+    if (emailLimpo(i.email) && emailLimpo(i.email) !== dados.email) fecharPorta(emailLimpo(i.email));
+    abrirPorta(dados.email, dados);
     setTela(null);
   }
   async function excluirInvestidor(i) {
+    if (!window.confirm(`Remover ${i.nome || 'este investidor'}?\n\nSe tiver e-mail cadastrado, a pessoa também deixa de entrar na Colheita.`)) return;
     setTela(null);
     if (!CONFIGURADO) { setInvestidores(is => is.filter(x => x.id !== i.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'investidores', i.id)).catch(() => {});
+    fecharPorta(emailLimpo(i.email));
   }
 
   // ─── Notas fiscais (foto ou QR — a Colheita vai ler isto depois) ───
@@ -615,19 +726,51 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
     setTela(f.acaoId ? { acao: f.acaoId } : 'notas');
   }
   async function excluirNota(n) {
+    if (!window.confirm('Excluir esta nota?\n\nNão tem como desfazer.')) return;
     if (!CONFIGURADO) { setNotas(ns => ns.filter(x => x.id !== n.id)); return; }
     const { doc, deleteDoc } = fb.fns;
     deleteDoc(doc(fb.db, 'notas', n.id)).catch(() => {});
   }
 
-  // ─── Código de acesso ao Palmar (gerado no Perfil) ───
+  // ─── Quem mais é gestor (para dar e tirar acesso) ───
+  const [gestores, setGestores] = useState([]);
+  useEffect(() => {
+    if (!CONFIGURADO) { setGestores([{ id: 'g1', nome: 'João Paulo', email: 'joao@teste.com' }, { id: 'g2', nome: 'Maria Souza', email: 'maria@teste.com' }]); return; }
+    const { collection, onSnapshot } = fb.fns;
+    return onSnapshot(collection(fb.db, 'palmar-usuarios'),
+      snap => setGestores(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, []);
+  function tirarAcessoGestor(g) {
+    // Nunca deixar o Palmar sem ninguém: sem gestor, o aplicativo tranca
+    // para todo mundo e não há como entrar de novo.
+    if (gestores.length <= 1) { window.alert('Este é o único gestor. Dê acesso a outra pessoa antes de tirar este.'); return; }
+    if (!window.confirm(`Tirar o acesso de ${g.nome || g.email}? Ela não entra mais no Palmar.`)) return;
+    if (!CONFIGURADO) { setGestores(gs => gs.filter(x => x.id !== g.id)); return; }
+    fb.fns.deleteDoc(fb.fns.doc(fb.db, 'palmar-usuarios', g.id)).catch(() => {});
+  }
+
+  // ─── Códigos de convite (gerados no Perfil) ───
+  //   PM- abre o PALMAR (outro gestor)
+  //   CH- abre a COLHEITA (quem apoia o projeto e quer ver a prestação
+  //       de contas sem precisar ser cadastrado pelo e-mail)
   const [codigoGerado, setCodigoGerado] = useState('');
+  const [codigoColheita, setCodigoColheita] = useState('');
+  function sorteia(prefixo) {
+    return prefixo + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+  }
   async function gerarCodigo() {
-    const cod = 'PM-' + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    const cod = sorteia('PM-');
     setCodigoGerado(cod);
     if (!CONFIGURADO) return;
     const { doc, setDoc, serverTimestamp } = fb.fns;
-    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', criadoEm: serverTimestamp() }).catch(() => {});
+    setDoc(doc(fb.db, 'palmar-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
+  }
+  async function gerarCodigoColheita() {
+    const cod = sorteia('CH-');
+    setCodigoColheita(cod);
+    if (!CONFIGURADO) return;
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    setDoc(doc(fb.db, 'colheita-codigos', cod), { criadoPorUid: usuario.uid, criadoPorNome: usuario.nome || '', usadoPor: null, criadoEm: serverTimestamp() }).catch(() => {});
   }
 
   // ═══ TELAS CHEIAS ═══
@@ -659,9 +802,10 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
         setTela({ convocacao: id });
         return;
       }
-      const { collection, addDoc, serverTimestamp } = fb.fns;
-      const ref = await addDoc(collection(fb.db, 'convocacoes'), { ...nova, criadaEm: serverTimestamp() }).catch(() => null);
-      if (ref) setTela({ convocacao: ref.id });
+      const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+      const ref = doc(collection(fb.db, 'convocacoes'));
+      setDoc(ref, { ...nova, criadaEm: serverTimestamp() }).catch(() => {});
+      setTela({ convocacao: ref.id });
     }}
     aoAbrir={(c) => setTela({ convocacao: c.id })}
     aoExcluir={(c) => {
@@ -1072,6 +1216,21 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                 </div>
               </div>
             </div>
+            <div className="cartao">
+              <strong style={{ display: 'block', marginBottom: 6 }}>Quem tem acesso ao Palmar ({gestores.length})</strong>
+              {gestores.map(g => (
+                <div key={g.id} className="cartao-linha" style={{ alignItems: 'center', padding: '8px 0', borderTop: '1px solid #EEF2ED' }}>
+                  <Bolha nome={g.nome || g.email} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{g.nome || g.email}</strong>
+                    <p className="obs" style={{ margin: 0 }}>{g.id === usuario.uid ? 'você' : (g.email || '')}</p>
+                  </div>
+                  {g.id !== usuario.uid && (
+                    <button className="chip prioridade" style={{ border: 'none' }} onClick={() => tirarAcessoGestor(g)}>tirar acesso</button>
+                  )}
+                </div>
+              ))}
+            </div>
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <strong>Dar acesso ao Palmar</strong>
               <p className="dica" style={{ margin: 0 }}>Gere um código e passe para outro gestor. Ele entra com a conta dele e digita o código. Cada código serve uma vez.</p>
@@ -1084,7 +1243,21 @@ function TelaPrincipal({ usuario, aoSair, aoChamarStaff }) {
                 <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigo}>Gerar código de acesso</button>
               )}
             </div>
+            <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <strong>Convidar quem apoia o projeto</strong>
+              <p className="dica" style={{ margin: 0 }}>Gere um código e passe para quem doou. Ele entra na Colheita com a conta dele e vê a prestação de contas — sem precisar estar cadastrado pelo e-mail. Cada código serve uma vez.</p>
+              {codigoColheita ? (
+                <>
+                  <div className="codigo-grande">{codigoColheita}</div>
+                  <button className="btn-secundario" onClick={() => { navigator.clipboard?.writeText(codigoColheita); }}>Copiar</button>
+                </>
+              ) : (
+                <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={gerarCodigoColheita}>Gerar convite da Colheita</button>
+              )}
+            </div>
             <button className="btn-sair" onClick={aoSair}>Sair</button>
+            <BotaoSuporte aoAbrir={aoSuporte} />
+            <BotaoApagarConta aoAbrir={aoApagarConta} />
           </>
         )}
       </main>
@@ -1114,16 +1287,32 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
   // DENTRO da ação, depois de criada — cada coisa na sua caixinha.
   const [f, setF] = useState({ titulo: '', data: hojeISO(), dataFim: hojeISO(), local: '' });
   const [fotos, setFotos] = useState([]);
+  const [avisoFoto, setAvisoFoto] = useState('');
+
+  // As fotos vão dentro do registro da ação, e um registro só cabe 1 MB no
+  // total. Seis fotos grandes estouravam esse limite e a ação simplesmente
+  // não era criada, sem avisar ninguém. Agora existe um teto de verdade:
+  // cabe até 3 fotos e a soma nunca passa de 700 KB.
+  const TETO_FOTOS = 700000;
+  const MAX_FOTOS = 3;
 
   async function pegarFoto(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
+    setAvisoFoto('');
     if (!file) return;
+    if (fotos.length >= MAX_FOTOS) { setAvisoFoto(`Dá para anexar até ${MAX_FOTOS} fotos aqui. Depois de criar a ação você põe quantas quiser no relatório.`); return; }
     try {
-      let d = await comprimirImagem(file, 0.7, 900);
-      if (d.length > 800000) d = await comprimirImagem(file, 0.5, 700);
-      setFotos(fs => [...fs, d].slice(0, 6));
-    } catch (err) { /* imagem ilegível */ }
+      const usado = fotos.reduce((s, x) => s + x.length, 0);
+      let d = await comprimirImagem(file, 0.6, 800);
+      if (usado + d.length > TETO_FOTOS) d = await comprimirImagem(file, 0.45, 620);
+      if (usado + d.length > TETO_FOTOS) d = await comprimirImagem(file, 0.35, 480);
+      if (usado + d.length > TETO_FOTOS) {
+        setAvisoFoto('Essa foto não coube junto com as outras. Tire uma foto antes, ou crie a ação e anexe o resto no relatório.');
+        return;
+      }
+      setFotos(fs => [...fs, d]);
+    } catch (err) { setAvisoFoto('Não consegui ler essa imagem. Tente outra.'); }
   }
 
   const podeSalvar = f.titulo.trim() && f.data;
@@ -1148,7 +1337,8 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
 
       <div className="cartao">
         <strong style={{ display: 'block', marginBottom: 6 }}>📷 Fotos do local (opcional)</strong>
-        <p className="dica" style={{ margin: '0 0 8px' }}>Elas aparecem na Colheita, mostrando onde o projeto esteve.</p>
+        <p className="dica" style={{ margin: '0 0 8px' }}>Elas aparecem na Colheita, mostrando onde o projeto esteve. Até {MAX_FOTOS} fotos.</p>
+        {avisoFoto && <div className="erro" style={{ marginBottom: 8 }}>{avisoFoto}</div>}
         {fotos.length > 0 && (
           <div className="grade-fotos" style={{ marginBottom: 8 }}>
             {fotos.map((ft, i) => (
@@ -1160,7 +1350,7 @@ function FormAcao({ antiga, aoCancelar, aoSalvar }) {
             ))}
           </div>
         )}
-        {fotos.length < 6 && (
+        {fotos.length < MAX_FOTOS && (
           <div className="foto-ad-vazia">
             <label className="foto-ad-botao">
               <Camera size={19} /><span>Tirar foto</span>
@@ -1206,12 +1396,24 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
   const gastosMateriais = movimentos.filter(m => deltaMov(m) < 0
     && (m.acaoId === acao.id || (!m.acaoId && diasDela.includes(isoDe(m.em || m.criadoEm)))));
 
+  // Um atendimento vira DOIS registros: o horário na agenda (atendimento) e a
+  // ficha do que foi feito (procedimento). Contar os dois dobrava o número de
+  // atendimentos da ação. Só entram aqui os procedimentos que NÃO vieram de um
+  // atendimento — os que o dentista lançou direto pela ficha do paciente.
+  const idsAtendidos = new Set(feitos.map(a => a.id));
+  const procsSoltos = procsDaAcao.filter(r => !r.atendimentoId || !idsAtendidos.has(r.atendimentoId));
+
   const custoAtend = feitos.reduce((s, a) => s + custoAtendimento(a), 0);
   const custoRegistros = registros.reduce((s, r) => s + Number(r.valor || 0), 0);
   const custoMateriais = gastosMateriais.reduce((s, m) => s + Math.abs(deltaMov(m)) * Number(m.valorUnit || 0), 0);
   const gastoNotas = notas.reduce((s, n) => s + Number(n.valor || 0), 0);
   const produzido = custoAtend + custoRegistros;
-  const gasto = custoMateriais + gastoNotas;
+  // Nota fiscal é o dinheiro que SAIU (a compra). Material retirado do estoque
+  // é o uso daquilo que já foi comprado. Somar os dois contava a mesma despesa
+  // duas vezes e o resultado da ação aparecia pior do que realmente é. Fica o
+  // maior dos dois: se houve nota, ela é a despesa de verdade; se o material
+  // veio de doação (sem nota), o valor do estoque é a melhor conta que temos.
+  const gasto = Math.max(custoMateriais, gastoNotas);
   const totalManuais = registros.reduce((s, r) => s + (Number(r.dentes || 0) > 0 ? 1 : Number(r.quantos || 1)), 0);
   const dentesTratados = procsDaAcao.reduce((s, r) => s + (r.dentes || []).length, 0)
     + registros.reduce((s, r) => s + Number(r.dentes || 0), 0);
@@ -1256,7 +1458,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
           </div>
         </div>
         <div className="grade-numeros">
-          <div className="cartao-numero"><strong>{doDele.length + manuaisDele.length}</strong><span>atendimentos</span></div>
+          <div className="cartao-numero"><strong>{doDele.length + procsSoltos.filter(r => r.autorUid === v.id).length + manuaisDele.length}</strong><span>atendimentos</span></div>
           <div className="cartao-numero"><strong>{dentesDele}</strong><span>dentes tratados</span></div>
           <div className="cartao-numero"><strong>{minutos ? `${minutos} min` : '—'}</strong><span>tempo na cadeira</span></div>
           <div className="cartao-numero destaque"><strong>{dinheiro(valorDele)}</strong><span>valor produzido</span></div>
@@ -1318,7 +1520,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         const marcado = escalados.includes(v.id);
         const meus = (acao.procedimentosPorUid || {})[v.id] || v.procedimentos || [];
         const doDele = feitos.filter(a => a.profissionalUid === v.id);
-        const quantos = doDele.length + procsDaAcao.filter(r => r.autorUid === v.id).length + registros.filter(r => r.profissionalUid === v.id).length;
+        const quantos = doDele.length + procsSoltos.filter(r => r.autorUid === v.id).length + registros.filter(r => r.profissionalUid === v.id).length;
         const valorDele = doDele.reduce((sm, a) => sm + custoAtendimento(a), 0)
           + registros.filter(r => r.profissionalUid === v.id).reduce((sm, r) => sm + Number(r.valor || 0), 0);
         return (
@@ -1372,7 +1574,7 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         <span>valor da ação (tratamento entregue)</span>
       </div>
       <div className="grade-numeros">
-        <div className="cartao-numero"><strong>{feitos.length + totalManuais}</strong><span>atendimentos</span></div>
+        <div className="cartao-numero"><strong>{feitos.length + procsSoltos.length + totalManuais}</strong><span>atendimentos</span></div>
         <div className="cartao-numero"><strong>{pessoasAtendidas}</strong><span>pessoas atendidas</span></div>
         <div className="cartao-numero"><strong>{dentesTratados}</strong><span>dentes tratados</span></div>
         <div className="cartao-numero"><strong>{escalados.length}</strong><span>pessoas na equipe</span></div>
@@ -1383,6 +1585,11 @@ function TelaAcao({ acao, equipe, pacientes, atendimentos, movimentos, todasArea
         <strong>💰 Resultado (produzido − gastos)</strong>
         <b style={{ fontSize: 18, color: (produzido - gasto) >= 0 ? '#226343' : '#B3402A' }}>{dinheiro(produzido - gasto)}</b>
       </div>
+      <p className="obs" style={{ margin: '6px 2px 0' }}>
+        O gasto da ação conta o maior entre materiais e notas fiscais — a nota é a
+        compra e o material é o uso dela, então somar os dois contaria a mesma
+        despesa duas vezes.
+      </p>
       {gasto > 0 && produzido > 0 && (
         <div className="cartao" style={{ border: '1.5px solid #37935B' }}>
           <div className="cartao-topo"><strong>💚 Cada R$ 1,00 gasto virou</strong><strong style={{ fontSize: 20 }}>{dinheiro(produzido / gasto)}</strong></div>
@@ -2207,7 +2414,14 @@ function App() {
     let cancelado = false;
     const lembrete = 'pm-ja-entrou-' + usuario.uid;
     const libera = () => { gravarLocal(lembrete, true); if (!cancelado) setAcesso('liberado'); };
-    const nega = () => { if (!cancelado) setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir'); };
+    // O lembrete deste aparelho só vale quando foi a INTERNET que falhou.
+    // Se o banco RESPONDEU que a pessoa não tem mais acesso, o lembrete é
+    // apagado — antes, quem perdia o acesso continuava entrando para sempre.
+    const nega = (foiRede) => {
+      if (cancelado) return;
+      if (!foiRede) { try { localStorage.removeItem(lembrete); } catch (e) { /* nada */ } setAcesso('pedir'); return; }
+      setAcesso(lerLocal(lembrete, false) ? 'liberado' : 'pedir');
+    };
     (async () => {
       try {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
@@ -2221,14 +2435,8 @@ function App() {
             return;
           }
         }
-        const algum = await getDocs(query(collection(fb.db, 'palmar-usuarios'), limit(1)));
-        if (algum.empty) {
-          setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'fundador', criadoEm: serverTimestamp() }).catch(() => {});
-          libera();
-          return;
-        }
-        nega();
-      } catch (e) { nega(); }
+        nega(false);
+      } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
   }, [usuario]);
@@ -2237,11 +2445,18 @@ function App() {
     const cod = codigo.trim().toUpperCase();
     const { doc, getDoc, setDoc, updateDoc, serverTimestamp } = fb.fns;
     const ref = doc(fb.db, 'palmar-codigos', cod);
-    const snap = await getDoc(ref);
+    const snap = await getDoc(ref).catch(() => null);
+    if (!snap) return 'Sem internet para conferir o código. Tente de novo com conexão.';
     if (!snap.exists()) return 'Código não encontrado. Confira as letras.';
     if (snap.data().usadoPor) return 'Esse código já foi usado.';
-    setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'gestor', criadoEm: serverTimestamp() }).catch(() => {});
-    updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() }).catch(() => {});
+    // Gastar o código PRIMEIRO, e esperar: é essa marca no banco que prova,
+    // para as regras de segurança, que a pessoa tem direito de entrar.
+    try {
+      await updateDoc(ref, { usadoPor: usuario.uid, usadoPorNome: usuario.nome || '', usadoEm: serverTimestamp() });
+    } catch (e) {
+      return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
+    }
+    setDoc(doc(fb.db, 'palmar-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'gestor', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
     gravarLocal('pm-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
@@ -2278,6 +2493,23 @@ function App() {
     setUsuario(null);
   }
 
+  // Apagar a conta: some o acesso de gestor e a conta de entrada
+  const [apagandoConta, setApagandoConta] = useState(false);
+  const [vendoSuporte, setVendoSuporte] = useState(false);
+  async function apagarMinhaConta(senha) {
+    if (CONFIGURADO && gestores.length <= 1) {
+      throw new Error('Você é o único gestor. Gere um código de acesso para outra pessoa antes de apagar a sua conta — senão o Palmar fica trancado para todo mundo.');
+    }
+    await apagarConta(CONFIGURADO ? fb : null, usuario,
+      [{ colecao: 'palmar-usuarios', id: usuario.uid },
+       { colecao: 'palmar-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
+       ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
+      ['pm-usuario', 'pm-ja-entrou-' + usuario.uid], senha);
+    if (window.__sairNativoGoogle) { try { await window.__sairNativoGoogle(); } catch (e) { /* segue */ } }
+    setApagandoConta(false);
+    setUsuario(null);
+  }
+
   // ─── Chamadas (paciente e staff): a mesma tela de ligação dos outros ───
   const [chamadas, setChamadas] = useState([]);
   const [chamadasVistas, setChamadasVistas] = useState([]);
@@ -2293,6 +2525,27 @@ function App() {
       }));
     });
   }, [usuario?.uid]);
+  // ─── A LIGAÇÃO em si ───
+  // Quem chama fica numa ligação aberta esperando atenderem; quem atende
+  // entra na mesma conversa. Guardamos aqui qual chamada é a "minha".
+  const [minhaChamadaId, setMinhaChamadaId] = useState('');
+  const chamandoAgora = chamadas.find(c => c.id === minhaChamadaId && c.ativa !== false) || null;
+  function desligarMinhaChamada() {
+    const c = chamandoAgora;
+    setMinhaChamadaId('');
+    if (!c || !CONFIGURADO) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), { ativa: false, encerradaEm: fb.fns.serverTimestamp() }).catch(() => {});
+  }
+  // Atendeu: entra na conversa, mas a chamada continua de pé enquanto as
+  // pessoas falam. Quem desliga é quem chamou (ou o próprio, no Encerrar).
+  function marcarAtendida(c) {
+    if (!CONFIGURADO || !c) return;
+    fb.fns.updateDoc(fb.fns.doc(fb.db, 'chamadas', c.id), {
+      atendidaPorUid: usuario?.uid, atendidaEm: fb.fns.serverTimestamp(),
+      ...(c.tipo === 'staff' ? {} : { ativa: false }),
+    }).catch(() => {});
+  }
+
   function encerrarChamada(c, atendida) {
     setChamadasVistas(v => [...v, c.id]);
     if (!CONFIGURADO) { setChamadas(cs => cs.filter(x => x.id !== c.id)); return; }
@@ -2312,8 +2565,10 @@ function App() {
       ...(motivo ? { motivo, convocacaoId } : {}),
     };
     if (!CONFIGURADO) { setChamadas(cs => [...cs, { id: 'c' + Math.floor(Math.random() * 1e9), ...dados, nova: true }]); return; }
-    const { collection, addDoc, serverTimestamp } = fb.fns;
-    addDoc(collection(fb.db, 'chamadas'), { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    const { collection, doc, setDoc, serverTimestamp } = fb.fns;
+    const ref = doc(collection(fb.db, 'chamadas'));
+    setDoc(ref, { ...dados, criadoEm: serverTimestamp() }).catch(() => {});
+    setMinhaChamadaId(ref.id);   // eu entro na minha própria ligação
   }
   useEffect(() => {
     window.__atenderChamada = (id) => encerrarChamada({ id }, true);
@@ -2357,13 +2612,29 @@ function App() {
   else if (!pronto) conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
   else if (!usuario) conteudo = <TelaLogin aoEntrarDemo={setUsuario} />;
   else if (acesso === 'checando') conteudo = <div className="carregando"><LogoApp tamanho={96} /></div>;
-  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} />;
-  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoChamarStaff={chamarStaff} />;
-  return <>{conteudo}{chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={c => encerrarChamada(c, true)} />}{abertura}</>;
+  else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Palmar" aoVoltar={() => setVendoSuporte(false)} />;
+  else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta}
+    oQueFica="As ações, o estoque, as notas e o histórico do projeto continuam — são registros do trabalho, não dados seus. Se você era o único gestor, gere um código de acesso para outra pessoa ANTES de apagar."
+    aoVoltar={() => setApagandoConta(false)} />;
+  else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} aoChamarStaff={chamarStaff} />;
+  // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
+  // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
+  // desligar (segunda chamada, sem a marca) é que fecha a tela.
+  const naLigacao = (c, entrando) => {
+    if (entrando) { marcarAtendida(c); return; }
+    encerrarChamada(c, true);
+  };
+  return <>{conteudo}
+    {chamadaNaTela && <TelaChamada chamada={chamadaNaTela} aoAtender={naLigacao}
+      fb={CONFIGURADO ? fb : null} usuario={{ uid: usuario?.uid, nome: usuario?.nome }} />}
+    {chamandoAgora && <TelaChamando chamada={chamandoAgora} fb={CONFIGURADO ? fb : null}
+      usuario={{ uid: usuario?.uid, nome: usuario?.nome }} aoDesligar={() => desligarMinhaChamada()} />}
+    {abertura}</>;
 }
 
 if (!window.__appJaSubiu) {
   window.__appJaSubiu = true;
   ligarGestoVoltar();
-  createRoot(document.getElementById('root')).render(<App />);
+  createRoot(document.getElementById('root')).render(<RedeDeSeguranca><App /></RedeDeSeguranca>);
 }

@@ -34,10 +34,6 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>armv7</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -65,12 +61,10 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>A câmera é usada para tirar a foto do paciente no cadastro e registrar fotos dos atendimentos na ficha.</string>
+	<string>A câmera é usada pela equipe do projeto para fotografar a boca e o rosto do paciente durante o atendimento gratuito — por exemplo, registrar o antes e o depois de uma restauração na ficha dele. As fotos só são feitas com a autorização do paciente.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>A galeria é usada para escolher fotos do paciente e dos atendimentos.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Permite salvar fotos dos atendimentos na galeria.</string>
+	<string>A galeria é usada para você anexar à ficha do paciente uma foto do atendimento que já está no aparelho — por exemplo, a foto do antes tirada no mutirão anterior.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>O microfone pode ser solicitado pela câmera do aparelho ao registrar fotos e vídeos.</string>
+	<string>O microfone é usado nas ligações entre a equipe durante o mutirão — quando alguém chama outra pessoa, as duas conseguem se falar — e para gravar o vídeo de depoimento do paciente.</string>
 </dict>
 </plist>
