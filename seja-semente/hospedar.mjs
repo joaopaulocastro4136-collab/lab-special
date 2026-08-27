@@ -6,9 +6,10 @@
 import crypto from 'crypto';
 import zlib from 'zlib';
 import { execSync } from 'child_process';
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { privacidade, suporte } from './paginas.mjs';
 
 const raiz = dirname(fileURLToPath(import.meta.url));
 const SA = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -21,6 +22,13 @@ execSync('node semente/build.mjs', { cwd: raiz, stdio: 'inherit' });
 execSync('node semeador/build.mjs', { cwd: raiz, stdio: 'inherit' });
 execSync('node palmar/build.mjs', { cwd: raiz, stdio: 'inherit' });
 execSync('node colheita/build.mjs', { cwd: raiz, stdio: 'inherit' });
+
+// 1b. Escreve a política de privacidade e o suporte em cada site (a Apple exige)
+for (const pasta of ['dist-semente', 'dist-semeador', 'dist-palmar', 'dist-colheita']) {
+  writeFileSync(join(raiz, pasta, 'privacidade.html'), privacidade);
+  writeFileSync(join(raiz, pasta, 'suporte.html'), suporte);
+}
+console.log('✓ privacidade.html e suporte.html prontos nos quatro sites');
 
 // 2. Token do Google (mesmo caminho dos outros robôs)
 async function token() {
