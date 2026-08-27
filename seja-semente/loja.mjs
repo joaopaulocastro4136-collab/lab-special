@@ -252,7 +252,20 @@ async function cuidarDe(chave) {
       console.log(`   versão ainda presa no envio anterior — esperando (${t}/6)…`);
       await espera(15000);
     }
-    if (!item.ok) { console.log(`   ✗ não consegui colocar a versão no envio: ${erroDe(item)}`); return { falta: ['colocar a versão no envio'] }; }
+    if (!item.ok) {
+      const motivo = erroDe(item);
+      console.log(`   ✗ a Apple não aceitou: ${motivo}`);
+      if (motivo.includes('APP_DATA_USAGES')) {
+        console.log('   ┌─ Falta a PRIVACIDADE DO APP, e essa a Apple só deixa responder no site dela.');
+        console.log('   │  App Store Connect → o aplicativo → Privacidade do app → Editar → responder e PUBLICAR:');
+        console.log('   │    • Informações de contato: nome, e-mail, telefone → Funcionalidade do app · ligado à pessoa · sem rastreamento');
+        console.log('   │    • Saúde e preparo físico: saúde → Funcionalidade do app · ligado à pessoa · sem rastreamento');
+        console.log('   │    • Conteúdo do usuário: fotos ou vídeos → Funcionalidade do app · ligado à pessoa · sem rastreamento');
+        console.log('   │    • Identificadores: ID do usuário → Funcionalidade do app · ligado à pessoa · sem rastreamento');
+        console.log('   └─ Respondido nos quatro, rode este robô de novo com MODO=enviar e ele termina sozinho.');
+      }
+      return { falta: ['privacidade do app (responder no site da Apple)'] };
+    }
     console.log('   versão colocada no envio ✓');
   } else console.log('   o envio já tem esta versão ✓');
 
