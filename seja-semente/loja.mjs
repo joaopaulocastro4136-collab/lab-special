@@ -43,7 +43,15 @@ async function api(metodo, caminho, corpo) {
   try { dados = texto ? JSON.parse(texto) : null; } catch (e) { /* resposta vazia */ }
   return { status: r.status, dados, ok: r.status < 300 };
 }
-const erroDe = (r) => ((r.dados?.errors || []).map(e => e.detail || e.title).join(' | ')) || `HTTP ${r.status}`;
+const erroDe = (r) => {
+  const lista = [];
+  for (const e of (r.dados?.errors || [])) {
+    lista.push(e.detail || e.title);
+    for (const grupo of Object.values(e.meta?.associatedErrors || {}))
+      for (const a of grupo) lista.push(`${a.code}: ${a.title}`);
+  }
+  return lista.join(' | ') || `HTTP ${r.status}`;
+};
 const espera = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ─── Textos de reserva: só entram onde a ficha estiver VAZIA ───
