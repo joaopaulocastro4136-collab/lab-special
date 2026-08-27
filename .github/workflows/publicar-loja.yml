@@ -3,6 +3,10 @@
 name: Publicar na App Store
 
 on:
+  # De 3 em 3 horas o robô tenta sozinho. Assim que os quatro estiverem na
+  # fila da Apple ele só confirma isso e sai — não reenvia nada.
+  schedule:
+    - cron: '20 */3 * * *'
   workflow_dispatch:
     inputs:
       app:
