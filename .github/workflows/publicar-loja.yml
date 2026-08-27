@@ -1,0 +1,37 @@
+# UM BOTÃO SÓ: manda os quatro aplicativos do Seja Semente para a App Store.
+# Aba Actions → "Publicar na App Store" → Run workflow. Sem preencher nada.
+name: Publicar na App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Qual aplicativo (deixe "todos" para mandar os quatro)'
+        required: false
+        default: 'todos'
+        type: choice
+        options: [todos, central, semeador, palmar, colheita]
+      modo:
+        description: 'enviar = manda mesmo · conferir = só olha e diz o que falta'
+        required: false
+        default: 'enviar'
+        type: choice
+        options: [enviar, conferir]
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Manda para a loja
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          MODO: ${{ github.event.inputs.modo || 'enviar' }}
+          APP: ${{ github.event.inputs.app || 'todos' }}
+        run: node seja-semente/loja.mjs

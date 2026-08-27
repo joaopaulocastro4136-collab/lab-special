@@ -262,7 +262,8 @@ async function cuidarDe(chave) {
         console.log('   │    • Saúde e preparo físico: saúde → Funcionalidade do app · ligado à pessoa · sem rastreamento');
         console.log('   │    • Conteúdo do usuário: fotos ou vídeos → Funcionalidade do app · ligado à pessoa · sem rastreamento');
         console.log('   │    • Identificadores: ID do usuário → Funcionalidade do app · ligado à pessoa · sem rastreamento');
-        console.log('   └─ Respondido nos quatro, rode este robô de novo com MODO=enviar e ele termina sozinho.');
+        console.log(`   │  Link direto: https://appstoreconnect.apple.com/apps/${app.id}/distribution/privacy`);
+        console.log('   └─ Respondido nos quatro, é só apertar "Publicar na App Store" de novo que ele termina sozinho.');
       }
       return { falta: ['privacidade do app (responder no site da Apple)'] };
     }
