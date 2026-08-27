@@ -86,6 +86,7 @@ async function cuidarDe(chave) {
   for (const loc of listaLocs) {
     const a = loc.attributes;
     const semDescricao = !a.description || a.description.length < 10;
+    if (MODO === 'conferir') console.log(`   ficha (${a.locale}): descrição ${(a.description || '').length} letras · palavras "${(a.keywords || '').slice(0, 40)}" · suporte "${a.supportUrl || ''}"`);
     if (MODO === 'enviar') {
       const r = await api('PATCH', `/v1/appStoreVersionLocalizations/${loc.id}`, {
         data: { type: 'appStoreVersionLocalizations', id: loc.id, attributes: {
@@ -100,11 +101,19 @@ async function cuidarDe(chave) {
     }
   }
 
-  // 4. Capturas de tela — a Apple EXIGE pelo menos as do iPhone 6.7"
-  const conjuntos = await api('GET', `/v1/appStoreVersionLocalizations/${listaLocs[0]?.id}/appScreenshotSets`);
-  const temCapturas = ((conjuntos.dados && conjuntos.dados.data) || []).length > 0;
-  if (temCapturas) feito.push('capturas de tela enviadas');
-  else falta.push('CAPTURAS DE TELA do iPhone (o robô de capturas gera e envia)');
+  // 4. Capturas de tela — a Apple EXIGE as do iPhone grande (6.5" ou 6.9")
+  const conjuntos = await api('GET', `/v1/appStoreVersionLocalizations/${listaLocs[0]?.id}/appScreenshotSets?include=appScreenshots`);
+  const listaConj = (conjuntos.dados && conjuntos.dados.data) || [];
+  const porTipo = [];
+  for (const c of listaConj) {
+    const quantas = ((c.relationships?.appScreenshots?.data) || []).length;
+    porTipo.push(`${c.attributes.screenshotDisplayType}=${quantas}`);
+  }
+  console.log('   capturas: ' + (porTipo.length ? porTipo.join(' · ') : 'nenhuma'));
+  const grandes = listaConj.filter(c => /6_5|6_9|6_7/.test(c.attributes.screenshotDisplayType)
+    && ((c.relationships?.appScreenshots?.data) || []).length > 0);
+  if (grandes.length) feito.push('capturas de tela do iPhone');
+  else falta.push('CAPTURAS DE TELA do iPhone grande (6.5\" ou 6.9\")');
 
   // 5. Política de privacidade (obrigatória para qualquer app)
   const infos = await api('GET', `/v1/apps/${app.id}/appInfos`);
@@ -118,6 +127,7 @@ async function cuidarDe(chave) {
         });
         console.log(r.ok ? `✓ política de privacidade (${l.attributes.locale})` : `✗ privacidade (${l.attributes.locale}): ${r.status}`);
       } else if (!l.attributes.privacyPolicyUrl) {
+        console.log(`   privacidade (${l.attributes.locale}): vazia`);
         falta.push(`política de privacidade (${l.attributes.locale}) — o robô preenche`);
       } else feito.push('política de privacidade');
     }
@@ -125,15 +135,18 @@ async function cuidarDe(chave) {
 
   // 6. Classificação etária
   const decl = await api('GET', `/v1/apps/${app.id}/appInfos?include=ageRatingDeclaration`);
-  const temIdade = (decl.dados?.included || []).some(x => x.type === 'ageRatingDeclarations');
-  if (temIdade) feito.push('classificação etária respondida');
-  else falta.push('classificação etária (questionário no App Store Connect)');
+  const idade = (decl.dados?.included || []).find(x => x.type === 'ageRatingDeclarations');
+  const respostas = Object.values(idade?.attributes || {}).filter(v => v !== null && v !== undefined);
+  console.log(`   classificação etária: ${respostas.length} resposta(s)`);
+  if (respostas.length >= 3) feito.push('classificação etária respondida');
+  else falta.push('classificação etária (questionário) — o robô responde');
 
   // 7. Conta de teste para o revisor da Apple — obrigatória em app com login
   const detalhe = await api('GET', `/v1/appStoreVersions/${versao.id}/appStoreReviewDetail`);
   const d = detalhe.dados?.data?.attributes;
-  if (d?.demoAccountRequired && d?.demoAccountName) feito.push('conta de teste para o revisor');
-  else falta.push('CONTA DE TESTE para o revisor da Apple (usuário e senha que ele usa para entrar)');
+  console.log(`   revisor: exige conta=${d?.demoAccountRequired} · usuário="${d?.demoAccountName || ''}" · contato="${d?.contactEmail || ''}"`);
+  if (d?.demoAccountRequired && d?.demoAccountName && d?.demoAccountPassword) feito.push('conta de teste para o revisor');
+  else falta.push('CONTA DE TESTE para o revisor da Apple — o robô cria e preenche');
 
   // 8. Entrar com Apple (regra 4.8) — já existe nas quatro telas de entrada
   feito.push('entrar com a Apple (regra 4.8)');
