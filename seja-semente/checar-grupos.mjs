@@ -35,7 +35,8 @@ for (const [bundle, nome] of APPS) {
   const num = b.attributes.version;
   const estado = b.attributes.processingState;
   // Em quais grupos este build está?
-  const grupos = await api(`/builds/${b.id}/betaGroups`);
+  const grupos = await api(`/betaGroups?filter[builds]=${b.id}`);
+  if (grupos.erro) console.log(`   (aviso ao consultar grupos: ${grupos.erro})`);
   const nomes = (grupos.data || []).map(g => g.attributes.name);
   // Estado da análise beta (link público)
   const rev = await api(`/builds/${b.id}/betaAppReviewSubmission`);
