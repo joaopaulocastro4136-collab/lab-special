@@ -1,5 +1,5 @@
-// Lista os códigos que a Apple usa no questionário de privacidade e na tabela
-// de preço, para o robô da loja poder preencher os dois sozinho.
+// Sonda os caminhos da App Store Connect para achar o questionário de
+// privacidade e a tabela de preço. Só lê — não muda nada.
 import crypto from 'crypto';
 const KEY_ID = process.env.ASC_KEY_ID.trim(), ISSUER = process.env.ASC_ISSUER_ID.trim(), P8 = process.env.ASC_KEY_P8;
 function jwt() {
@@ -12,28 +12,28 @@ async function api(c) {
   const t = await r.text(); let d = null; try { d = t ? JSON.parse(t) : null; } catch (e) {}
   return { status: r.status, dados: d, cru: t };
 }
-
-console.log('─── categorias de dado ───');
-const cat = await api('/v1/appDataUsageCategories?limit=100');
-for (const c of (cat.dados?.data || [])) console.log(' ', c.id, '·', c.attributes?.deprecated ? '(antigo)' : '');
-console.log(cat.status, (cat.dados?.data || []).length, 'categoria(s)');
-
-console.log('\n─── finalidades ───');
-const fin = await api('/v1/appDataUsagePurposes?limit=100');
-for (const c of (fin.dados?.data || [])) console.log(' ', c.id, JSON.stringify(c.attributes || {}));
-
-console.log('\n─── proteções ───');
-const pro = await api('/v1/appDataUsageDataProtections?limit=100');
-for (const c of (pro.dados?.data || [])) console.log(' ', c.id, JSON.stringify(c.attributes || {}));
-
-console.log('\n─── preço grátis (BRA) ───');
-const terr = await api('/v1/territories?limit=200');
-const bra = (terr.dados?.data || []).find(t => t.id === 'BRA');
-console.log('território BRA:', bra ? 'ok' : 'não achei');
 const app = await api('/v1/apps?filter[bundleId]=com.sejasemente.central');
-const idApp = (app.dados?.data || [])[0]?.id;
-console.log('app central:', idApp);
-const pontos = await api(`/v2/apps/${idApp}/appPricePoints?filter[territory]=BRA&limit=5`);
-console.log('pontos de preço:', pontos.status);
-for (const p of (pontos.dados?.data || []).slice(0, 5)) console.log(' ', p.id, JSON.stringify(p.attributes || {}));
-if (pontos.status >= 300) console.log(pontos.cru.slice(0, 500));
+const ID = (app.dados?.data || []).find(a => a.attributes.bundleId === 'com.sejasemente.central')?.id;
+console.log('app central:', ID);
+
+const sondas = [
+  '/v1/appDataUsageCategories?limit=60',
+  '/v1/appDataUsagePurposes?limit=60',
+  '/v1/appDataUsageDataProtections?limit=60',
+  `/v1/apps/${ID}/appDataUsages?limit=50&include=category,grouping,purposes,dataProtections`,
+  `/v1/apps/${ID}/appDataUsagesPublishState`,
+  `/v1/apps/${ID}/appPricePoints?filter[territory]=BRA&limit=3`,
+  `/v1/apps/${ID}/appPriceSchedule?include=manualPrices,baseTerritory`,
+  `/v1/appPricePoints?filter[app]=${ID}&filter[territory]=BRA&limit=3`,
+  `/v2/apps/${ID}/appPriceSchedule`,
+  `/v1/apps/${ID}/appAvailabilityV2?include=territoryAvailabilities&limit=3`,
+];
+for (const s of sondas) {
+  const r = await api(s);
+  const n = Array.isArray(r.dados?.data) ? r.dados.data.length : (r.dados?.data ? 1 : 0);
+  console.log(`\n${r.status}  ${s}   → ${n} item(ns)`);
+  if (r.status >= 300) { console.log('   ', (r.dados?.errors || []).map(e => e.code + ': ' + e.detail).join(' | ').slice(0, 300)); continue; }
+  const amostra = Array.isArray(r.dados?.data) ? r.dados.data.slice(0, 6) : [r.dados?.data];
+  for (const x of amostra) if (x) console.log('   ', x.type, x.id, JSON.stringify(x.attributes || {}).slice(0, 220));
+  for (const x of (r.dados?.included || []).slice(0, 8)) console.log('   inc:', x.type, x.id, JSON.stringify(x.attributes || {}).slice(0, 160));
+}
