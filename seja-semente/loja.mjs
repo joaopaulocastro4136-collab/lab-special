@@ -166,6 +166,29 @@ async function cuidarDe(chave) {
   if (MODO !== 'enviar') { console.log('✓ tudo pronto — rode com MODO=enviar'); return { falta: [] }; }
 
   // ─── ENVIAR ───
+  // 8b. Preço: a Apple não aceita envio sem tabela de preço. Os quatro são
+  //     gratuitos, então o robô marca o preço zero em todos os países.
+  const tabela = await api('GET', `/v1/apps/${app.id}/appPriceSchedule?include=manualPrices`);
+  const temPreco = (tabela.dados?.included || []).some(x => x.type === 'appPrices');
+  if (temPreco) console.log('   preço já definido ✓');
+  else {
+    const pontos = await api('GET', `/v1/apps/${app.id}/appPricePoints?filter[territory]=BRA&limit=3`);
+    const gratis = ((pontos.dados && pontos.dados.data) || []).find(x => Number(x.attributes.customerPrice) === 0);
+    if (!gratis) { console.log(`   ✗ não achei o preço zero: ${erroDe(pontos)}`); return { falta: ['definir o preço'] }; }
+    const cria = await api('POST', '/v1/appPriceSchedules', {
+      data: { type: 'appPriceSchedules', relationships: {
+        app: { data: { type: 'apps', id: app.id } },
+        baseTerritory: { data: { type: 'territories', id: 'BRA' } },
+        manualPrices: { data: [{ type: 'appPrices', id: '${gratis}' }] },
+      } },
+      included: [{ type: 'appPrices', id: '${gratis}', relationships: {
+        appPricePoint: { data: { type: 'appPricePoints', id: gratis.id } },
+      } }],
+    });
+    if (!cria.ok) { console.log(`   ✗ não consegui definir o preço: ${erroDe(cria)}`); return { falta: ['definir o preço'] }; }
+    console.log('   preço definido: gratuito ✓');
+  }
+
   // 9. Declaração de criptografia (senão trava em "Missing Compliance")
   const comp = await api('PATCH', `/v1/builds/${build.id}`, {
     data: { type: 'builds', id: build.id, attributes: { usesNonExemptEncryption: false } },

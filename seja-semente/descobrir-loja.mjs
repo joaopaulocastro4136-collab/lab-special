@@ -26,7 +26,9 @@ const sondas = [
   `/v1/apps/${ID}/appPriceSchedule?include=manualPrices,baseTerritory`,
   `/v1/appPricePoints?filter[app]=${ID}&filter[territory]=BRA&limit=3`,
   `/v2/apps/${ID}/appPriceSchedule`,
-  `/v1/apps/${ID}/appAvailabilityV2?include=territoryAvailabilities&limit=3`,
+  `/v1/apps/${ID}/appAvailabilityV2?include=territoryAvailabilities`,
+  `/v1/appDataUsages?filter[app]=${ID}&limit=50`,
+  `/v1/apps/${ID}?include=appPriceSchedule,appAvailabilityV2,appInfos,endUserLicenseAgreement`,
 ];
 for (const s of sondas) {
   const r = await api(s);
