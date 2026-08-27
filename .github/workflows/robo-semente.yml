@@ -10,6 +10,14 @@ on:
         description: 'Script a rodar (ex.: seja-semente/criar-firebase.mjs)'
         required: true
         default: 'seja-semente/checar-apps.mjs'
+      modo:
+        description: 'MODO do script (ex.: conferir ou enviar)'
+        required: false
+        default: ''
+      app:
+        description: 'APP do script (central|semeador|palmar|colheita|todos)'
+        required: false
+        default: ''
 
 jobs:
   rodar:
@@ -28,4 +36,6 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
           APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          MODO: ${{ github.event.inputs.modo }}
+          APP: ${{ github.event.inputs.app }}
         run: node ${{ github.event.inputs.script }}
