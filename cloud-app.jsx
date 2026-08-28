@@ -412,14 +412,27 @@ async function sincronizarFinanceiroClinica(pagamentosJson) {
       (listas[p.dentista] = listas[p.dentista] || []).push({ data: p.data || null, valor: p.valor || 0 });
     }
     const batch = writeBatch(db);
+    const escritos = new Set();
     for (const nome in totais) {
       const idSeguro = nome.replace(/\//g, '-');
+      escritos.add(idSeguro);
       batch.set(doc(db, 'labs', LAB, 'financeiroClinica', idSeguro), {
         nome,
         totalPago: Math.round(totais[nome] * 100) / 100,
         pagamentos: (listas[nome] || []).slice(0, 400),
       });
     }
+    // Dentista que TINHA baixas e não tem mais (o gestor removeu) precisa ser zerado aqui:
+    // sem isto o total pago antigo ficava preso na nuvem e o app do dentista seguia
+    // descontando um pagamento que não existe mais (saldo negativo de mentira).
+    try {
+      const antigos = await getDocs(collection(db, 'labs', LAB, 'financeiroClinica'));
+      antigos.forEach(d => {
+        if (!escritos.has(d.id) && (d.data().totalPago || 0) !== 0) {
+          batch.set(doc(db, 'labs', LAB, 'financeiroClinica', d.id), { nome: d.data().nome || d.id, totalPago: 0, pagamentos: [] });
+        }
+      });
+    } catch (e) { /* sem permissão/offline — os que têm baixa seguem corretos */ }
     await batch.commit();
   } catch (e) { console.error('Erro ao sincronizar financeiro da clínica', e); }
 }

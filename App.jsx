@@ -2157,6 +2157,53 @@ export default function App() {
     setConfirmandoExclusao(false);
   };
 
+  // ── Acerto de conta do cliente: zera o saldo sem apagar nada ──
+  // Marca os trabalhos escolhidos como totalmente pagos (valorPago = valor) e guarda
+  // a data do acerto — o histórico de produção, as etapas e as comissões ficam intactos.
+  // O dentista vê o saldo zerar na hora (a nuvem espelha o valorPago pro Special Clinic).
+  const acertarConta = async (ids, desfazer) => {
+    const alvo = new Set(ids);
+    const hoje = todayISO();
+    const novos = casosVivos().map(c => {
+      if (!alvo.has(c.id)) return c;
+      if (desfazer) return { ...c, valorPago: null, acertoEm: null };
+      const v = Math.round((Number(c.valor) || 0) * 100) / 100;
+      return v > 0 ? { ...c, valorPago: v, acertoEm: hoje } : c;
+    });
+    const ok = await persistCasos(novos);
+    if (!ok) { mostrarAviso('Não consegui salvar o acerto — confira a internet.'); carregarDados(); return false; }
+    mostrarAviso(desfazer ? 'Acerto desfeito ✓' : 'Conta acertada — saldo zerado ✓');
+    return true;
+  };
+
+  // ── Apagar trabalhos em lote (lixo de teste) ──
+  // Grava a lista PRIMEIRO e só depois remove os anexos: se a internet cair, o trabalho
+  // volta inteiro (o deleteCaso antigo apagava os arquivos antes e o caso voltava sem eles).
+  // Trabalho com comissão lançada NUNCA entra — a trava do "paga uma vez" é pelo id do caso.
+  const excluirCasos = async (ids) => {
+    const alvo = new Set(ids);
+    const lista = casosVivos();
+    const paraApagar = lista.filter(c => alvo.has(c.id));
+    if (!paraApagar.length) return false;
+    if (paraApagar.some(c => comissoes.some(k => k.casoId === c.id))) {
+      mostrarAviso('Um dos trabalhos já pagou comissão — ele não pode ser apagado.');
+      return false;
+    }
+    const ok = await persistCasos(lista.filter(c => !alvo.has(c.id)));
+    if (!ok) { mostrarAviso('Não consegui apagar na nuvem — confira a internet.'); carregarDados(); return false; }
+    for (const c of paraApagar) {
+      for (const a of (c.anexos || [])) {
+        if (a.caminho && window.arquivos) { try { await window.arquivos.apagar(a.caminho); } catch (e) { /* já removido */ } }
+        else { try { await window.storage.delete(`anexo-${a.id}`); } catch (e) { /* já removido */ } }
+      }
+    }
+    if (window.nuvemCasos && window.nuvemCasos.logar) {
+      window.nuvemCasos.logar({ acao: 'excluir-lote', qtd: paraApagar.length, dentista: paraApagar[0].dentista || '' });
+    }
+    mostrarAviso(`${paraApagar.length} ${paraApagar.length === 1 ? 'trabalho apagado' : 'trabalhos apagados'} ✓`);
+    return true;
+  };
+
   // Anexo novo vai pro armazém de arquivos (rápido, binário); o banco guarda só o link.
   // Sem armazém disponível, cai no formato antigo (dataURL no banco).
   const addAnexo = async (casoId, { nome, mime, categoria, blob, dataURL, tamanho, aoProgresso }) => {
@@ -2643,6 +2690,10 @@ export default function App() {
         )}
         {view === 'dentistas' && (
           <DentistasView dentistas={dentistas} casos={casos}
+            comissoes={comissoes} pagamentos={pagamentos} ehGestor={ehGestor}
+            onAcertarConta={acertarConta}
+            onExcluirCasos={excluirCasos}
+            onRemoverPagamento={removerPagamento}
             onAddDentista={(d) => persistConfig({ dentistas: [...dentistas, d] })}
             onUpdateDentista={(nome, patch) => persistConfig({ dentistas: dentistas.map(d => d.nome === nome ? { ...d, ...patch } : d) })}
             onRemoveDentista={(nome) => persistConfig({ dentistas: dentistas.filter(d => d.nome !== nome) })}
@@ -4504,13 +4555,21 @@ function ChavePixCard({ chavePix, onSalvar }) {
 
 // Página dedicada de dentistas: lista → toca num dentista → ficha completa dele
 // (e-mail, telefone, endereço, combinado de pagamento) + os trabalhos só dele.
-function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onImprimirRelatorio, onSetValorPago, onVoltar, tituloVoltar }) {
+function DentistasView({ dentistas, casos, comissoes, pagamentos, ehGestor, onAddDentista, onUpdateDentista, onRemoveDentista, onVerCaso, onImprimirRelatorio, onSetValorPago, onAcertarConta, onExcluirCasos, onRemoverPagamento, onVoltar, tituloVoltar }) {
   const [sel, setSel] = useState(null); // dentista aberto (nome)
   const [verTrabalhos, setVerTrabalhos] = useState(false);
   // Relatório com escolha: quais trabalhos entram + valor já pago de cada um
   const [escolhendo, setEscolhendo] = useState(false);
   const [marcadosRel, setMarcadosRel] = useState({}); // id -> true
   const [pagoEditRel, setPagoEditRel] = useState({}); // id -> texto digitado
+  // Acerto de conta: zerar os valores antigos (e, na zona de risco, apagar lixo de teste)
+  const [acertoAberto, setAcertoAberto] = useState(false);
+  const [marcadosAcerto, setMarcadosAcerto] = useState({}); // id -> true
+  const [confAcerto, setConfAcerto] = useState(false);
+  const [zonaRisco, setZonaRisco] = useState(false);
+  const [marcadosApagar, setMarcadosApagar] = useState({}); // id -> true
+  const [textoApagar, setTextoApagar] = useState('');
+  const [trabalhando, setTrabalhando] = useState(false);
   const [combinadoAberto, setCombinadoAberto] = useState(false);
   const [confRemover, setConfRemover] = useState(false);
   const [novoNome, setNovoNome] = useState('');
@@ -4540,6 +4599,52 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
     trabalhosDoDentista.forEach(c => { mapa[c.id] = pagoDigitadoRel(c.id); });
     onSetValorPago && onSetValorPago(mapa);
     onImprimirRelatorio(dentista, escolhidos, 'selecionados', baixar);
+  };
+
+  // ── Acerto de conta ──
+  const temComissao = (c) => (comissoes || []).some(k => k.casoId === c.id);
+  const jaAcertados = trabalhosDoDentista.filter(c => c.acertoEm);
+  const baixasDoDentista = (pagamentos || []).filter(p => p.dentista === sel);
+  // Abre já marcando o que faz sentido zerar: trabalhos com valor que ainda têm saldo.
+  // O que está EM PRODUÇÃO fica desmarcado (marcar como pago faria o dentista ver que
+  // pagou algo que nem foi entregue) — só entra se o gestor tocar de propósito.
+  const abrirAcerto = () => {
+    const m = {};
+    trabalhosDoDentista.forEach(c => {
+      const v = Number(c.valor) || 0;
+      if (v > 0 && pagoDe(c) < v && finalizadoCompleto(c)) m[c.id] = true;
+    });
+    setMarcadosAcerto(m);
+    setConfAcerto(false);
+    setZonaRisco(false);
+    setMarcadosApagar({});
+    setTextoApagar('');
+    setAcertoAberto(true);
+  };
+  const marcadosAcertoIds = trabalhosDoDentista.filter(c => marcadosAcerto[c.id]).map(c => c.id);
+  const somaMarcadaAcerto = trabalhosDoDentista
+    .filter(c => marcadosAcerto[c.id])
+    .reduce((s, c) => s + Math.max(0, (Number(c.valor) || 0) - pagoDe(c)), 0);
+  const confirmarAcerto = async () => {
+    if (!marcadosAcertoIds.length || trabalhando) return;
+    setTrabalhando(true);
+    const ok = await onAcertarConta(marcadosAcertoIds, false);
+    setTrabalhando(false);
+    if (ok) { setConfAcerto(false); setAcertoAberto(false); }
+  };
+  const desfazerAcerto = async () => {
+    if (!jaAcertados.length || trabalhando) return;
+    setTrabalhando(true);
+    await onAcertarConta(jaAcertados.map(c => c.id), true);
+    setTrabalhando(false);
+  };
+  const marcadosApagarIds = trabalhosDoDentista.filter(c => marcadosApagar[c.id] && !temComissao(c)).map(c => c.id);
+  const confirmarApagar = async () => {
+    if (!marcadosApagarIds.length || textoApagar.trim().toUpperCase() !== 'APAGAR' || trabalhando) return;
+    setTrabalhando(true);
+    const ok = await onExcluirCasos(marcadosApagarIds);
+    setTrabalhando(false);
+    if (ok) { setMarcadosApagar({}); setTextoApagar(''); setZonaRisco(false); setAcertoAberto(false); }
   };
 
   const addDentista = () => {
@@ -4736,6 +4841,163 @@ function DentistasView({ dentistas, casos, onAddDentista, onUpdateDentista, onRe
             </>
           );
         })()}
+
+        {/* ── Acerto de conta: zera os valores antigos e deixa só os novos ── */}
+        {ehGestor && trabalhosDoDentista.length > 0 && (
+          <div className="rounded-2xl bg-white border border-stone-200 p-4 mb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ListChecks size={15} color={GOLD} />
+              <span className="text-xs font-bold" style={{ color: '#7A6234', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Acerto de conta</span>
+            </div>
+            <p className="text-xs text-stone-400 mb-3 leading-relaxed">
+              Zera os valores antigos deste cliente: os trabalhos escolhidos ficam como <b>pagos</b> e o saldo vai a zero — no seu app e no do dentista. O histórico continua guardado, e daqui pra frente só conta o que você lançar de novo.
+            </p>
+
+            {!acertoAberto ? (
+              <>
+                <button onClick={abrirAcerto}
+                  className="w-full py-3 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 border"
+                  style={{ borderColor: GOLD, color: '#7A6234', background: '#fff' }}>
+                  <CheckCircle2 size={15} /> Zerar valores antigos
+                </button>
+                {jaAcertados.length > 0 && (
+                  <button onClick={desfazerAcerto} disabled={trabalhando}
+                    className="w-full mt-2 py-2.5 rounded-xl text-xs font-bold"
+                    style={{ background: '#F5F4F0', color: '#57534E' }}>
+                    <Undo2 size={12} className="inline" /> Desfazer o acerto ({jaAcertados.length} {jaAcertados.length === 1 ? 'trabalho' : 'trabalhos'})
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="rounded-xl" style={{ border: '1px solid #E7E5E4', overflow: 'hidden' }}>
+                {baixasDoDentista.length > 0 && (
+                  <div className="px-3 py-2.5 text-xs leading-relaxed" style={{ background: '#FEF6E7', color: '#7A4A00', borderBottom: '1px solid #E7E5E4' }}>
+                    ⚠️ Este cliente tem <b>{baixasDoDentista.length} {baixasDoDentista.length === 1 ? 'baixa de pagamento antiga' : 'baixas de pagamento antigas'}</b> ({formatReais(baixasDoDentista.reduce((s, p) => s + (p.valor || 0), 0))}) lançadas no Financeiro. Se elas também forem de teste, remova antes — senão o saldo dele pode ficar negativo.
+                    <button onClick={() => baixasDoDentista.forEach(p => onRemoverPagamento && onRemoverPagamento(p.id))}
+                      className="w-full mt-2 py-2 rounded-lg text-xs font-bold" style={{ background: '#fff', color: '#B45309', border: '1px solid #E8C48A' }}>
+                      Remover essas baixas antigas
+                    </button>
+                  </div>
+                )}
+                <div className="flex gap-2 p-2" style={{ background: '#FAF9F7' }}>
+                  <button onClick={() => { const m = {}; trabalhosDoDentista.forEach(c => { m[c.id] = true; }); setMarcadosAcerto(m); }}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#78716C' }}>
+                    Marcar todos
+                  </button>
+                  <button onClick={() => setMarcadosAcerto({})}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold" style={{ border: '1px solid #E7E5E4', background: '#fff', color: '#78716C' }}>
+                    Desmarcar
+                  </button>
+                </div>
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                  {trabalhosDoDentista.map(c => {
+                    const marcado = !!marcadosAcerto[c.id];
+                    const v = Number(c.valor) || 0;
+                    const falta = Math.round((v - pagoDe(c)) * 100) / 100;
+                    const emProducao = !finalizadoCompleto(c);
+                    return (
+                      <button key={c.id} onClick={() => setMarcadosAcerto(m => ({ ...m, [c.id]: !m[c.id] }))}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left"
+                        style={{ borderTop: '1px solid #F5F5F4', opacity: marcado ? 1 : 0.5 }}>
+                        <span className="flex-shrink-0 rounded-md flex items-center justify-center" style={{ width: 20, height: 20, border: marcado ? 'none' : '1.5px solid #D6D3D1', background: marcado ? VERDE : '#fff', color: '#fff', fontSize: 12, fontWeight: 900 }}>
+                          {marcado ? '✓' : ''}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-bold truncate" style={{ color: INK }}>{c.paciente}</span>
+                          <span className="block text-xs truncate" style={{ color: emProducao ? '#B45309' : '#A8A29E' }}>
+                            {emProducao ? '⚠ ainda em produção' : ((c.itens && c.itens.length) ? rotuloItens(c.itens) : c.tipoTrabalho)}
+                          </span>
+                        </span>
+                        <span className="text-sm font-extrabold flex-shrink-0" style={{ color: falta > 0 ? '#166B3A' : '#A8A29E' }}>
+                          {v > 0 ? (falta > 0 ? formatReais(falta) : 'pago ✓') : 'sem valor'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="px-3 py-2.5" style={{ borderTop: '1px solid #E7E5E4', background: '#FAF9F7' }}>
+                  {!confAcerto ? (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-stone-500">{marcadosAcertoIds.length} {marcadosAcertoIds.length === 1 ? 'trabalho' : 'trabalhos'}</span>
+                        <span className="text-sm font-extrabold" style={{ color: INK }}>zera {formatReais(somaMarcadaAcerto)}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setAcertoAberto(false)} className="flex-1 py-2.5 rounded-lg text-xs font-bold" style={{ background: '#F0EFEC', color: '#57534E' }}>Cancelar</button>
+                        <button onClick={() => setConfAcerto(true)} disabled={!marcadosAcertoIds.length}
+                          className="flex-1 py-2.5 rounded-lg text-xs font-extrabold"
+                          style={{ background: marcadosAcertoIds.length ? INK : '#E7E5E4', color: marcadosAcertoIds.length ? '#fff' : '#A8A29E' }}>
+                          Zerar esses valores
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xs leading-relaxed mb-2" style={{ color: '#7F1D1D', background: '#FDECEC', borderRadius: 10, padding: '8px 11px' }}>
+                        Vou marcar <b>{marcadosAcertoIds.length} {marcadosAcertoIds.length === 1 ? 'trabalho' : 'trabalhos'}</b> ({formatReais(somaMarcadaAcerto)}) como pagos. O saldo de {dentista.nome.split(/\s+/)[0]} vai a zero no aplicativo dele. Dá pra desfazer depois.
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setConfAcerto(false)} disabled={trabalhando} className="flex-1 py-2.5 rounded-lg text-xs font-bold" style={{ background: '#F0EFEC', color: '#57534E' }}>Voltar</button>
+                        <button onClick={confirmarAcerto} disabled={trabalhando}
+                          className="flex-1 py-2.5 rounded-lg text-xs font-extrabold text-white" style={{ background: VERDE, opacity: trabalhando ? 0.6 : 1 }}>
+                          {trabalhando ? 'Zerando…' : 'Confirmar acerto'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Zona de risco: apagar de vez os trabalhos que foram só teste */}
+                <div className="px-3 py-2.5" style={{ borderTop: '1px solid #E7E5E4' }}>
+                  <button onClick={() => setZonaRisco(z => !z)} className="w-full text-xs font-bold text-left" style={{ color: '#B42318' }}>
+                    <AlertTriangle size={12} className="inline" /> {zonaRisco ? 'Fechar' : 'Apagar trabalhos de teste (não tem volta)'}
+                  </button>
+                  {zonaRisco && (
+                    <div className="mt-2">
+                      <div className="text-xs leading-relaxed mb-2" style={{ color: '#7F1D1D', background: '#FDECEC', borderRadius: 10, padding: '8px 11px' }}>
+                        Apagar é <b>definitivo</b>: o trabalho some do seu app e do app do dentista, e não tem lixeira. Baixe o PDF antes ("Baixar todos", acima). Trabalho que já pagou comissão fica bloqueado 🔒.
+                      </div>
+                      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #F5B5B5', borderRadius: 10 }}>
+                        {trabalhosDoDentista.map(c => {
+                          const bloqueado = temComissao(c);
+                          const marcado = !!marcadosApagar[c.id] && !bloqueado;
+                          return (
+                            <button key={c.id} onClick={() => { if (!bloqueado) setMarcadosApagar(m => ({ ...m, [c.id]: !m[c.id] })); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-left"
+                              style={{ borderTop: '1px solid #F5F5F4', opacity: bloqueado ? 0.45 : 1 }}>
+                              <span className="flex-shrink-0 rounded-md flex items-center justify-center" style={{ width: 18, height: 18, border: marcado ? 'none' : '1.5px solid #D6D3D1', background: marcado ? '#B42318' : '#fff', color: '#fff', fontSize: 11, fontWeight: 900 }}>
+                                {marcado ? '✓' : ''}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-xs font-bold truncate" style={{ color: INK }}>{c.paciente}</span>
+                                <span className="block text-stone-400 truncate" style={{ fontSize: 10.5 }}>
+                                  {bloqueado ? '🔒 já pagou comissão' : ((c.itens && c.itens.length) ? rotuloItens(c.itens) : c.tipoTrabalho)}
+                                </span>
+                              </span>
+                              <span className="text-xs font-bold flex-shrink-0 text-stone-400">{Number(c.valor) > 0 ? formatReais(c.valor) : '—'}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {marcadosApagarIds.length > 0 && (
+                        <>
+                          <p className="text-xs text-stone-500 mt-2 mb-1">Para apagar {marcadosApagarIds.length} {marcadosApagarIds.length === 1 ? 'trabalho' : 'trabalhos'}, escreva <b>APAGAR</b>:</p>
+                          <input value={textoApagar} onChange={e => setTextoApagar(e.target.value)} placeholder="APAGAR"
+                            className="w-full px-3 py-2.5 rounded-xl text-sm" style={{ border: '1px solid #E7E5E4', minWidth: 0 }} />
+                          <button onClick={confirmarApagar} disabled={trabalhando || textoApagar.trim().toUpperCase() !== 'APAGAR'}
+                            className="w-full mt-2 py-2.5 rounded-lg text-xs font-extrabold text-white flex items-center justify-center gap-1.5"
+                            style={{ background: '#B42318', opacity: (trabalhando || textoApagar.trim().toUpperCase() !== 'APAGAR') ? 0.5 : 1 }}>
+                            <Trash2 size={13} /> {trabalhando ? 'Apagando…' : 'Apagar de vez'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <button onClick={() => setVerTrabalhos(v => !v)} className="w-full mb-4 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm font-extrabold" style={{ background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, boxShadow: '0 10px 24px -12px rgba(184,147,90,0.8)' }}>
           <ClipboardList size={16} /> {verTrabalhos ? 'Ocultar trabalhos' : `Ver trabalhos de ${dentista.nome.split(/\s+/)[0]}`} ({trabalhosDoDentista.length})
@@ -8175,6 +8437,9 @@ function FinancasView({ casos, comissoes, ehGestor, pagamentos, dentistas, onSal
   casos.filter(c => c.status === 'Entregue' && etapasCompletas(c)).forEach(c => {
     if (!receber[c.dentista]) receber[c.dentista] = { entregue: 0, pago: 0, trabalhos: [] };
     receber[c.dentista].entregue += (c.valor || 0);
+    // O que já foi marcado como pago NO TRABALHO também abate aqui — senão o acerto de
+    // conta zerava a ficha do cliente e este painel seguia cobrando o mesmo valor
+    receber[c.dentista].pago += Math.min(Math.max(Number(c.valorPago) || 0, 0), c.valor || 0);
     receber[c.dentista].trabalhos.push(c);
   });
   (pagamentos || []).forEach(p => {
