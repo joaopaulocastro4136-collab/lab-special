@@ -1,0 +1,35 @@
+# Repõe no banco os lançamentos de comissão que se perderam — vale na hora em
+# qualquer aparelho, mesmo com o app antigo.
+# Por padrão SÓ RELATA. Para gravar de verdade, mude APLICAR para "1" e dê push
+# (o push deste arquivo dispara o robô; o disparo manual não funciona fora da main).
+name: Recuperar comissões
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/recuperar-comissoes.yml
+      - recuperar-comissoes.mjs
+
+env:
+  APLICAR: "0"
+  LAB: "principal"
+
+jobs:
+  recuperar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Confere (e, se pedido, repõe) os lançamentos de comissão
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          node recuperar-comissoes.mjs
