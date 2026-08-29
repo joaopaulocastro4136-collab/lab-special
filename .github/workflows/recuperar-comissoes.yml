@@ -12,7 +12,7 @@ on:
       - recuperar-comissoes.mjs
 
 env:
-  APLICAR: "0"
+  APLICAR: "1"
   LAB: "principal"
 
 jobs:
