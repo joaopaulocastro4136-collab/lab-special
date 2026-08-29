@@ -1443,11 +1443,28 @@ export default function App() {
       } catch (e) { /* sem histórico */ }
       try {
         const cm = await window.storage.get('comissoes-registro');
+        // Lançamento de comissão é PERMANENTE (regra: um trabalho paga uma vez, mesmo
+        // refeito) — nenhuma limpeza automática aqui; correção é manual, pelo gestor,
+        // no relatório da equipe (reatribuir ou excluir o lançamento).
+        let riscadas = [];
+        try {
+          const rm = await window.storage.get('comissoes-removidas');
+          if (rm && rm.value) riscadas = JSON.parse(rm.value) || [];
+        } catch (e) { /* sem exclusões registradas */ }
         if (cm && cm.value) {
-          // Lançamento de comissão é PERMANENTE (regra: um trabalho paga uma vez, mesmo
-          // refeito) — nenhuma limpeza automática aqui; correção é manual, pelo gestor,
-          // no relatório da equipe (reatribuir ou excluir o lançamento).
-          setComissoes(JSON.parse(cm.value));
+          const daNuvem = JSON.parse(cm.value) || [];
+          // UNE com o que este aparelho já tinha: se a nuvem voltar com menos (gravação de
+          // outro aparelho por cima, ou leitura incompleta), nenhum lançamento se perde
+          const juntas = unirComissoes(daNuvem, comissoesVivas(), riscadas);
+          window.__comissoesVivas = juntas;
+          window.__comissoesRiscadas = riscadas;
+          setComissoes(juntas);
+          // A nuvem tinha menos do que temos: regrava a lista completa de volta
+          if (juntas.length > daNuvem.length) {
+            try { await window.storage.set('comissoes-registro', JSON.stringify(juntas)); } catch (e2) { /* tenta na próxima ação */ }
+          }
+        } else {
+          window.__comissoesRiscadas = riscadas;
         }
       } catch (e) { /* sem comissões */ }
       try {
@@ -1556,22 +1573,167 @@ export default function App() {
     setHistoricoTempos(novo);
     flashSave(() => window.storage.set('historico-tempos', JSON.stringify(novo)));
   };
-  const persistComissoes = (novas) => {
+  // ─── Livro-razão das comissões: dinheiro da equipe, NUNCA pode encolher ───
+  // Dois perigos reais que já apagaram lançamentos:
+  //   1) render velho: uma tela montada antes do último lançamento regravava a lista
+  //      antiga por cima (por isso os casos têm window.__casosVivos — agora as
+  //      comissões têm o mesmo espelho vivo);
+  //   2) dois aparelhos: o registro é um arquivo único na nuvem, e quem gravasse por
+  //      último apagava o lançamento do outro. Agora a gravação MISTURA com o que já
+  //      está na nuvem (une por id) em vez de sobrescrever.
+  // Exclusão feita pelo gestor é respeitada por uma lista de "riscados" (comissoes-removidas),
+  // senão a mistura ressuscitaria o lançamento apagado de propósito.
+  const comissoesVivas = () => window.__comissoesVivas || comissoes;
+  const riscadasVivas = () => window.__comissoesRiscadas || [];
+  const unirComissoes = (a, b, riscadas) => {
+    const fora = new Set(riscadas || []);
+    const mapa = new Map();
+    [...(a || []), ...(b || [])].forEach(c => {
+      if (!c || !c.id || fora.has(c.id)) return;
+      if (!mapa.has(c.id)) mapa.set(c.id, c);
+    });
+    return [...mapa.values()].sort((x, y) => String(y.data || '').localeCompare(String(x.data || '')));
+  };
+  const persistComissoes = (novas, idsRiscados) => {
+    const riscadas = idsRiscados && idsRiscados.length
+      ? [...new Set([...riscadasVivas(), ...idsRiscados])]
+      : riscadasVivas();
+    window.__comissoesVivas = novas;
+    window.__comissoesRiscadas = riscadas;
     setComissoes(novas);
-    flashSave(() => window.storage.set('comissoes-registro', JSON.stringify(novas)));
+    return flashSave(async () => {
+      // Mistura com o que está gravado agora (outro aparelho pode ter lançado no meio)
+      let daNuvem = [];
+      try {
+        const atual = await window.storage.get('comissoes-registro');
+        if (atual && atual.value) daNuvem = JSON.parse(atual.value) || [];
+      } catch (e) { /* offline: grava o que temos */ }
+      const final = unirComissoes(novas, daNuvem, riscadas);
+      if (final.length !== novas.length) { window.__comissoesVivas = final; setComissoes(final); }
+      await window.storage.set('comissoes-registro', JSON.stringify(final));
+      if (idsRiscados && idsRiscados.length) {
+        try { await window.storage.set('comissoes-removidas', JSON.stringify(riscadas)); } catch (e) { /* tenta na próxima */ }
+      }
+    });
   };
   // REGRA DE OURO da comissão: cada trabalho paga UMA vez, pra sempre. Reabrir/refazer
   // o trabalho NÃO apaga o lançamento (fica registrado, com a marca de "refeito") e
   // refinalizar NÃO paga de novo — senão dava pra voltar as etapas e receber toda hora.
   // Erro genuíno se corrige manualmente no relatório da equipe (reatribuir/excluir).
   const marcarComissaoReaberta = (casoId) => {
-    if (!comissoes.some(c => c.casoId === casoId)) return false;
-    if (comissoes.some(c => c.casoId === casoId && !c.reaberto)) {
-      persistComissoes(comissoes.map(c => c.casoId === casoId ? { ...c, reaberto: c.reaberto || todayISO() } : c));
+    const lista = comissoesVivas();
+    if (!lista.some(c => c.casoId === casoId)) return false;
+    if (lista.some(c => c.casoId === casoId && !c.reaberto)) {
+      persistComissoes(lista.map(c => c.casoId === casoId ? { ...c, reaberto: c.reaberto || todayISO() } : c));
     }
     return true;
   };
   const MSG_COMISSAO_MANTIDA = ' A comissão deste trabalho já foi registrada e fica valendo — refazer NÃO paga de novo.';
+
+  // ─── Conferência do livro-razão: o que os trabalhos dizem × o que está lançado ───
+  // Varre os trabalhos e monta a comissão que DEVERIA existir (mesma regra do registro:
+  // modo por etapa paga quem concluiu cada etapa; modo automático divide pelas horas).
+  // O que não estiver no livro aparece como "faltando" — é assim que se acha o que sumiu.
+  // Lançamento riscado de propósito pelo gestor não volta.
+  const comissoesFaltando = () => {
+    const ledger = comissoesVivas();
+    const riscadas = new Set(riscadasVivas());
+    const faltando = [];
+    (casosVivos() || []).forEach(caso => {
+      if (temComissaoPorEtapa(caso, tiposTrabalho)) {
+        (caso.etapas || []).forEach(e => {
+          if (!e.concluida || e.pulada || !e.funcionarioId) return;
+          const valor = comissaoConfigDaEtapa(caso, e, tiposTrabalho);
+          if (!(valor > 0)) return;
+          const existe = ledger.some(c => c.casoId === caso.id && c.etapa === e.nome && (c.item || null) === (e.item || null));
+          if (existe) return;
+          const chave = `${caso.id}|${e.nome}|${e.item || ''}`;
+          if (riscadas.has(chave)) return;
+          faltando.push({
+            chave, casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
+            etapa: e.nome, item: e.item || null, valor, participacao: null,
+            funcionarioId: e.funcionarioId, funcionario: e.funcionario || null,
+            data: e.dataConclusao || caso.dataFinalizado || caso.dataSaida || todayISO(),
+          });
+        });
+        return;
+      }
+      // Modo automático: só paga quando o trabalho está realmente finalizado
+      if (!finalizadoCompleto(caso)) return;
+      if (ledger.some(c => c.casoId === caso.id)) return;
+      const nomesTipos = (caso.itens && caso.itens.length) ? caso.itens.map(i => i.nome) : [caso.tipoTrabalho];
+      const valorComissao = nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
+      if (!(valorComissao > 0)) return;
+      const participantes = {};
+      let totalHoras = 0;
+      (caso.etapas || []).forEach(e => {
+        if (e.concluida && e.funcionarioId) {
+          const peso = e.horas || 1;
+          totalHoras += peso;
+          if (!participantes[e.funcionarioId]) participantes[e.funcionarioId] = { nome: e.funcionario, horas: 0 };
+          participantes[e.funcionarioId].horas += peso;
+        }
+      });
+      const ids = Object.keys(participantes);
+      const dataRef = caso.dataFinalizado || caso.dataSaida || todayISO();
+      if (!ids.length) {
+        // Sem executor gravado nas etapas: crédito do responsável do trabalho (se houver)
+        if (!caso.responsavelId || !funcionarios.some(f => f.id === caso.responsavelId)) return;
+        const chave = `${caso.id}|`;
+        if (riscadas.has(chave)) return;
+        faltando.push({
+          chave, casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
+          etapa: null, item: null, valor: valorComissao, participacao: 100,
+          funcionarioId: caso.responsavelId,
+          funcionario: caso.responsavel || funcionarios.find(f => f.id === caso.responsavelId)?.nome || null,
+          data: dataRef,
+        });
+        return;
+      }
+      let acumulado = 0;
+      ids.forEach((fid, idx) => {
+        const fracao = participantes[fid].horas / totalHoras;
+        const pct = Math.round(fracao * 100);
+        const v = idx === ids.length - 1
+          ? Math.round((valorComissao - acumulado) * 100) / 100
+          : Math.round(valorComissao * fracao * 100) / 100;
+        acumulado += v;
+        const chave = `${caso.id}|${fid}`;
+        if (riscadas.has(chave)) return;
+        faltando.push({
+          chave, casoId: caso.id, paciente: caso.paciente, tipoTrabalho: caso.tipoTrabalho,
+          etapa: null, item: null, valor: v, participacao: pct,
+          funcionarioId: fid, funcionario: participantes[fid].nome, data: dataRef,
+        });
+      });
+    });
+    return faltando;
+  };
+
+  // Repõe no livro-razão os lançamentos escolhidos pelo gestor (com a data original do
+  // trabalho, pra caírem no mês certo). Nunca duplica: reconfere a trava antes de gravar.
+  const recuperarComissoes = async (chaves) => {
+    const alvo = new Set(chaves);
+    const pendentes = comissoesFaltando().filter(f => alvo.has(f.chave));
+    if (!pendentes.length) return false;
+    const novos = pendentes.map((f, i) => ({
+      id: 'rec' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i,
+      casoId: f.casoId, paciente: f.paciente, tipoTrabalho: f.tipoTrabalho,
+      etapa: f.etapa, item: f.item, valor: f.valor, participacao: f.participacao,
+      funcionarioId: f.funcionarioId, funcionario: f.funcionario, data: f.data, recuperado: todayISO(),
+    }));
+    const ok = await persistComissoes([...novos, ...comissoesVivas()]);
+    mostrarAviso(ok
+      ? `${novos.length} ${novos.length === 1 ? 'comissão recuperada' : 'comissões recuperadas'} ✓`
+      : 'Não consegui salvar — confira a internet.');
+    return ok;
+  };
+  // Gestor descartou um lançamento faltante: risca pra não aparecer de novo na conferência
+  const descartarFaltante = (chave) => {
+    const riscadas = [...new Set([...riscadasVivas(), chave])];
+    window.__comissoesRiscadas = riscadas;
+    flashSave(() => window.storage.set('comissoes-removidas', JSON.stringify(riscadas)));
+  };
   const persistLogos = (novos) => {
     setLogosRegistros(novos);
     flashSave(() => window.storage.set('logos-registros', JSON.stringify(novos)));
@@ -1763,7 +1925,8 @@ export default function App() {
   // ETAPA: a mesma etapa do mesmo trabalho nunca paga duas vezes, mesmo desfeita e
   // refeita — o registro é permanente (regra de ouro, agora no nível da etapa).
   const registrarComissoesPorEtapa = (caso, etapas) => {
-    const jaPaga = (e) => comissoes.some(c => c.casoId === caso.id && c.etapa === e.nome && (c.item || null) === (e.item || null));
+    const ledger = comissoesVivas();
+    const jaPaga = (e) => ledger.some(c => c.casoId === caso.id && c.etapa === e.nome && (c.item || null) === (e.item || null));
     const pagaveis = (etapas || []).filter(e =>
       e.concluida && !e.pulada && e.funcionarioId && (comissaoConfigDaEtapa(caso, e, tiposTrabalho) || 0) > 0 && !jaPaga(e));
     if (!pagaveis.length) return '';
@@ -1774,7 +1937,7 @@ export default function App() {
       valor: comissaoConfigDaEtapa(caso, e, tiposTrabalho),
       participacao: null, funcionarioId: e.funcionarioId, funcionario: e.funcionario || null, data: todayISO(),
     }));
-    persistComissoes([...novos, ...comissoes]);
+    persistComissoes([...novos, ...ledger]);
     const porPessoa = {};
     novos.forEach(n => { porPessoa[n.funcionario || 'equipe'] = (porPessoa[n.funcionario || 'equipe'] || 0) + n.valor; });
     return ' 💰 ' + Object.entries(porPessoa).map(([nome, v]) => `${formatReais(v)} na conta de ${nome}`).join(', ') + '.';
@@ -1792,8 +1955,9 @@ export default function App() {
     const valorComissao = nomesTipos.reduce((s, n) => s + (tiposTrabalho.find(t => t.nome === n)?.comissao || 0), 0);
     if (!(valorComissao > 0)) return '';
     // TRAVA: comissão é registrada UMA única vez por trabalho — refinalizar após desfazer não duplica
-    if (comissoes.some(c => c.casoId === caso.id)) {
-      const antigo = comissoes.filter(c => c.casoId === caso.id);
+    const ledgerAuto = comissoesVivas();
+    if (ledgerAuto.some(c => c.casoId === caso.id)) {
+      const antigo = ledgerAuto.filter(c => c.casoId === caso.id);
       const quem = [...new Set(antigo.map(c => c.funcionario).filter(Boolean))].join(', ');
       return ` Comissão deste trabalho JÁ foi registrada em ${formatDateBR(antigo[0].data)}${quem ? ` (${quem})` : ''} — trabalho refeito não paga de novo.`;
     }
@@ -1836,7 +2000,7 @@ export default function App() {
     }));
     // SEM teto: o registro de comissões é um livro-razão permanente — cortar os antigos
     // faria a trava anti-duplicação esquecê-los (trabalho antigo refeito pagaria de novo)
-    persistComissoes([...novosRegistros, ...comissoes]);
+    persistComissoes([...novosRegistros, ...ledgerAuto]);
     return partes.length === 1
       ? ` Comissão de ${formatReais(partes[0].valor)} para ${partes[0].funcionario}.`
       : ` Comissão de ${formatReais(valorComissao)} dividida: ${partes.map(p => `${p.funcionario} ${formatReais(p.valor)} (${p.pct}%)`).join(', ')}.`;
@@ -2130,7 +2294,7 @@ export default function App() {
   const reatribuirComissao = (registroId, novoFuncId) => {
     const f = funcionarios.find(x => x.id === novoFuncId);
     if (!f) return;
-    persistComissoes(comissoes.map(c => c.id === registroId ? { ...c, funcionarioId: f.id, funcionario: f.nome } : c));
+    persistComissoes(comissoesVivas().map(c => c.id === registroId ? { ...c, funcionarioId: f.id, funcionario: f.nome } : c));
   };
   const deleteCaso = async (id) => {
     const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
@@ -2185,7 +2349,7 @@ export default function App() {
     const lista = casosVivos();
     const paraApagar = lista.filter(c => alvo.has(c.id));
     if (!paraApagar.length) return false;
-    if (paraApagar.some(c => comissoes.some(k => k.casoId === c.id))) {
+    if (paraApagar.some(c => comissoesVivas().some(k => k.casoId === c.id))) {
       mostrarAviso('Um dos trabalhos já pagou comissão — ele não pode ser apagado.');
       return false;
     }
@@ -2681,7 +2845,10 @@ export default function App() {
             medias={calcularMedias(historicoTempos)}
             onUpdateTipo={atualizarTipo}
             onReatribuirComissao={reatribuirComissao}
-            onExcluirComissao={(id) => persistComissoes(comissoes.filter(c => c.id !== id))}
+            onExcluirComissao={(id) => persistComissoes(comissoesVivas().filter(c => c.id !== id), [id])}
+            faltando={view === 'equipe' ? comissoesFaltando() : []}
+            onRecuperarComissoes={recuperarComissoes}
+            onDescartarFaltante={descartarFaltante}
             onVoltar={() => setView('dashboard')}
             onAbrirMeu={usuarioAtivo ? () => setView('meu') : null} />
         )}
@@ -6496,10 +6663,11 @@ function ServicosComissoesCard({ tiposTrabalho, onUpdateTipo }) {
   );
 }
 
-function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onExcluirComissao, onVoltar, onAbrirMeu }) {
+function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, ehGestor, medias, onUpdateTipo, onReatribuirComissao, onExcluirComissao, faltando, onRecuperarComissoes, onDescartarFaltante, onVoltar, onAbrirMeu }) {
   const [funcionarioSel, setFuncionarioSel] = useState(null);
   const [corrigindo, setCorrigindo] = useState(null); // id do registro de comissão sendo reatribuído
   const [excluindo, setExcluindo] = useState(null); // id do lançamento em confirmação de exclusão (exceção do gestor)
+  const [recuperando, setRecuperando] = useState(false);
   if (!ehGestor) {
     return (
       <div className="text-center py-14 px-4 rounded-2xl bg-white border border-stone-200">
@@ -6733,6 +6901,53 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
         <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
         <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
       </div>
+
+      {/* Conferência: trabalho feito que NÃO tem lançamento no livro — comissão que sumiu */}
+      {(faltando || []).length > 0 && (() => {
+        const total = faltando.reduce((s, f) => s + f.valor, 0);
+        const porPessoa = {};
+        faltando.forEach(f => { const n = f.funcionario || 'sem nome'; porPessoa[n] = (porPessoa[n] || 0) + f.valor; });
+        return (
+          <div className="rounded-2xl p-4 mb-5" style={{ background: '#FFF8E7', border: '1.5px solid #E8C48A' }}>
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle size={15} color="#B45309" />
+              <span className="text-xs font-bold" style={{ color: '#7A4A00', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Comissões faltando ({faltando.length})</span>
+            </div>
+            <p className="text-xs mb-2 leading-relaxed" style={{ color: '#7A4A00' }}>
+              Estes trabalhos <b>já foram feitos</b> e deveriam ter comissão lançada, mas o lançamento não está no livro — provavelmente se perdeu. Confira e recupere: entra com a <b>data original</b>, no mês certo.
+            </p>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {Object.entries(porPessoa).map(([nome, v]) => (
+                <span key={nome} className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: '#fff', color: '#166B3A', border: '1px solid #E7E5E4' }}>
+                  {nome}: {formatReais(v)}
+                </span>
+              ))}
+            </div>
+            <div className="rounded-xl bg-white" style={{ border: '1px solid #E7E5E4', maxHeight: 260, overflowY: 'auto' }}>
+              {faltando.map((f, i) => (
+                <div key={f.chave} className="flex items-center gap-2 px-3 py-2" style={{ borderTop: i > 0 ? '1px solid #F5F5F4' : 'none' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold truncate" style={{ color: INK }}>{f.funcionario || 'sem executor'} • {formatReais(f.valor)}</div>
+                    <div className="text-xs text-stone-400 truncate">
+                      {f.paciente}{f.etapa ? ` • ${f.etapa}` : ''} • {formatDateBR(f.data)}
+                    </div>
+                  </div>
+                  <button onClick={() => onDescartarFaltante && onDescartarFaltante(f.chave)}
+                    className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#F0EFEC' }} title="Não é pra pagar — descartar">
+                    <X size={13} color="#78716C" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button onClick={async () => { setRecuperando(true); await onRecuperarComissoes(faltando.map(f => f.chave)); setRecuperando(false); }}
+              disabled={recuperando}
+              className="w-full mt-2 py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+              style={{ background: VERDE, opacity: recuperando ? 0.6 : 1 }}>
+              <Undo2 size={15} /> {recuperando ? 'Recuperando…' : `Recuperar tudo (${formatReais(total)})`}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Serviços e comissões: o gestor controla o valor pago por etapa */}
       <ServicosComissoesCard tiposTrabalho={tiposTrabalho} onUpdateTipo={onUpdateTipo} />
