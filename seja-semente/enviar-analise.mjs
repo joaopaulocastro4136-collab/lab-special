@@ -39,12 +39,25 @@ const api = async (metodo, caminho, corpo) => {
   try { j = t ? JSON.parse(t) : {}; } catch (e) { j = { cru: t.slice(0, 300) }; }
   return { status: r.status, json: j };
 };
-// A Apple costuma devolver o motivo de verdade no segundo, terceiro erro da
-// lista — o primeiro é sempre o genérico "não pode ser analisado". Mostrar
-// todos, com o código, senão a gente fica adivinhando.
-const porque = (r) => (r.json?.errors || []).map(e =>
-  `[${e.code || e.status || '?'}] ${e.detail || e.title || ''}${e.source?.pointer ? ' (' + e.source.pointer + ')' : ''}`
-).join('\n      ') || JSON.stringify(r.json).slice(0, 300);
+// O motivo de verdade fica ESCONDIDO dentro de cada erro, num campo chamado
+// "meta.associatedErrors" — a mensagem de cima é sempre o genérico "não pode
+// ser analisado". Imprimir o erro inteiro, com esse campo aberto.
+const porque = (r) => {
+  const es = r.json?.errors || [];
+  if (!es.length) return JSON.stringify(r.json).slice(0, 300);
+  return es.map(e => {
+    let txt = `[${e.code || e.status || '?'}] ${e.detail || e.title || ''}${e.source?.pointer ? ' (' + e.source.pointer + ')' : ''}`;
+    const assoc = e.meta?.associatedErrors;
+    if (assoc) {
+      for (const [onde, lista] of Object.entries(assoc)) {
+        for (const a of lista) txt += `\n      ↳ MOTIVO: [${a.code || '?'}] ${a.detail || a.title || ''} (${onde})`;
+      }
+    } else if (e.meta) {
+      txt += `\n      ↳ meta: ${JSON.stringify(e.meta).slice(0, 500)}`;
+    }
+    return txt;
+  }).join('\n      ');
+};
 const cheio = (v) => !!String(v || '').trim();
 
 let algumFalhou = false;
