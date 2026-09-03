@@ -67,6 +67,10 @@ service cloud.firestore {
     match /atendimentos/{doc}  { allow read, write: if ehEquipe(); }
     match /chat/{doc}          { allow read, write: if ehEquipe(); }
     match /avisos/{doc}        { allow read, write: if ehEquipe(); }
+    // As salas do jogo de ludo (Semeador e central). Tinha ficado sem regra
+    // quando o banco foi fechado por papel — a sala nascia só na tela de
+    // quem criava e nunca chegava aos outros.
+    match /jogos-ludo/{doc}    { allow read, write: if ehEquipe(); }
     match /chamadas/{doc} {
       allow read, write: if ehEquipe();
       // A VOZ da ligação: cada pessoa diz que entrou e troca com as outras
