@@ -17,9 +17,14 @@ O que o robô já deixou pronto nos quatro:
 - [x] Preço **Free** nos quatro
 - [x] Versão **8.0** — acima de tudo o que já foi para o TestFlight
 
+**Os quatro foram enviados para a análise em 3 de setembro de 2026** (versão 8.0).
+O que travou no fim, e como saiu: o contrato atualizado da Apple (aceito no
+site), a declaração de privacidade (feita no site, uma por aplicativo) e, só
+no Semeador, o Game Center ligado por engano na versão (desligado pelo robô).
+
 O que ainda depende de gente:
 
-- [ ] **A declaração de privacidade da loja** (App Privacy) — a Apple **não
+- [x] **A declaração de privacidade da loja** (App Privacy) — a Apple **não
   expõe isso na API**: todos os caminhos respondem "não existe". Tem que ser no
   site, uma vez por aplicativo. É o que está segurando o envio: sem ela a Apple
   recusa dizendo só "This resource cannot be reviewed". Os passos e as
