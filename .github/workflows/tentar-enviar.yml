@@ -10,9 +10,11 @@
 # só diz "nada a enviar".
 name: Tentar enviar para a análise
 
+# Os quatro já foram enviados. O relógio de hora em hora foi desligado de
+# propósito: se a Apple recusar uma versão, este robô NÃO deve reenviá-la
+# sozinho sem a correção — reenvio de versão recusada, igualzinha, é
+# reprovação em dobro. Fica só o botão manual.
 on:
-  schedule:
-    - cron: '17 * * * *'
   workflow_dispatch:
 
 jobs:
