@@ -427,14 +427,35 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
     const { doc, updateDoc, serverTimestamp } = fb.fns;
     updateDoc(doc(fb.db, 'jogos-ludo', s.id), { ...campos, atualizadoEm: serverTimestamp() }).catch(() => {});
   }
+  // ENTRAR NA SALA é uma operação atômica no servidor. Antes, cada celular
+  // regravava a lista inteira de jogadores a partir do que ele estava vendo:
+  // duas pessoas tocando "entrar" quase juntas, a segunda apagava a primeira
+  // — com quatro testando ao mesmo tempo, alguém sempre sumia. Agora o
+  // servidor lê a sala de novo na hora de gravar, e cada um ganha a primeira
+  // cadeira livre de verdade. Continua sem esperar resposta: a tela da sala
+  // abre na hora e se atualiza sozinha pela escuta.
   function entrarSala(s) {
-    if (s.jogadores.some(j => j.uid === usuario.uid)) { setSalaId(s.id); return; }
-    if (s.status !== 'aguardando' || s.jogadores.length >= 4) { setSalaId(s.id); return; } // só assistir
-    gravar(s, {
-      jogadores: [...s.jogadores, jogadorDe(usuario, s.jogadores.length)],
-      pecas: { ...s.pecas, [usuario.uid]: [-1, -1, -1, -1] },
-    });
     setSalaId(s.id);
+    if (s.jogadores.some(j => j.uid === usuario.uid)) return;
+    if (s.status !== 'aguardando' || s.jogadores.length >= 4) return; // só assistir
+    const { doc, runTransaction, serverTimestamp } = fb.fns;
+    const ref = doc(fb.db, 'jogos-ludo', s.id);
+    runTransaction(fb.db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const atual = snap.data();
+      const jogadores = atual.jogadores || [];
+      if (jogadores.some(j => j.uid === usuario.uid)) return;
+      if (atual.status !== 'aguardando' || jogadores.length >= 4) return;
+      const ocupadas = new Set(jogadores.map(j => j.cadeira));
+      const cadeira = [0, 1, 2, 3].find(c => !ocupadas.has(c));
+      if (cadeira === undefined) return;
+      tx.update(ref, {
+        jogadores: [...jogadores, jogadorDe(usuario, cadeira)],
+        ['pecas.' + usuario.uid]: [-1, -1, -1, -1],
+        atualizadoEm: serverTimestamp(),
+      });
+    }).catch(() => {});
   }
   function atualizar(novo) {
     gravar(sala, { jogadores: novo.jogadores, pecas: novo.pecas, vez: novo.vez, dado: novo.dado, status: novo.status, vencedorNome: novo.vencedorNome, vencedorUid: novo.vencedorUid });
@@ -453,10 +474,18 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
     deleteDoc(doc(fb.db, 'jogos-ludo', sala.id)).catch(() => {});
     setSalaId(null);
   }
+  // Sair também é atômico, pelo mesmo motivo: sair no mesmo instante em que
+  // outro entra não pode apagar quem acabou de chegar.
   function sairDaSala() {
-    const pecas = { ...sala.pecas }; delete pecas[usuario.uid];
-    gravar(sala, { jogadores: sala.jogadores.filter(j => j.uid !== usuario.uid), pecas });
     setSalaId(null);
+    const { doc, runTransaction, deleteField, serverTimestamp } = fb.fns;
+    const ref = doc(fb.db, 'jogos-ludo', sala.id);
+    runTransaction(fb.db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const jogadores = (snap.data().jogadores || []).filter(j => j.uid !== usuario.uid);
+      tx.update(ref, { jogadores, ['pecas.' + usuario.uid]: deleteField(), atualizadoEm: serverTimestamp() });
+    }).catch(() => {});
   }
 
   if (sala) {
