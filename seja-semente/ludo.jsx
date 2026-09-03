@@ -405,6 +405,9 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
   const [salas, setSalas] = useState([]);
   const [salaId, setSalaId] = useState(null);
   const [sala, setSala] = useState(null);
+  // Por que a pessoa NÃO conseguiu entrar (antes falhava em silêncio: a sala
+  // abria com 3/4 e a quarta pessoa ficava olhando sem saber o motivo).
+  const [avisoEntrada, setAvisoEntrada] = useState('');
 
   useEffect(() => {
     const { collection, query, orderBy, limit, onSnapshot } = fb.fns;
@@ -412,6 +415,7 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
       snap => setSalas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, []);
   useEffect(() => {
+    setAvisoEntrada('');
     if (!salaId) { setSala(null); return; }
     const { doc, onSnapshot } = fb.fns;
     return onSnapshot(doc(fb.db, 'jogos-ludo', salaId), snap => setSala(snap.exists() ? { id: snap.id, ...snap.data() } : null));
@@ -436,26 +440,41 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
   // abre na hora e se atualiza sozinha pela escuta.
   function entrarSala(s) {
     setSalaId(s.id);
+    setAvisoEntrada('');
     if (s.jogadores.some(j => j.uid === usuario.uid)) return;
     if (s.status !== 'aguardando' || s.jogadores.length >= 4) return; // só assistir
+    tentarEntrar(s.id);
+  }
+  // Traduz o "não" do servidor para uma frase que a pessoa entende.
+  function motivoEntrada(e) {
+    const c = String(e?.code || '');
+    if (c.includes('permission-denied')) return 'O banco não deixou esta conta entrar: ela ainda não está liberada como equipe (voluntário aprovado, coordenação ou gestão).';
+    if (c.includes('unavailable') || c.includes('deadline') || c.includes('network')) return 'Sem conexão com o servidor agora. Confere a internet e tenta de novo.';
+    if (c.includes('failed-precondition') || c.includes('aborted')) return 'Muita gente entrando ao mesmo tempo. Tenta de novo.';
+    return 'Não deu para entrar (' + (c || e?.message || 'erro desconhecido').slice(0, 80) + '). Tenta de novo.';
+  }
+  function tentarEntrar(id) {
     const { doc, runTransaction, serverTimestamp } = fb.fns;
-    const ref = doc(fb.db, 'jogos-ludo', s.id);
+    const ref = doc(fb.db, 'jogos-ludo', id);
+    let resultado = '';
     runTransaction(fb.db, async (tx) => {
+      resultado = '';
       const snap = await tx.get(ref);
-      if (!snap.exists()) return;
+      if (!snap.exists()) { resultado = 'Essa sala já foi fechada.'; return; }
       const atual = snap.data();
       const jogadores = atual.jogadores || [];
       if (jogadores.some(j => j.uid === usuario.uid)) return;
-      if (atual.status !== 'aguardando' || jogadores.length >= 4) return;
+      if (atual.status !== 'aguardando') { resultado = 'A partida já começou. Dá para assistir por aqui.'; return; }
+      if (jogadores.length >= 4) { resultado = 'A sala encheu antes de você entrar (4 de 4).'; return; }
       const ocupadas = new Set(jogadores.map(j => j.cadeira));
       const cadeira = [0, 1, 2, 3].find(c => !ocupadas.has(c));
-      if (cadeira === undefined) return;
+      if (cadeira === undefined) { resultado = 'Não sobrou cadeira livre nesta sala.'; return; }
       tx.update(ref, {
         jogadores: [...jogadores, jogadorDe(usuario, cadeira)],
         ['pecas.' + usuario.uid]: [-1, -1, -1, -1],
         atualizadoEm: serverTimestamp(),
       });
-    }).catch(() => {});
+    }).then(() => setAvisoEntrada(resultado)).catch(e => setAvisoEntrada(motivoEntrada(e)));
   }
   function atualizar(novo) {
     gravar(sala, { jogadores: novo.jogadores, pecas: novo.pecas, vez: novo.vez, dado: novo.dado, status: novo.status, vencedorNome: novo.vencedorNome, vencedorUid: novo.vencedorUid });
@@ -510,6 +529,16 @@ function LudoOnline({ usuario, fb, aoVoltar }) {
               <button className="btn-principal" style={{ maxWidth: 'none' }} onClick={() => gravar(sala, { status: 'jogando' })}>▶ Começar o jogo</button>
             )}
             {souJogador && sala.jogadores.length < 2 && <p className="obs">Precisa de pelo menos 2 jogadores. Avisa a equipe no chat! 💬</p>}
+            {!souJogador && (
+              <div style={{ marginTop: 6 }}>
+                <p className="obs" style={{ margin: '0 0 8px' }}>
+                  {avisoEntrada || (sala.jogadores.length >= 4 ? 'A sala está cheia (4 de 4). Você está assistindo.' : 'Entrando na sala…')}
+                </p>
+                {sala.jogadores.length < 4 && (
+                  <button className="btn-secundario" style={{ width: '100%' }} onClick={() => { setAvisoEntrada(''); tentarEntrar(sala.id); }}>Tentar entrar de novo</button>
+                )}
+              </div>
+            )}
             {souJogador && (
               <div className="linha-botoes" style={{ marginTop: 10 }}>
                 {sala.criadorUid !== usuario.uid && (
