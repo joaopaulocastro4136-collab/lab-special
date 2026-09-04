@@ -1035,7 +1035,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado', triadoPorUid: usuario.uid, triadoPorNome: usuario.nome || '', triadoEm: serverTimestamp() }) }).catch(() => {});
     if (novoAg) addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() }).catch(() => {});
     updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
   }
@@ -1135,7 +1135,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
+    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado', triadoPorUid: usuario.uid, triadoPorNome: usuario.nome || '', triadoEm: serverTimestamp() }).catch(() => {});
     for (const ft of fotos) addDoc(collection(fb.db, 'pacientes', paciente.id, 'arquivos'), { ...registroDe(ft), criadoEm: serverTimestamp() }).catch(() => {});
     setTela(null);
   }
@@ -1954,6 +1954,47 @@ function CartaoConvite({ aoAutorizar }) {
 
 // Tela pedida quando a pessoa entrou com o Google mas ainda não tem acesso
 // à central — precisa do código que a coordenação gerou
+// CADASTRO DE QUEM ENTRA PELO SEJA SEMENTE: os mesmos dados do Semeador.
+// Quem é da central também é voluntário — o cadastro grava a pessoa na
+// central E na lista de voluntários (já ativa), e tudo o que ela fizer
+// (paciente cadastrado, triagem, atendimento) sai com o nome dela.
+function TelaCadastroEquipe({ usuario, aoEnviar, aoSair, aoApagarConta }) {
+  const [f, setF] = useState({ nome: usuario.nome || '', telefone: '', cpf: '', nascimento: '', ministerio: '' });
+  const [av, setAv] = useState({ foto: '', fotoMini: '', avatar: '' });
+  const [erro, setErro] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const muda = k => e => setF({ ...f, [k]: e.target.value });
+  const cpfOk = f.cpf.replace(/\D/g, '').length === 11;
+  const pronto = f.nome.trim() && f.telefone.trim() && cpfOk && f.nascimento;
+  async function enviar() {
+    setErro(''); setEnviando(true);
+    try {
+      const msg = await aoEnviar({ ...f, ...av });
+      if (msg) setErro(msg);
+    } catch (e) { setErro('Não consegui gravar agora. Confira a internet e tente de novo.'); }
+    setEnviando(false);
+  }
+  return (
+    <div className="folha">
+      <button className="btn-voltar" onClick={aoSair}><ChevronLeft size={18} /> Sair / trocar de conta</button>
+      <h2>Seu cadastro na equipe</h2>
+      <p className="dica">Bem-vindo ao Seja Semente! Preencha seus dados uma vez só. Você já entra na equipe e também fica na lista de voluntários, e tudo o que fizer no aplicativo sai registrado com o seu nome.</p>
+      <div className="campo"><span>Sua foto (ou um dentinho da biblioteca)</span>
+        <SeletorAvatar nome={f.nome || usuario.nome} foto={av.foto} avatar={av.avatar} aoSalvar={x => setAv(a => ({ ...a, ...x }))} />
+      </div>
+      <Campo rotulo="Nome completo"><input value={f.nome} onChange={muda('nome')} /></Campo>
+      <Campo rotulo="Telefone (WhatsApp)"><input value={f.telefone} onChange={muda('telefone')} inputMode="tel" placeholder="(11) 91234-5678" /></Campo>
+      <Campo rotulo="CPF"><input value={f.cpf} onChange={muda('cpf')} inputMode="numeric" placeholder="000.000.000-00" /></Campo>
+      <Campo rotulo="Data de nascimento"><input type="date" value={f.nascimento} onChange={muda('nascimento')} /></Campo>
+      <Campo rotulo="Sua função no Seja Semente"><input value={f.ministerio} onChange={muda('ministerio')} placeholder="Ex.: Coordenação, Financeiro, Dentista, Acolhimento" /></Campo>
+      {f.cpf && !cpfOk && <div className="erro">O CPF precisa ter 11 números.</div>}
+      {erro && <div className="erro">{erro}</div>}
+      <button className="btn-principal" disabled={!pronto || enviando} onClick={enviar}>{enviando ? 'Gravando…' : 'Entrar na equipe'}</button>
+      {aoApagarConta && <button className="link-troca" style={{ color: '#B3402A' }} onClick={aoApagarConta}>Apagar minha conta</button>}
+    </div>
+  );
+}
+
 function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
@@ -1988,7 +2029,7 @@ function TelaCodigo({ usuario, aoResgatar, aoSair, aoApagarConta }) {
 function App() {
   const [pronto, setPronto] = useState(!CONFIGURADO);
   const [usuario, setUsuario] = useState(CONFIGURADO ? null : lerLocal('ss-usuario', null));
-  const [acesso, setAcesso] = useState(CONFIGURADO ? 'checando' : 'liberado'); // checando | liberado | pedir
+  const [acesso, setAcesso] = useState(CONFIGURADO ? 'checando' : 'liberado'); // checando | liberado | pedir | cadastro
 
   useEffect(() => { if (!CONFIGURADO) gravarLocal('ss-usuario', usuario); }, [usuario]);
 
@@ -2016,21 +2057,25 @@ function App() {
         const { doc, getDoc, setDoc, getDocs, collection, query, limit, serverTimestamp } = fb.fns;
         const meu = await getDoc(doc(fb.db, 'central-usuarios', usuario.uid));
         if (meu.exists()) { libera(); return; }
-        // Fase de teste ABERTA: qualquer conta Google entra direto
+        // Pode entrar sem código? (fase de teste aberta ou e-mail autorizado)
+        let podeEntrar = false;
         try {
           const cfg = await getDoc(doc(fb.db, 'config', 'acesso'));
-          if (cfg.exists() && cfg.data().abertoParaTeste) { libera(); return; }
+          if (cfg.exists() && cfg.data().abertoParaTeste) podeEntrar = true;
         } catch (e) { /* segue o fluxo normal */ }
-        // E-mail pré-autorizado pela coordenação? entra direto, sem código
-        if (usuario.email) {
+        if (!podeEntrar && usuario.email) {
           const conv = await getDoc(doc(fb.db, 'central-autorizados', usuario.email.toLowerCase()));
-          if (conv.exists()) {
-            setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
-            libera();
-            return;
-          }
+          if (conv.exists()) podeEntrar = true;
         }
-        nega(false);
+        if (!podeEntrar) { nega(false); return; }
+        // Pessoa NOVA (ainda sem cadastro de voluntário): preenche o cadastro
+        // primeiro. Antes, na fase de teste, ela entrava sem ficar registrada
+        // em lugar nenhum — e o banco recusava tudo o que ela tentava gravar.
+        const vol = await getDoc(doc(fb.db, 'voluntarios', usuario.uid)).catch(() => null);
+        if (!vol || !vol.exists()) { if (!cancelado) setAcesso('cadastro'); return; }
+        // Já é voluntário: só registra na central e entra
+        setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || vol.data().nome || '', email: usuario.email || '', papel: 'equipe', criadoEm: serverTimestamp() }).catch(() => {});
+        libera();
       } catch (e) { nega(true); }
     })();
     return () => { cancelado = true; };
@@ -2051,7 +2096,36 @@ function App() {
     } catch (e) {
       return 'Não consegui usar o código agora. Confira a internet e tente outra vez.';
     }
-    setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
+    await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome: usuario.nome || '', email: usuario.email || '', papel: 'equipe', codigo: cod, criadoEm: serverTimestamp() }).catch(() => {});
+    const vol = await getDoc(doc(fb.db, 'voluntarios', usuario.uid)).catch(() => null);
+    if (!vol || !vol.exists()) { setAcesso('cadastro'); return ''; }
+    gravarLocal('ss-ja-entrou-' + usuario.uid, true);
+    setAcesso('liberado');
+    return '';
+  }
+
+  // Conclui o cadastro de quem entrou pelo Seja Semente: grava na central
+  // (isso é o que dá o direito de mexer no banco) e, em seguida, como
+  // voluntário já ativo. Espera as duas gravações — se o banco recusar, a
+  // pessoa vê o motivo em vez de entrar num aplicativo que não grava nada.
+  async function concluirCadastro(f) {
+    const { doc, setDoc, serverTimestamp } = fb.fns;
+    const nome = (f.nome || usuario.nome || '').trim();
+    const email = String(usuario.email || '').toLowerCase();
+    try {
+      await setDoc(doc(fb.db, 'central-usuarios', usuario.uid), { nome, email, papel: 'equipe', criadoEm: serverTimestamp() }, { merge: true });
+    } catch (e) {
+      return 'A central não aceitou este cadastro (' + String(e?.code || e?.message || '').slice(0, 60) + '). Peça um código de acesso à coordenação.';
+    }
+    try {
+      await setDoc(doc(fb.db, 'voluntarios', usuario.uid), {
+        ...f, nome, email, ministerio: (f.ministerio || '').trim() || 'Seja Semente',
+        status: 'ativo', ativo: true, cadastradoPelo: 'seja-semente',
+        solicitadoEm: serverTimestamp(), criadoEm: serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      return 'Entrei na central, mas não consegui te gravar como voluntário (' + String(e?.code || e?.message || '').slice(0, 60) + '). Tente de novo.';
+    }
     gravarLocal('ss-ja-entrou-' + usuario.uid, true);
     setAcesso('liberado');
     return '';
@@ -2099,6 +2173,7 @@ function App() {
   async function apagarMinhaConta(senha) {
     await apagarConta(CONFIGURADO ? fb : null, usuario,
       [{ colecao: 'central-usuarios', id: usuario.uid },
+       { colecao: 'voluntarios', id: usuario.uid },
        { colecao: 'central-autorizados', id: String(usuario.email || '').trim().toLowerCase() },
        ...(window.__tokenPush ? [{ colecao: 'aparelhos', id: window.__tokenPush }] : [])],
       ['ss-usuario', 'ss-perfil', 'ss-ja-entrou-' + usuario.uid], senha);
@@ -2235,6 +2310,7 @@ function App() {
   else if (vendoSuporte) conteudo = <TelaSuporte nomeDoApp="Seja Semente" aoVoltar={() => setVendoSuporte(false)} />;
   else if (apagandoConta) conteudo = <TelaApagarConta usuario={usuario} aoApagar={apagarMinhaConta} aoVoltar={() => setApagandoConta(false)} />;
   else if (acesso === 'pedir') conteudo = <TelaCodigo usuario={usuario} aoResgatar={resgatarCodigo} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} />;
+  else if (acesso === 'cadastro') conteudo = <TelaCadastroEquipe usuario={usuario} aoEnviar={concluirCadastro} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} />;
   else conteudo = <TelaPrincipal usuario={usuario} aoSair={sair} aoApagarConta={() => setApagandoConta(true)} aoSuporte={() => setVendoSuporte(true)} chamadas={chamadas} aoChamarPaciente={chamarPaciente} aoEncerrarChamada={encerrarChamada} aoChamarStaff={chamarStaff} />;
   // ATENDER agora entra na LIGAÇÃO: a tela vira a conversa e só sai quando
   // a pessoa desliga. Por isso o atender marca a chamada como atendida, e o
