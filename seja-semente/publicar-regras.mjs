@@ -113,7 +113,11 @@ service cloud.firestore {
     // se aprovar: mexer em status/ativo é só da coordenação e da gestão.
     match /voluntarios/{uid} {
       allow read: if ehEquipe() || request.auth.uid == uid;
-      allow create: if request.auth.uid == uid && request.resource.data.status == 'pendente';
+      // Pelo Semeador nasce pendente. Pelo Seja Semente (quem já é da
+      // central, ou na fase de teste aberta) a pessoa já entra ativa: ela
+      // é da equipe e também conta como voluntária.
+      allow create: if request.auth.uid == uid
+        && (request.resource.data.status == 'pendente' || ehCentral() || testeAberto());
       allow update: if ehCentral() || ehGestor()
         || (request.auth.uid == uid
             && request.resource.data.status == resource.data.status
@@ -124,6 +128,14 @@ service cloud.firestore {
     // Coordenação e gestão NÃO se criam sozinhas. Só entra quem gastou um
     // código válido (a marca do código fica no próprio banco) ou quem teve
     // o e-mail pré-autorizado por alguém que já está dentro.
+    // Fase de teste ABERTA (config/acesso.abertoParaTeste): qualquer conta
+    // entra no Seja Semente e faz o cadastro na hora. Antes a tela deixava
+    // entrar mas o banco recusava tudo em silêncio — a pessoa cadastrava
+    // um paciente e nada era gravado.
+    function testeAberto() {
+      return exists(/databases/$(database)/documents/config/acesso)
+        && get(/databases/$(database)/documents/config/acesso).data.get('abertoParaTeste', false) == true;
+    }
     function gastouCodigoCentral() {
       return request.resource.data.codigo is string
         && exists(/databases/$(database)/documents/codigos-acesso/$(request.resource.data.codigo))
@@ -137,7 +149,7 @@ service cloud.firestore {
     match /central-usuarios/{uid} {
       allow read: if ehEquipe() || request.auth.uid == uid;
       allow create: if request.auth.uid == uid
-        && (ehCentral() || gastouCodigoCentral() || exists(/databases/$(database)/documents/central-autorizados/$(meuEmail())));
+        && (ehCentral() || gastouCodigoCentral() || testeAberto() || exists(/databases/$(database)/documents/central-autorizados/$(meuEmail())));
       allow update: if request.auth.uid == uid || ehCentral();
       allow delete: if request.auth.uid == uid || ehCentral();
     }

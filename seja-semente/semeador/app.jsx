@@ -864,7 +864,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoSalvarPerf
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado' }) }).catch(() => {});
+    updateDoc(doc(fb.db, 'pacientes', p.id), { triagem, ...(p.triagem ? {} : { status: 'triado', triadoPorUid: usuario.uid, triadoPorNome: usuario.nome || '', triadoEm: serverTimestamp() }) }).catch(() => {});
     if (novoAg) addDoc(collection(fb.db, 'agendamentos'), { ...novoAg, criadoEm: serverTimestamp() }).catch(() => {});
     updateDoc(doc(fb.db, 'chat', m.id), { ...aceite, aceitoEm: serverTimestamp() }).catch(() => {});
   }
@@ -966,7 +966,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, aoSalvarPerf
       return;
     }
     const { doc, updateDoc, collection, addDoc, serverTimestamp } = fb.fns;
-    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado' }).catch(() => {});
+    updateDoc(doc(fb.db, 'pacientes', paciente.id), { triagem, status: 'triado', triadoPorUid: usuario.uid, triadoPorNome: usuario.nome || '', triadoEm: serverTimestamp() }).catch(() => {});
     for (const ft of fotos) addDoc(collection(fb.db, 'pacientes', paciente.id, 'arquivos'), { ...registroDe(ft), criadoEm: serverTimestamp() }).catch(() => {});
     setTelaTriagem(null);
   }
