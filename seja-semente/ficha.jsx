@@ -126,7 +126,7 @@ async function gerarFolhaA4(paciente, arquivos) {
   return c.toDataURL('image/png');
 }
 
-export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem, aoChamar, avisoChamar, atendimentoAberto, aoEncerrar, procedimentosFeitos = [], aoRegistrar, aoDepoimento }) {
+export function FichaPaciente({ paciente, arquivos, documentos = [], aoVoltar, aoSalvarArquivo, podeEditar, aoSalvarEdicao, aoApagar, aoEditarTriagem, aoChamar, avisoChamar, atendimentoAberto, aoEncerrar, procedimentosFeitos = [], aoRegistrar, aoDepoimento }) {
   const [novaFoto, setNovaFoto] = useState(null);
   const [legenda, setLegenda] = useState('');
   const [vendo, setVendo] = useState(null);
@@ -322,6 +322,21 @@ export function FichaPaciente({ paciente, arquivos, aoVoltar, aoSalvarArquivo, p
         <button className="btn-acao" onClick={compartilharA4}><Printer size={16} /> Ficha A4</button>
         {podeEditar && <button className="btn-acao vermelho" onClick={apagar}><Trash2 size={16} /> Apagar</button>}
       </div>
+
+      {documentos.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 20, margin: '10px 0 4px' }}>Documentos</h2>
+          <p className="dica" style={{ marginTop: 0 }}>Documento e comprovante anexados no cadastro. Só a equipe vê — não aparecem para quem apoia o projeto.</p>
+          <div className="grade-fotos">
+            {documentos.map(d => (
+              <button key={d.id} className="foto-mini" onClick={() => setVendo({ id: d.id, dataUrl: d.foto, legenda: d.titulo, autorNome: d.autorNome })}>
+                <img src={d.foto} alt={d.titulo || 'documento'} />
+                <span className="foto-autor">{d.titulo}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <h2 style={{ fontSize: 20, margin: '10px 0 4px' }}>Fotos e arquivos</h2>
 

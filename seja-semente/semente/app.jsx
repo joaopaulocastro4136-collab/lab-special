@@ -43,6 +43,18 @@ const CONFIGURADO = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith
 
 let fb = null;
 
+// O leitor de documentos (função no servidor): recebe a foto do RG/CNH/CPF
+// e devolve nome, CPF, nascimento e número do documento já lidos.
+const URL_LEITOR = 'https://southamerica-east1-seja-semente-app.cloudfunctions.net/lerDocumento';
+function idadeDe(iso) {
+  const [a, m, d] = String(iso || '').split('-').map(Number);
+  if (!a || !m || !d) return '';
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - a;
+  if (hoje.getMonth() + 1 < m || (hoje.getMonth() + 1 === m && hoje.getDate() < d)) idade--;
+  return idade >= 0 && idade < 130 ? String(idade) : '';
+}
+
 async function ligarFirebase() {
   const { initializeApp } = await import('firebase/app');
   const modAuth = await import('firebase/auth');
@@ -826,8 +838,16 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
   }
   const [cadastradoMsg, setCadastradoMsg] = useState('');
   const [codigoGerado, setCodigoGerado] = useState('');
-  const [novo, setNovo] = useState({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
+  const NOVO_VAZIO = { nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false, nascimento: '', rg: '' };
+  const [novo, setNovo] = useState(NOVO_VAZIO);
   const [fotoNovo, setFotoNovo] = useState('');
+  // CADASTRO PELA FOTO: a foto do documento preenche nome, CPF, nascimento e
+  // número do documento; o comprovante de endereço só fica anexado à ficha.
+  // As duas fotos vão para pacientes/{id}/documentos — só a equipe vê
+  // (as fotos de "antes e depois" ficam em arquivos, que os apoiadores veem).
+  const [docFoto, setDocFoto] = useState('');
+  const [endFoto, setEndFoto] = useState('');
+  const [leituraDoc, setLeituraDoc] = useState(''); // '' | 'lendo' | recado
   const [buscaPacientes, setBuscaPacientes] = useState('');
   const [buscaArea, setBuscaArea] = useState('');
   const [movendo, setMovendo] = useState(null); // paciente sendo movido de procedimento
@@ -1086,9 +1106,21 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
     // Código do paciente: SS-0001, SS-0002… (continua do maior já usado)
     const maior = Math.max(0, ...pacientes.map(p => parseInt(String(p.codigo || '').replace(/\D/g, ''), 10) || 0));
     const codigo = 'SS-' + String(maior + 1).padStart(4, '0');
-    await salvar('pacientes', { ...novo, nome, codigo, foto: fotoNovo || '' }, { status: 'cadastrado', triagem: null, criadoEm: new Date(), cadastradoPorUid: usuario.uid, cadastradoPorNome: usuario.nome || '' }, setPacientes);
-    setNovo({ nome: '', idade: '', telefone: '', cpf: '', endereco: '', observacoes: '', prioridade: false });
+    const dados = { ...novo, nome, codigo, foto: fotoNovo || '', temDocumento: !!docFoto, temComprovante: !!endFoto };
+    const marca = { status: 'cadastrado', triagem: null, criadoEm: new Date(), cadastradoPorUid: usuario.uid, cadastradoPorNome: usuario.nome || '' };
+    if (!CONFIGURADO) {
+      await salvar('pacientes', dados, marca, setPacientes);
+    } else {
+      const { doc, collection, setDoc, serverTimestamp } = fb.fns;
+      const ref = doc(collection(fb.db, 'pacientes'));
+      setDoc(ref, { ...dados, ...marca, criadoEm: serverTimestamp() }).catch(() => {});
+      const autor = { autorUid: usuario.uid, autorNome: usuario.nome || '', criadoEm: serverTimestamp() };
+      if (docFoto) setDoc(doc(fb.db, 'pacientes', ref.id, 'documentos', 'identidade'), { tipo: 'identidade', titulo: 'Documento de identidade', foto: docFoto, ...autor }).catch(() => {});
+      if (endFoto) setDoc(doc(fb.db, 'pacientes', ref.id, 'documentos', 'endereco'), { tipo: 'endereco', titulo: 'Comprovante de endereço', foto: endFoto, ...autor }).catch(() => {});
+    }
+    setNovo(NOVO_VAZIO);
     setFotoNovo('');
+    setDocFoto(''); setEndFoto(''); setLeituraDoc('');
     setCadastradoMsg(`${nome} cadastrado com o código ${codigo}! Agora é só fazer a triagem.`);
     setTimeout(() => setCadastradoMsg(''), 6000);
   }
@@ -1101,6 +1133,50 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
       const dataUrl = await comprimirImagem(file, 0.7, 400);
       setFotoNovo(dataUrl);
     } catch (e2) { /* imagem inválida */ }
+  }
+
+  // Foto do documento: guarda uma cópia para a ficha e manda outra, maior,
+  // para o leitor. O que ele achar entra nos campos — a pessoa confere.
+  async function fotoDocumento(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLeituraDoc('lendo');
+    let grande = '';
+    try {
+      grande = await comprimirImagem(file, 0.85, 1600);
+      setDocFoto(await comprimirImagem(file, 0.6, 1100));
+    } catch (e2) { setLeituraDoc('Não consegui abrir essa imagem. Tenta outra foto.'); return; }
+    if (!CONFIGURADO) { setLeituraDoc('No modo demonstração a leitura não roda. A foto ficou guardada; preencha à mão.'); return; }
+    try {
+      const token = await fb.auth.currentUser.getIdToken();
+      const r = await fetch(URL_LEITOR, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ data: { imagem: grande.split(',')[1] } }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error?.message || ('resposta ' + r.status));
+      const c = j.result?.campos || {};
+      const lidos = [];
+      const preenche = {};
+      if (c.nome) { preenche.nome = c.nome; lidos.push('nome'); }
+      if (c.cpf) { preenche.cpf = c.cpf; lidos.push('CPF'); }
+      if (c.nascimento) { preenche.nascimento = c.nascimento; const i = idadeDe(c.nascimento); if (i) preenche.idade = i; lidos.push('nascimento' + (i ? ' e idade' : '')); }
+      if (c.rg) { preenche.rg = c.rg; lidos.push('número do documento'); }
+      setNovo(n => ({ ...n, ...preenche }));
+      setLeituraDoc(lidos.length
+        ? '✓ Li do documento: ' + lidos.join(', ') + '. Confere se está tudo certo antes de cadastrar.'
+        : 'Não achei os dados nessa foto. Tenta de novo com mais luz, o documento reto e ocupando a tela inteira. A foto ficou guardada.');
+    } catch (e2) {
+      setLeituraDoc('Não consegui ler agora (' + String(e2?.message || e2).slice(0, 90) + '). A foto ficou guardada; preencha à mão.');
+    }
+  }
+  async function fotoEndereco(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try { setEndFoto(await comprimirImagem(file, 0.6, 1100)); } catch (e2) { /* imagem inválida */ }
   }
 
   async function salvarEdicaoPaciente(dados) {
@@ -1254,10 +1330,11 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
   const [fichaPaciente, setFichaPaciente] = useState(null);
   const [fichaArquivos, setFichaArquivos] = useState([]);
   const [fichaProcedimentos, setFichaProcedimentos] = useState([]);
+  const [fichaDocumentos, setFichaDocumentos] = useState([]);
   const [demoArquivos, setDemoArquivos] = useState({});
 
   useEffect(() => {
-    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); setFichaProcedimentos([]); return; }
+    if (!fichaId) { setFichaPaciente(null); setFichaArquivos([]); setFichaProcedimentos([]); setFichaDocumentos([]); return; }
     if (!CONFIGURADO) {
       setFichaPaciente(pacientes.find(p => p.id === fichaId) || null);
       setFichaArquivos(demoArquivos[fichaId] || []);
@@ -1267,7 +1344,8 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
     const s1 = onSnapshot(doc(fb.db, 'pacientes', fichaId), snap => setFichaPaciente(snap.exists() ? { id: snap.id, ...snap.data() } : null));
     const s2 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'arquivos'), orderBy('criadoEm', 'desc')), snap => setFichaArquivos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const s3 = onSnapshot(query(collection(fb.db, 'pacientes', fichaId, 'procedimentos'), orderBy('criadoEm', 'desc')), snap => setFichaProcedimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { s1(); s2(); s3(); };
+    const s4 = onSnapshot(collection(fb.db, 'pacientes', fichaId, 'documentos'), snap => setFichaDocumentos(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
+    return () => { s1(); s2(); s3(); s4(); };
   }, [fichaId, pacientes, demoArquivos]);
 
   async function salvarArquivo(dataUrl, legenda) {
@@ -1327,7 +1405,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
       }} />
     </div>
   );
-  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
+  if (fichaId) return <FichaPaciente paciente={fichaPaciente} arquivos={fichaArquivos} documentos={fichaDocumentos} aoVoltar={() => setFichaId(null)} aoSalvarArquivo={salvarArquivo}
     podeEditar aoSalvarEdicao={salvarEdicaoPaciente} aoApagar={apagarPaciente} aoEditarTriagem={() => fichaPaciente && setTela({ triagem: fichaPaciente })}
     procedimentosFeitos={fichaProcedimentos}
     aoDepoimento={() => fichaPaciente && setTela({ novoDepoimento: fichaPaciente })} />;
@@ -1599,7 +1677,7 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
                 !novo.idade.trim() && 'idade',
                 !novo.telefone.trim() && 'telefone',
                 !cpfOk && (novo.cpf.trim() ? 'CPF completo (11 números)' : 'CPF'),
-                !novo.endereco.trim() && 'endereço',
+                !novo.endereco.trim() && !endFoto && 'endereço (ou a foto do comprovante)',
               ].filter(Boolean);
               return (
             <div className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1613,11 +1691,35 @@ function TelaPrincipal({ usuario, aoSair, aoApagarConta, aoSuporte, chamadas = [
                 </label>
                 {fotoNovo && <button className="btn-acao vermelho" onClick={() => setFotoNovo('')}>✕</button>}
               </div>
+              <div style={{ background: '#F3F7F2', border: '1.5px solid #DBE3D8', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <strong>Cadastro pela foto</strong>
+                <p className="dica" style={{ margin: 0 }}>Tira a foto do RG, CNH ou CPF: nome, CPF, nascimento e número do documento entram sozinhos. O comprovante de endereço só fica anexado à ficha.</p>
+                <div className="linha-botoes" style={{ flexWrap: 'wrap' }}>
+                  <label className="btn-acao" style={{ cursor: 'pointer', flex: 1, justifyContent: 'center' }}>
+                    <Scan size={16} /> {docFoto ? 'Trocar foto do documento' : 'Foto do documento'}
+                    <input type="file" accept="image/*" capture="environment" onChange={fotoDocumento} style={{ display: 'none' }} />
+                  </label>
+                  <label className="btn-acao" style={{ cursor: 'pointer', flex: 1, justifyContent: 'center' }}>
+                    <Camera size={16} /> {endFoto ? 'Trocar comprovante' : 'Comprovante de endereço'}
+                    <input type="file" accept="image/*" capture="environment" onChange={fotoEndereco} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {leituraDoc === 'lendo' && <p className="dica" style={{ margin: 0 }}>⏳ Lendo o documento…</p>}
+                {leituraDoc && leituraDoc !== 'lendo' && <p className={leituraDoc.startsWith('✓') ? 'dica' : 'erro'} style={{ margin: 0 }}>{leituraDoc}</p>}
+                {(docFoto || endFoto) && (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {docFoto && <div style={{ position: 'relative' }}><img src={docFoto} alt="documento" style={{ width: 110, height: 76, objectFit: 'cover', borderRadius: 10, border: '1.5px solid #DBE3D8' }} /><button className="btn-acao vermelho" style={{ position: 'absolute', top: -8, right: -8, padding: '2px 7px' }} onClick={() => { setDocFoto(''); setLeituraDoc(''); }}>✕</button><p className="obs" style={{ margin: '2px 0 0', textAlign: 'center' }}>documento</p></div>}
+                    {endFoto && <div style={{ position: 'relative' }}><img src={endFoto} alt="comprovante" style={{ width: 110, height: 76, objectFit: 'cover', borderRadius: 10, border: '1.5px solid #DBE3D8' }} /><button className="btn-acao vermelho" style={{ position: 'absolute', top: -8, right: -8, padding: '2px 7px' }} onClick={() => setEndFoto('')}>✕</button><p className="obs" style={{ margin: '2px 0 0', textAlign: 'center' }}>comprovante</p></div>}
+                  </div>
+                )}
+              </div>
               <Campo rotulo="Nome do paciente"><input value={novo.nome} onChange={e => setNovo({ ...novo, nome: e.target.value })} /></Campo>
+              <Campo rotulo="Data de nascimento"><input type="date" value={novo.nascimento} onChange={e => setNovo({ ...novo, nascimento: e.target.value, idade: idadeDe(e.target.value) || novo.idade })} /></Campo>
               <Campo rotulo="Idade"><input value={novo.idade} onChange={e => setNovo({ ...novo, idade: e.target.value })} inputMode="numeric" /></Campo>
               <Campo rotulo="Telefone"><input value={novo.telefone} onChange={e => setNovo({ ...novo, telefone: e.target.value })} inputMode="tel" placeholder="(11) 91234-5678" /></Campo>
               <Campo rotulo="CPF"><input value={novo.cpf} onChange={e => setNovo({ ...novo, cpf: e.target.value })} inputMode="numeric" placeholder="000.000.000-00" /></Campo>
-              <Campo rotulo="Endereço"><input value={novo.endereco} onChange={e => setNovo({ ...novo, endereco: e.target.value })} placeholder="Rua, número, bairro e cidade" /></Campo>
+              <Campo rotulo="RG / número do documento (opcional)"><input value={novo.rg} onChange={e => setNovo({ ...novo, rg: e.target.value })} /></Campo>
+              <Campo rotulo={endFoto ? 'Endereço (opcional, o comprovante já está anexado)' : 'Endereço'}><input value={novo.endereco} onChange={e => setNovo({ ...novo, endereco: e.target.value })} placeholder="Rua, número, bairro e cidade" /></Campo>
               <Campo rotulo="Observações (opcional)"><textarea rows={3} value={novo.observacoes} onChange={e => setNovo({ ...novo, observacoes: e.target.value })} /></Campo>
               <label className={novo.prioridade ? 'caixa marcada' : 'caixa'} onClick={() => setNovo({ ...novo, prioridade: !novo.prioridade })} style={{ alignSelf: 'flex-start' }}>
                 <Flag size={15} style={{ color: '#C23A1E' }} /> Prioridade — fura a fila do agendamento
