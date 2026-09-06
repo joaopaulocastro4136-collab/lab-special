@@ -11,7 +11,9 @@
 // A chave APNs (.p8) chega por variáveis de ambiente no deploy:
 // APNS_KEY_P8, APNS_KEY_ID, APPLE_TEAM_ID. Sem elas, a função só loga e sai.
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const { extrairCampos } = require('./documento.js');
 const http2 = require('http2');
 const crypto = require('crypto');
 
@@ -151,5 +153,44 @@ exports.carteiroChamadas = onDocumentCreated(
       if (!denovo.exists || denovo.data().ativa === false) { console.log('Chamada atendida — parando de insistir.'); break; }
     }
     cliente.close();
+  }
+);
+
+// ─── LEITOR DE DOCUMENTO: a foto do RG/CNH/CPF vira cadastro ───
+// O aplicativo manda a foto; o leitor de imagens do Google (Cloud Vision)
+// devolve o texto; daqui saem nome, CPF, nascimento e número do documento.
+// Só quem é da equipe pode usar. A foto NÃO fica guardada aqui — o app é
+// que decide o que anexar à ficha do paciente.
+exports.lerDocumento = onCall(
+  { region: 'southamerica-east1', memory: '512MiB', timeoutSeconds: 60, maxInstances: 5, cors: true },
+  async (req) => {
+    if (!req.auth) throw new HttpsError('unauthenticated', 'Entre no aplicativo primeiro.');
+    const uid = req.auth.uid;
+    const db = admin.firestore();
+    const [c, g, v] = await Promise.all([
+      db.doc('central-usuarios/' + uid).get(), db.doc('palmar-usuarios/' + uid).get(), db.doc('voluntarios/' + uid).get(),
+    ]);
+    const equipe = c.exists || g.exists || (v.exists && (v.data().status === 'ativo' || v.data().ativo === true));
+    if (!equipe) throw new HttpsError('permission-denied', 'Só a equipe pode ler documentos.');
+
+    const imagem = String(req.data?.imagem || '').replace(/^data:image\/\w+;base64,/, '');
+    if (!imagem || imagem.length > 7000000) throw new HttpsError('invalid-argument', 'Foto inválida ou grande demais.');
+
+    const cred = admin.app().options.credential || admin.credential.applicationDefault();
+    const tk = await cred.getAccessToken();
+    const r = await fetch('https://vision.googleapis.com/v1/images:annotate', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + tk.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ image: { content: imagem }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }], imageContext: { languageHints: ['pt'] } }] }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      console.log('leitor de imagem', r.status, JSON.stringify(j).slice(0, 300));
+      throw new HttpsError('unavailable', 'O leitor de documentos não respondeu (' + r.status + ').');
+    }
+    const texto = j.responses?.[0]?.fullTextAnnotation?.text || '';
+    const campos = extrairCampos(texto);
+    console.log(`documento lido por ${uid.slice(0, 6)}…: ${texto.split('\n').length} linhas; achou ${Object.entries(campos).filter(([, x]) => x).map(([k]) => k).join(', ') || 'nada'}`);
+    return { campos, linhas: texto ? texto.split('\n').length : 0 };
   }
 );

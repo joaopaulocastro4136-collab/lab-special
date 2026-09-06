@@ -32,7 +32,7 @@ async function token(escopo) {
 }
 const TK = await token('https://www.googleapis.com/auth/cloud-platform');
 console.log('══ 1. Ligando as APIs ══');
-const APIS = ['cloudfunctions.googleapis.com', 'run.googleapis.com', 'cloudbuild.googleapis.com', 'artifactregistry.googleapis.com', 'eventarc.googleapis.com', 'pubsub.googleapis.com'];
+const APIS = ['cloudfunctions.googleapis.com', 'run.googleapis.com', 'cloudbuild.googleapis.com', 'artifactregistry.googleapis.com', 'eventarc.googleapis.com', 'pubsub.googleapis.com', 'vision.googleapis.com'];
 const liga = await fetch(`https://serviceusage.googleapis.com/v1/projects/${PROJETO}/services:batchEnable`, {
   method: 'POST',
   headers: { Authorization: 'Bearer ' + TK, 'Content-Type': 'application/json' },
