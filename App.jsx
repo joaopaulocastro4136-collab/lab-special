@@ -1442,15 +1442,18 @@ export default function App() {
         if (ht && ht.value) setHistoricoTempos(JSON.parse(ht.value));
       } catch (e) { /* sem histórico */ }
       try {
+        // Riscados primeiro: a migração do formato antigo precisa saber o que o gestor
+        // já apagou de propósito, senão um lançamento excluído voltaria à vida
+        let riscadasPre = [];
+        try {
+          const rmPre = await window.storage.get('comissoes-removidas');
+          if (rmPre && rmPre.value) riscadasPre = JSON.parse(rmPre.value) || [];
+        } catch (e) { /* sem exclusões registradas */ }
         const cm = await window.storage.get('comissoes-registro');
         // Lançamento de comissão é PERMANENTE (regra: um trabalho paga uma vez, mesmo
         // refeito) — nenhuma limpeza automática aqui; correção é manual, pelo gestor,
         // no relatório da equipe (reatribuir ou excluir o lançamento).
-        let riscadas = [];
-        try {
-          const rm = await window.storage.get('comissoes-removidas');
-          if (rm && rm.value) riscadas = JSON.parse(rm.value) || [];
-        } catch (e) { /* sem exclusões registradas */ }
+        const riscadas = riscadasPre;
         if (cm && cm.value) {
           const daNuvem = JSON.parse(cm.value) || [];
           // UNE com o que este aparelho já tinha: se a nuvem voltar com menos (gravação de

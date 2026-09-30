@@ -163,7 +163,10 @@ const colCasos = () => collection(db, 'labs', LAB, 'casos');
 const docCaso = (id) => doc(db, 'labs', LAB, 'casos', id);
 const docKV = (key) => doc(db, 'labs', LAB, 'kv', key);
 const colComissoes = () => collection(db, 'labs', LAB, 'comissoes');
-const docComissao = (id) => doc(db, 'labs', LAB, 'comissoes', id);
+// Nome de documento não aceita barra: um id estranho não pode derrubar a gravação
+// de TODO o livro (o id verdadeiro continua dentro do próprio lançamento)
+const idSeguroComissao = (id) => String(id).replace(/\//g, '-').slice(0, 300) || 'sem-id';
+const docComissao = (id) => doc(db, 'labs', LAB, 'comissoes', idSeguroComissao(id));
 
 // Espelho local dos casos para gravar no banco só o que mudou
 let espelhoCasos = new Map();
