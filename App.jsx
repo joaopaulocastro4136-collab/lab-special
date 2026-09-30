@@ -6677,12 +6677,118 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
   const [excluindo, setExcluindo] = useState(null); // id do lançamento em confirmação de exclusão (exceção do gestor)
   const [recuperando, setRecuperando] = useState(false);
   const [mesVisto, setMesVisto] = useState(null); // null = mês atual
+  const [verHistorico, setVerHistorico] = useState(false); // tela do histórico mês a mês
+  const [mesAberto, setMesAberto] = useState(null);   // mês expandido no histórico
+  const [pessoaAberta, setPessoaAberta] = useState(null); // "mes|funcionarioId" com os lançamentos abertos
   if (!ehGestor) {
     return (
       <div className="text-center py-14 px-4 rounded-2xl bg-white border border-stone-200">
         <Lock size={26} className="text-stone-300 mx-auto mb-3" />
         <div className="text-stone-500 text-sm font-medium">Acesso restrito a gestores.</div>
         <div className="text-stone-400 text-xs mt-1">Entre com um usuário marcado como gestor para ver este relatório.</div>
+      </div>
+    );
+  }
+
+  // ── Histórico: quanto foi pago a cada pessoa, mês a mês, desde o começo ──
+  if (verHistorico) {
+    const porMes = {};
+    (comissoes || []).forEach(c => {
+      const m = String(c.data || '').slice(0, 7);
+      const chaveMes = m.length === 7 ? m : 'sem-data';
+      if (!porMes[chaveMes]) porMes[chaveMes] = { total: 0, itens: [] };
+      porMes[chaveMes].total += Number(c.valor) || 0;
+      porMes[chaveMes].itens.push(c);
+    });
+    const meses = Object.keys(porMes).sort().reverse();
+    const totalTudo = (comissoes || []).reduce((s2, c) => s2 + (Number(c.valor) || 0), 0);
+    const rotuloMes = (m) => m === 'sem-data' ? 'Sem data' : `${MESES[parseInt(m.split('-')[1]) - 1]} de ${m.split('-')[0]}`;
+    return (
+      <div>
+        <button onClick={() => { setVerHistorico(false); setMesAberto(null); setPessoaAberta(null); }}
+          className="flex items-center gap-1 text-sm text-stone-500 mb-4 font-medium">
+          <ChevronLeft size={16} /> Voltar ao relatório da equipe
+        </button>
+
+        <div className="rounded-2xl mb-4" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)' }}>
+          <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
+          <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Histórico de comissões</div>
+          <div className="text-3xl font-extrabold text-white">{formatReais(totalTudo)}</div>
+          <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>
+            {(comissoes || []).length} {(comissoes || []).length === 1 ? 'lançamento guardado' : 'lançamentos guardados'} · {meses.length} {meses.length === 1 ? 'mês' : 'meses'}
+          </div>
+        </div>
+
+        <p className="text-xs text-stone-400 mb-3">Toque num mês pra ver quanto cada pessoa recebeu. Toque na pessoa pra ver trabalho por trabalho.</p>
+
+        {meses.length === 0 && (
+          <div className="text-center py-10 rounded-2xl bg-white border border-stone-200 text-stone-400 text-sm">Nenhuma comissão registrada ainda.</div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          {meses.map(m => {
+            const dados = porMes[m];
+            const aberto = mesAberto === m;
+            // quanto cada pessoa recebeu nesse mês
+            const pessoas = {};
+            dados.itens.forEach(c => {
+              const id = c.funcionarioId || 'sem-id';
+              if (!pessoas[id]) pessoas[id] = { nome: c.funcionario || 'sem nome', total: 0, itens: [] };
+              pessoas[id].total += Number(c.valor) || 0;
+              pessoas[id].itens.push(c);
+            });
+            const listaPessoas = Object.entries(pessoas).sort((a, b) => b[1].total - a[1].total);
+            return (
+              <div key={m} className="rounded-2xl bg-white" style={{ border: '1px solid #E7E5E4', overflow: 'hidden' }}>
+                <button onClick={() => { setMesAberto(aberto ? null : m); setPessoaAberta(null); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                  <CalendarClock size={16} color={GOLD} className="flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold" style={{ color: INK }}>{rotuloMes(m)}</div>
+                    <div className="text-xs text-stone-400">{dados.itens.length} {dados.itens.length === 1 ? 'lançamento' : 'lançamentos'} · {listaPessoas.length} {listaPessoas.length === 1 ? 'pessoa' : 'pessoas'}</div>
+                  </div>
+                  <span className="text-base font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(dados.total)}</span>
+                  <ChevronDown size={15} color="#A8A29E" style={{ flexShrink: 0, transform: aberto ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                </button>
+
+                {aberto && listaPessoas.map(([id, p]) => {
+                  const chaveP = `${m}|${id}`;
+                  const pAberta = pessoaAberta === chaveP;
+                  return (
+                    <div key={chaveP} style={{ borderTop: '1px solid #F5F5F4' }}>
+                      <button onClick={() => setPessoaAberta(pAberta ? null : chaveP)}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left" style={{ background: '#FAF9F7' }}>
+                        <span className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 28, height: 28, background: 'linear-gradient(135deg, #E8C48A, #B8935A)', color: INK, fontWeight: 800, fontSize: 12 }}>
+                          {(p.nome || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold truncate" style={{ color: INK }}>{p.nome}</div>
+                          <div className="text-xs text-stone-400">{p.itens.length} {p.itens.length === 1 ? 'trabalho' : 'trabalhos'}</div>
+                        </div>
+                        <span className="text-sm font-extrabold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(p.total)}</span>
+                      </button>
+                      {pAberta && (
+                        <div style={{ background: '#fff' }}>
+                          {p.itens.slice().sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))).map(c => (
+                            <div key={c.id} className="flex items-center gap-2 px-4 py-2" style={{ borderTop: '1px solid #F5F5F4', paddingLeft: 46 }}>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold truncate" style={{ color: INK }}>{c.paciente || 'trabalho'}</div>
+                                <div className="text-stone-400 truncate" style={{ fontSize: 10.5 }}>
+                                  {c.data ? formatDateBR(c.data) : 'sem data'}{c.etapa ? ` · ${c.etapa}` : ''}{c.participacao ? ` · ${c.participacao}%` : ''}{c.reaberto ? ' · refeito' : ''}
+                                </div>
+                              </div>
+                              <span className="text-xs font-bold flex-shrink-0" style={{ color: '#166B3A' }}>{formatReais(c.valor)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -6932,6 +7038,11 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
           🔒 Guardado desde o começo: <b style={{ color: '#fff' }}>{formatReais(totalGuardado)}</b> em {comissoes.length} {comissoes.length === 1 ? 'lançamento' : 'lançamentos'}
           {mes !== mesAtualISO() && <> · <button onClick={() => setMesVisto(mesAtualISO())} style={{ color: GOLD, fontWeight: 700 }}>ver mês atual</button></>}
         </div>
+        <button onClick={() => setVerHistorico(true)}
+          className="w-full mt-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2"
+          style={{ background: 'rgba(184,147,90,0.18)', color: GOLD, border: '1px solid rgba(184,147,90,0.45)' }}>
+          <CalendarClock size={14} /> Ver histórico mês a mês
+        </button>
       </div>
 
       {/* Conferência: trabalho feito que NÃO tem lançamento no livro — comissão que sumiu */}
