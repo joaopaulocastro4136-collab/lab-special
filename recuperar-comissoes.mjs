@@ -150,6 +150,44 @@ console.log(`Trabalhos no banco: ${casos.length}`);
 console.log(`Lançamentos no livro: ${ledger.length} (total ${ledger.reduce((s, c) => s + (Number(c.valor) || 0), 0).toFixed(2)})`);
 console.log(`Riscados pelo gestor: ${riscadas.size}\n`);
 
+// ─── RAIO-X do livro: onde o dinheiro está e por que pode não aparecer na tela ───
+console.log('══════════════════════════════════════');
+console.log('RAIO-X DO LIVRO');
+console.log('══════════════════════════════════════');
+const idsFunc = new Set(funcionarios.map(f => f.id));
+const nomePorId = {};
+funcionarios.forEach(f => { nomePorId[f.id] = f.nome; });
+console.log(`Equipe cadastrada hoje: ${funcionarios.map(f => `${f.nome} (${f.id})`).join(', ') || '(vazia)'}`);
+const porMesL = {}, porPessoaL = {}, orfaos = [], semData = [];
+for (const c of ledger) {
+  const v = Number(c.valor) || 0;
+  const m = typeof c.data === 'string' && c.data.length >= 7 ? c.data.slice(0, 7) : 'SEM DATA';
+  if (m === 'SEM DATA') semData.push(c);
+  porMesL[m] = (porMesL[m] || 0) + v;
+  const dono = c.funcionario || '(sem nome)';
+  porPessoaL[dono] = (porPessoaL[dono] || 0) + v;
+  // Órfão: o lançamento aponta pra um funcionário que não existe mais na equipe
+  if (!c.funcionarioId || !idsFunc.has(c.funcionarioId)) orfaos.push(c);
+}
+console.log('\nPor mês (o que a tela Equipe soma é SÓ o mês atual):');
+for (const [m, v] of Object.entries(porMesL).sort()) console.log(`  ${m}: R$ ${v.toFixed(2)}`);
+console.log('\nPor pessoa (nome gravado no lançamento):');
+for (const [n, v] of Object.entries(porPessoaL).sort((a, b) => b[1] - a[1])) console.log(`  ${n}: R$ ${v.toFixed(2)}`);
+console.log(`\n⚠ LANÇAMENTOS ÓRFÃOS (apontam pra um funcionário que não está mais na equipe): ${orfaos.length}`);
+if (orfaos.length) {
+  const porOrfao = {};
+  orfaos.forEach(c => {
+    const k = `${c.funcionario || '(sem nome)'} [id ${c.funcionarioId || 'nenhum'}]`;
+    porOrfao[k] = (porOrfao[k] || 0) + (Number(c.valor) || 0);
+  });
+  for (const [k, v] of Object.entries(porOrfao).sort((a, b) => b[1] - a[1])) {
+    const casa = funcionarios.find(f => String(f.nome).trim().toLowerCase() === String(k.split(' [id ')[0]).trim().toLowerCase());
+    console.log(`  ${k}: R$ ${v.toFixed(2)}${casa ? `  → o nome bate com ${casa.nome} (${casa.id}) que existe hoje: DÁ PRA RELIGAR` : ''}`);
+  }
+  console.log('  (esses valores EXISTEM no banco mas aparecem R$ 0,00 no cartão da pessoa)');
+}
+if (semData.length) console.log(`\n⚠ Lançamentos sem data válida: ${semData.length} (somem do filtro do mês)`);
+
 // ─── O que deveria existir e não existe ───
 const faltando = [];
 for (const caso of casos) {

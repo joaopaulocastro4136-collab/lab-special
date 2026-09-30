@@ -1610,7 +1610,15 @@ export default function App() {
       } catch (e) { /* offline: grava o que temos */ }
       const final = unirComissoes(novas, daNuvem, riscadas);
       if (final.length !== novas.length) { window.__comissoesVivas = final; setComissoes(final); }
-      await window.storage.set('comissoes-registro', JSON.stringify(final));
+      try {
+        await window.storage.set('comissoes-registro', JSON.stringify(final));
+      } catch (e) {
+        // Dinheiro da equipe: gravação que falha não pode sumir calada
+        const versaoApp = typeof __VERSAO_APP__ !== 'undefined' ? __VERSAO_APP__ : 'dev';
+        if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'erro-gravar-comissoes', resultado: String((e && e.message) || e).slice(0, 180), versao: versaoApp });
+        alert('Não consegui salvar a comissão na nuvem — confira a internet. O valor continua nesta tela até salvar.');
+        throw e;
+      }
       if (idsRiscados && idsRiscados.length) {
         try { await window.storage.set('comissoes-removidas', JSON.stringify(riscadas)); } catch (e) { /* tenta na próxima */ }
       }

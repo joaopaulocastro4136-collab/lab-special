@@ -162,6 +162,8 @@ if (typeof window !== 'undefined') window.sairDaConta = () => signOut(auth);
 const colCasos = () => collection(db, 'labs', LAB, 'casos');
 const docCaso = (id) => doc(db, 'labs', LAB, 'casos', id);
 const docKV = (key) => doc(db, 'labs', LAB, 'kv', key);
+const colComissoes = () => collection(db, 'labs', LAB, 'comissoes');
+const docComissao = (id) => doc(db, 'labs', LAB, 'comissoes', id);
 
 // Espelho local dos casos para gravar no banco só o que mudou
 let espelhoCasos = new Map();
@@ -228,6 +230,70 @@ async function gravarCasosAgora(lista) {
       if (op.tipo === 'set') espelhoCasos.set(op.id, op.json);
       else espelhoCasos.delete(op.id);
     }
+  }
+}
+
+// ─── Livro-razão das comissões: UM DOCUMENTO POR LANÇAMENTO ───
+// Guardar tudo num arquivo só era a raiz do sumiço: qualquer aparelho que gravasse
+// com uma lista velha apagava o lançamento feito no outro. Agora cada comissão é um
+// documento próprio (como os trabalhos) e a gravação NUNCA apaga: só acrescenta e
+// atualiza. Some um lançamento só quando o gestor exclui de propósito (riscados).
+let espelhoComissoes = new Map();
+async function lerComissoes() {
+  const snap = await getDocs(colComissoes());
+  const lista = [];
+  espelhoComissoes = new Map();
+  snap.forEach(d => {
+    const c = d.data();
+    const reg = c && c.id ? c : { ...c, id: d.id };
+    espelhoComissoes.set(String(reg.id), JSON.stringify(reg));
+    lista.push(reg);
+  });
+  if (!lista.length) {
+    // Primeira vez: traz o que estava no arquivo único antigo (sem apagá-lo)
+    const antigo = await lerKV('comissoes-registro');
+    if (antigo) {
+      try {
+        const velhos = JSON.parse(antigo) || [];
+        if (velhos.length) {
+          await gravarComissoes(velhos);
+          console.log(`Comissões migradas para documentos: ${velhos.length}`);
+          return velhos;
+        }
+      } catch (e) { console.error('Comissões antigas ilegíveis', e); }
+    }
+  }
+  return lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+}
+
+async function gravarComissoes(lista) {
+  const riscados = new Set(espelhoRiscados);
+  const mudaram = (lista || []).filter(c => {
+    if (!c || !c.id || riscados.has(c.id)) return false;
+    return espelhoComissoes.get(String(c.id)) !== JSON.stringify(c);
+  });
+  for (let i = 0; i < mudaram.length; i += 400) {
+    const parte = mudaram.slice(i, i + 400);
+    const batch = writeBatch(db);
+    for (const c of parte) batch.set(docComissao(String(c.id)), c);
+    await batch.commit();
+    for (const c of parte) espelhoComissoes.set(String(c.id), JSON.stringify(c));
+  }
+  // Nada de apagar o que não veio na lista: lançamento de outro aparelho fica de pé
+}
+
+// Riscados = exclusões feitas de propósito pelo gestor. Só elas removem documento.
+let espelhoRiscados = [];
+async function riscarComissoes(idsJson) {
+  let ids = [];
+  try { ids = JSON.parse(idsJson) || []; } catch (e) { return; }
+  espelhoRiscados = ids;
+  const novos = ids.filter(id => id);
+  for (let i = 0; i < novos.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const id of novos.slice(i, i + 400)) batch.delete(docComissao(String(id)));
+    await batch.commit();
+    for (const id of novos.slice(i, i + 400)) espelhoComissoes.delete(String(id));
   }
 }
 
@@ -483,6 +549,15 @@ function instalarStorage() {
         const lista = await lerSolicitacoes();
         return { key, value: JSON.stringify(lista) };
       }
+      if (key === 'comissoes-registro') {
+        const lista = await lerComissoes();
+        return { key, value: JSON.stringify(lista) };
+      }
+      if (key === 'comissoes-removidas') {
+        const v2 = await lerKV(key);
+        try { espelhoRiscados = v2 ? (JSON.parse(v2) || []) : []; } catch (e) { espelhoRiscados = []; }
+        return v2 == null ? null : { key, value: v2 };
+      }
       const v = await lerKV(key);
       return v == null ? null : { key, value: v };
     },
@@ -497,6 +572,15 @@ function instalarStorage() {
       }
       if (key === 'solicitacoes-clinica') {
         await gravarSolicitacoes(JSON.parse(value));
+        return { key, value };
+      }
+      if (key === 'comissoes-registro') {
+        await gravarComissoes(JSON.parse(value));
+        return { key, value };
+      }
+      if (key === 'comissoes-removidas') {
+        await riscarComissoes(value);
+        await gravarKV(key, value);
         return { key, value };
       }
       await gravarKV(key, value);
