@@ -6676,6 +6676,7 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
   const [corrigindo, setCorrigindo] = useState(null); // id do registro de comissão sendo reatribuído
   const [excluindo, setExcluindo] = useState(null); // id do lançamento em confirmação de exclusão (exceção do gestor)
   const [recuperando, setRecuperando] = useState(false);
+  const [mesVisto, setMesVisto] = useState(null); // null = mês atual
   if (!ehGestor) {
     return (
       <div className="text-center py-14 px-4 rounded-2xl bg-white border border-stone-200">
@@ -6870,9 +6871,18 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
     );
   }
 
-  const mes = mesAtualISO();
-  const comissoesMes = comissoes.filter(c => c.data.startsWith(mes));
-  const temposMes = historicoTempos.filter(h => h.data.startsWith(mes));
+  // A tela mostra UM mês por vez — mas nada some: dá pra voltar mês a mês e o
+  // total guardado (todos os meses) fica sempre à vista. Sem isso, na virada do mês
+  // a tela zerava e parecia que as comissões tinham sido apagadas.
+  const mes = mesVisto || mesAtualISO();
+  const mesesComLancamento = [...new Set(comissoes.map(c => String(c.data || '').slice(0, 7)).filter(m => m.length === 7))].sort();
+  const mesesNavegaveis = [...new Set([...mesesComLancamento, mesAtualISO()])].sort();
+  const posMes = mesesNavegaveis.indexOf(mes);
+  const mesAnterior = posMes > 0 ? mesesNavegaveis[posMes - 1] : null;
+  const mesSeguinte = posMes >= 0 && posMes < mesesNavegaveis.length - 1 ? mesesNavegaveis[posMes + 1] : null;
+  const totalGuardado = comissoes.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const comissoesMes = comissoes.filter(c => String(c.data || '').startsWith(mes));
+  const temposMes = historicoTempos.filter(h => String(h.data || '').startsWith(mes));
 
   const porFuncionario = funcionarios.map(f => {
     const minhas = comissoesMes.filter(c => c.funcionarioId === f.id);
@@ -6905,9 +6915,23 @@ function EquipeView({ funcionarios, comissoes, historicoTempos, tiposTrabalho, e
 
       <div className="rounded-2xl mb-5" style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px', background: 'linear-gradient(150deg, #24221E 0%, #1C1B19 55%, #2B2620 100%)', border: '1px solid rgba(184,147,90,0.35)', boxShadow: '0 18px 44px -22px rgba(28,27,25,0.55)' }}>
         <span style={{ position: 'absolute', right: -8, bottom: -12, opacity: 0.09, pointerEvents: 'none' }}><EstrelaLogo size={56} color={GOLD} /></span>
-        <div className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: GOLD }}>Comissões de {mesNome}</div>
-        <div className="text-3xl font-extrabold text-white">{formatReais(totalMes)}</div>
-        <div className="text-xs mt-1" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
+        <div className="flex items-center justify-between mb-1">
+          <button onClick={() => mesAnterior && setMesVisto(mesAnterior)} disabled={!mesAnterior}
+            className="px-1.5 py-1 rounded-lg" style={{ background: mesAnterior ? 'rgba(255,255,255,0.10)' : 'transparent', opacity: mesAnterior ? 1 : 0.25 }}>
+            <ChevronLeft size={16} color={GOLD} />
+          </button>
+          <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: GOLD }}>Comissões de {mesNome}</div>
+          <button onClick={() => mesSeguinte && setMesVisto(mesSeguinte)} disabled={!mesSeguinte}
+            className="px-1.5 py-1 rounded-lg" style={{ background: mesSeguinte ? 'rgba(255,255,255,0.10)' : 'transparent', opacity: mesSeguinte ? 1 : 0.25, transform: 'rotate(180deg)' }}>
+            <ChevronLeft size={16} color={GOLD} />
+          </button>
+        </div>
+        <div className="text-3xl font-extrabold text-white text-center">{formatReais(totalMes)}</div>
+        <div className="text-xs mt-1 text-center" style={{ color: GOLD_SOFT }}>{comissoesMes.length} {comissoesMes.length === 1 ? 'trabalho finalizado' : 'trabalhos finalizados'} no mês</div>
+        <div className="text-xs mt-2 pt-2 text-center" style={{ color: 'rgba(255,255,255,0.55)', borderTop: '1px solid rgba(184,147,90,0.25)' }}>
+          🔒 Guardado desde o começo: <b style={{ color: '#fff' }}>{formatReais(totalGuardado)}</b> em {comissoes.length} {comissoes.length === 1 ? 'lançamento' : 'lançamentos'}
+          {mes !== mesAtualISO() && <> · <button onClick={() => setMesVisto(mesAtualISO())} style={{ color: GOLD, fontWeight: 700 }}>ver mês atual</button></>}
+        </div>
       </div>
 
       {/* Conferência: trabalho feito que NÃO tem lançamento no livro — comissão que sumiu */}
