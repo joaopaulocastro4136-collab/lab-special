@@ -1,6 +1,6 @@
 {
-  "versionCode": 72,
-  "versionName": "12.9",
+  "versionCode": 74,
+  "versionName": "13.1",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Entrar com e-mail e senha no Android (e criar conta pelo app)\n• Opção esqueci minha senha"
+  "novidades": "• Comissões guardadas de vez: cada lançamento vira um registro próprio, nenhum aparelho apaga o do outro\n• Equipe: navegue mês a mês e veja o total guardado desde o começo"
 }
