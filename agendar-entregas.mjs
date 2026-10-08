@@ -79,21 +79,29 @@ async function gravarDoc(caminho, obj) {
 // Compara nomes ignorando acento, maiúscula e sobrenome faltando
 const limpar = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const partes = (s) => limpar(s).split(' ').filter(p => p.length > 2);
-function pontuacao(alvo, candidato) {
+// Regra dura: nome de paciente é gente de verdade, casar errado é pior que não casar.
+// Só aceita quando bate o nome inteiro, OU bate o primeiro nome E pelo menos mais um
+// pedaço. Com só o primeiro nome igual (Maria, José...), aceita apenas se esse primeiro
+// nome for ÚNICO entre os trabalhos em aberto — senão é ambíguo e fica de fora.
+function pontuacao(alvo, candidato, contaPrimeiroNome) {
   const a = partes(alvo), c = partes(candidato);
   if (!a.length || !c.length) return 0;
   if (limpar(alvo) === limpar(candidato)) return 100;
   const comuns = a.filter(p => c.includes(p)).length;
   if (!comuns) return 0;
-  // precisa casar o primeiro nome
-  if (a[0] !== c[0]) return comuns >= 2 ? 40 + comuns * 5 : 0;
-  return 60 + comuns * 10;
+  if (a[0] !== c[0]) return 0;              // primeiro nome diferente: não é a mesma pessoa
+  if (comuns >= 2) return 80 + comuns * 5;  // primeiro nome + sobrenome batendo
+  return (contaPrimeiroNome && contaPrimeiroNome[a[0]] === 1) ? 70 : 0; // só o 1º nome: tem que ser único
 }
 
 const casos = await lerColecao(`labs/${LAB}/casos`);
 const abertos = casos.filter(c => c.status !== 'Entregue');
 console.log(`Trabalhos no banco: ${casos.length} (${abertos.length} ainda não entregues)`);
 console.log(`Modo: ${APLICAR ? 'APLICAR (grava)' : 'só relatório'}\n`);
+
+// Quantos trabalhos em aberto começam com cada primeiro nome (pra pegar ambiguidade)
+const contaPrimeiroNome = {};
+abertos.forEach(c => { const p = partes(c.paciente)[0]; if (p) contaPrimeiroNome[p] = (contaPrimeiroNome[p] || 0) + 1; });
 
 const planos = [];
 const naoAchados = [];
@@ -104,10 +112,10 @@ for (const dia of CRONOGRAMA) {
     let melhor = null, melhorP = 0;
     for (const c of abertos) {
       if (usados.has(c.id)) continue;
-      const pt = pontuacao(nome, c.paciente);
+      const pt = pontuacao(nome, c.paciente, contaPrimeiroNome);
       if (pt > melhorP) { melhorP = pt; melhor = c; }
     }
-    if (melhor && melhorP >= 60) {
+    if (melhor && melhorP >= 70) {
       usados.add(melhor.id);
       planos.push({ caso: melhor, nome, data: dia.data, urgente: urg === 'U', pontos: melhorP });
     } else {
