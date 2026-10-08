@@ -76,6 +76,12 @@ async function gravarDoc(caminho, obj) {
   return true;
 }
 
+// Nomes que no app estão escritos diferente (conferidos um a um nos candidatos reais)
+const APELIDOS = {
+  'tereza cristina': 'Teresa Cristina',
+  'margarida nicacio': 'Margarida nicasia',
+};
+
 // Compara nomes ignorando acento, maiúscula e sobrenome faltando
 const limpar = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const partes = (s) => limpar(s).split(' ').filter(p => p.length > 2);
@@ -110,10 +116,17 @@ for (const dia of CRONOGRAMA) {
   for (const p of dia.pacientes) {
     const [nome, urg] = p.split('|');
     let melhor = null, melhorP = 0;
-    for (const c of abertos) {
-      if (usados.has(c.id)) continue;
-      const pt = pontuacao(nome, c.paciente, contaPrimeiroNome);
-      if (pt > melhorP) { melhorP = pt; melhor = c; }
+    const apelido = APELIDOS[limpar(nome)];
+    if (apelido) {
+      const achado = abertos.find(c => !usados.has(c.id) && limpar(c.paciente) === limpar(apelido));
+      if (achado) { melhor = achado; melhorP = 100; }
+    }
+    if (!melhor) {
+      for (const c of abertos) {
+        if (usados.has(c.id)) continue;
+        const pt = pontuacao(nome, c.paciente, contaPrimeiroNome);
+        if (pt > melhorP) { melhorP = pt; melhor = c; }
+      }
     }
     if (melhor && melhorP >= 70) {
       usados.add(melhor.id);
@@ -151,6 +164,13 @@ if (naoAchados.length) {
 
 if (!APLICAR) { console.log('\n(Modo relatório: NADA foi gravado. Para aplicar, rode com APLICAR=1.)'); process.exit(0); }
 
+const backup = planos.map(pl => ({ id: pl.caso.id, paciente: pl.caso.paciente, prazoAntigo: pl.caso.prazo || null }));
+const hojeISO = new Date().toISOString().slice(0, 10);
+console.log('\nGuardando cópia de segurança dos prazos antigos...');
+if (!(await gravarDoc(`labs/${LAB}/kv/agenda-backup-${hojeISO.replace(/-/g, '')}`, { v: JSON.stringify(backup) }))) {
+  console.error('ERRO: não consegui guardar a cópia — nada foi alterado.'); process.exit(1);
+}
+console.log(`Cópia guardada em kv/agenda-backup-${hojeISO.replace(/-/g, '')} ✓`);
 console.log('\nGravando os prazos...');
 let ok = 0;
 for (const pl of planos) {
