@@ -135,7 +135,18 @@ for (const pl of planos) {
 }
 if (naoAchados.length) {
   console.log(`\n⚠ NÃO ENCONTRADOS NO APP (${naoAchados.length}) — precisam ser cadastrados por você:`);
-  naoAchados.forEach(n => console.log(`  ${n.data} | ${n.nome}${n.urgente ? ' (URGÊNCIA)' : ''}${n.melhorPalpite ? `  · parecido: ${n.melhorPalpite}` : ''}`));
+  naoAchados.forEach(n => {
+    const alvo = partes(n.nome);
+    const parecidos = abertos
+      .filter(c => !usados.has(c.id))
+      .map(c => ({ nome: c.paciente, status: c.status, prazo: c.prazo, pt: partes(c.paciente).filter(p => alvo.includes(p)).length }))
+      .filter(x => x.pt > 0)
+      .sort((a, b) => b.pt - a.pt)
+      .slice(0, 4);
+    console.log(`  ${n.data} | ${n.nome}${n.urgente ? ' (URGÊNCIA)' : ''}`);
+    parecidos.forEach(p => console.log(`        candidato: "${p.nome}" (${p.status}, prazo ${p.prazo || '—'})`));
+    if (!parecidos.length) console.log('        (nenhum parecido — esse trabalho não existe no app)');
+  });
 }
 
 if (!APLICAR) { console.log('\n(Modo relatório: NADA foi gravado. Para aplicar, rode com APLICAR=1.)'); process.exit(0); }
