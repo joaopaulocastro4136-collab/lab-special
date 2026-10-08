@@ -1,0 +1,31 @@
+# Agenda no banco as entregas do cronograma (prazo de cada trabalho).
+# Por padrão SÓ RELATA. Para gravar, mude APLICAR para "1" e dê push.
+name: Agendar entregas
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/agendar-entregas.yml
+      - agendar-entregas.mjs
+
+env:
+  APLICAR: "0"
+  LAB: "principal"
+
+jobs:
+  agendar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Confere (e, se pedido, grava) os prazos do cronograma
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          node agendar-entregas.mjs
