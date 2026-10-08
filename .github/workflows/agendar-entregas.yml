@@ -10,7 +10,7 @@ on:
       - agendar-entregas.mjs
 
 env:
-  APLICAR: "1"
+  APLICAR: "0"
   LAB: "principal"
 
 jobs:
