@@ -242,6 +242,7 @@ async function gravarCasosAgora(lista) {
 // documento próprio (como os trabalhos) e a gravação NUNCA apaga: só acrescenta e
 // atualiza. Some um lançamento só quando o gestor exclui de propósito (riscados).
 let espelhoComissoes = new Map();
+let marcaMigracaoConferida = false;
 async function lerComissoes() {
   const snap = await getDocs(colComissoes());
   const lista = [];
@@ -252,21 +253,31 @@ async function lerComissoes() {
     espelhoComissoes.set(String(reg.id), JSON.stringify(reg));
     lista.push(reg);
   });
+  const ordenar = (l) => l.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
   if (!lista.length) {
-    // Primeira vez: traz o que estava no arquivo único antigo (sem apagá-lo)
-    const antigo = await lerKV('comissoes-registro');
+    // Primeira vez: traz o que estava no arquivo único antigo (sem apagá-lo).
+    // A marca "comissoes-migradas" garante que isso acontece UMA vez só: se um dia o
+    // gestor excluir todos os lançamentos, o arquivo antigo não pode ressuscitá-los.
+    const jaMigrou = await lerKV('comissoes-migradas');
+    const antigo = jaMigrou ? null : await lerKV('comissoes-registro');
     if (antigo) {
       try {
-        const velhos = JSON.parse(antigo) || [];
+        const fora = new Set(espelhoRiscados);
+        const velhos = (JSON.parse(antigo) || []).filter(c => c && c.id && !fora.has(c.id));
         if (velhos.length) {
           await gravarComissoes(velhos);
           console.log(`Comissões migradas para documentos: ${velhos.length}`);
-          return velhos;
         }
+        await gravarKV('comissoes-migradas', new Date().toISOString());
+        if (velhos.length) return ordenar(velhos);
       } catch (e) { console.error('Comissões antigas ilegíveis', e); }
     }
+  } else if (!marcaMigracaoConferida) {
+    // Laboratório que migrou antes da marca existir: grava a marca uma vez (em segundo plano)
+    marcaMigracaoConferida = true;
+    lerKV('comissoes-migradas').then(v => { if (!v) return gravarKV('comissoes-migradas', new Date().toISOString()); }).catch(() => { });
   }
-  return lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+  return ordenar(lista);
 }
 
 async function gravarComissoes(lista) {
@@ -923,8 +934,9 @@ function CloudRoot({ entrarNativo }) {
     const un1 = onSnapshot(colCasos(), remoto);
     const un2 = onSnapshot(collection(db, 'labs', LAB, 'kv'), remoto);
     const un3 = onSnapshot(colSolic(), remoto);
+    const un4 = onSnapshot(colComissoes(), remoto); // comissão lançada no outro aparelho aparece aqui
     const t = setTimeout(() => { prontoRef.current = true; }, 4000);
-    return () => { un1(); un2(); un3(); clearTimeout(t); clearTimeout(timerRef.current); };
+    return () => { un1(); un2(); un3(); un4(); clearTimeout(t); clearTimeout(timerRef.current); };
   }, [acesso]);
 
   // Registra este aparelho p/ receber avisos push (só no app nativo; na web não faz nada)

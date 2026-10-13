@@ -247,7 +247,7 @@ async function imprimirEtiqueta(caso, tamanho) {
       console.error('impressão direta', e);
       const msg = String((e && e.message) || e);
       const cancelou = /cancel|requestDevice/i.test(msg);
-      if (!cancelou && !confirm('Não consegui imprimir direto pelo Bluetooth.\n(' + msg.slice(0, 90) + ')\n\nQuer compartilhar a etiqueta pra imprimir pelo app da NIIMBOT?')) return false;
+      if (!cancelou && !confirm('Não consegui imprimir direto pelo Bluetooth.\n(' + msg.slice(0, 240) + ')\n\nQuer compartilhar a etiqueta pra imprimir pelo app da NIIMBOT?')) return false;
       if (cancelou) return false;
     }
   }
@@ -1633,13 +1633,29 @@ export default function App() {
     return [...mapa.values()].sort((x, y) => String(y.data || '').localeCompare(String(x.data || '')));
   };
   const persistComissoes = (novas, idsRiscados) => {
+    const antesVivas = comissoesVivas();
+    const antesRiscadas = riscadasVivas();
     const riscadas = idsRiscados && idsRiscados.length
-      ? [...new Set([...riscadasVivas(), ...idsRiscados])]
-      : riscadasVivas();
+      ? [...new Set([...antesRiscadas, ...idsRiscados])]
+      : antesRiscadas;
     window.__comissoesVivas = novas;
     window.__comissoesRiscadas = riscadas;
     setComissoes(novas);
     return flashSave(async () => {
+      // Exclusão de propósito vai PRIMEIRO e não pode falhar calada: é ela que apaga o
+      // documento na nuvem (a gravação do livro nunca apaga nada). Se não der, o
+      // lançamento volta pra tela — senão parecia excluído e reaparecia depois.
+      if (idsRiscados && idsRiscados.length) {
+        try {
+          await window.storage.set('comissoes-removidas', JSON.stringify(riscadas));
+        } catch (e) {
+          window.__comissoesVivas = antesVivas;
+          window.__comissoesRiscadas = antesRiscadas;
+          setComissoes(antesVivas);
+          alert('Não consegui excluir o lançamento na nuvem — confira a internet e tente de novo.');
+          throw e;
+        }
+      }
       // Mistura com o que está gravado agora (outro aparelho pode ter lançado no meio)
       let daNuvem = [];
       try {
@@ -1656,9 +1672,6 @@ export default function App() {
         if (window.nuvemCasos && window.nuvemCasos.logar) window.nuvemCasos.logar({ acao: 'erro-gravar-comissoes', resultado: String((e && e.message) || e).slice(0, 180), versao: versaoApp });
         alert('Não consegui salvar a comissão na nuvem — confira a internet. O valor continua nesta tela até salvar.');
         throw e;
-      }
-      if (idsRiscados && idsRiscados.length) {
-        try { await window.storage.set('comissoes-removidas', JSON.stringify(riscadas)); } catch (e) { /* tenta na próxima */ }
       }
     });
   };
@@ -1805,8 +1818,12 @@ export default function App() {
     const saldo = Math.max(0, totalEntregue - totalPago);
     criarNotificacao('pagamento', `Pagamento de ${formatReais(valor)} recebido de ${dentista}. Saldo em aberto: ${formatReais(saldo)}.`, null);
   };
-  const removerPagamento = (id) => {
-    persistPagamentos(pagamentos.filter(p => p.id !== id));
+  // Aceita um id ou uma lista de ids: remover várias baixas de uma vez precisa filtrar
+  // a lista UMA vez (chamar uma por uma no mesmo instante regravava a lista velha e
+  // só a última remoção ficava).
+  const removerPagamento = (idOuIds) => {
+    const fora = new Set([].concat(idOuIds));
+    persistPagamentos(pagamentos.filter(p => !fora.has(p.id)));
   };
   const trocarUsuario = (id) => {
     setUsuarioAtivoId(id);
@@ -2376,9 +2393,14 @@ export default function App() {
     const hoje = todayISO();
     const novos = casosVivos().map(c => {
       if (!alvo.has(c.id)) return c;
-      if (desfazer) return { ...c, valorPago: null, acertoEm: null };
+      // Desfazer devolve o que estava pago ANTES do acerto (um pagamento parcial de
+      // verdade não pode virar zero). Acerto antigo, feito sem essa marca, volta a zero.
+      if (desfazer) return { ...c, valorPago: c.valorPagoAntes != null ? c.valorPagoAntes : null, acertoEm: null, valorPagoAntes: null };
       const v = Math.round((Number(c.valor) || 0) * 100) / 100;
-      return v > 0 ? { ...c, valorPago: v, acertoEm: hoje } : c;
+      if (!(v > 0)) return c;
+      // Acertar de novo um trabalho já acertado mantém a marca original (não vira "pago cheio")
+      const antes = c.acertoEm ? (c.valorPagoAntes != null ? c.valorPagoAntes : null) : (Number(c.valorPago) > 0 ? Number(c.valorPago) : null);
+      return { ...c, valorPago: v, acertoEm: hoje, valorPagoAntes: antes };
     });
     const ok = await persistCasos(novos);
     if (!ok) { mostrarAviso('Não consegui salvar o acerto — confira a internet.'); carregarDados(); return false; }
@@ -5086,7 +5108,7 @@ function DentistasView({ dentistas, casos, comissoes, pagamentos, ehGestor, onAd
                 {baixasDoDentista.length > 0 && (
                   <div className="px-3 py-2.5 text-xs leading-relaxed" style={{ background: '#FEF6E7', color: '#7A4A00', borderBottom: '1px solid #E7E5E4' }}>
                     ⚠️ Este cliente tem <b>{baixasDoDentista.length} {baixasDoDentista.length === 1 ? 'baixa de pagamento antiga' : 'baixas de pagamento antigas'}</b> ({formatReais(baixasDoDentista.reduce((s, p) => s + (p.valor || 0), 0))}) lançadas no Financeiro. Se elas também forem de teste, remova antes — senão o saldo dele pode ficar negativo.
-                    <button onClick={() => baixasDoDentista.forEach(p => onRemoverPagamento && onRemoverPagamento(p.id))}
+                    <button onClick={() => onRemoverPagamento && onRemoverPagamento(baixasDoDentista.map(p => p.id))}
                       className="w-full mt-2 py-2 rounded-lg text-xs font-bold" style={{ background: '#fff', color: '#B45309', border: '1px solid #E8C48A' }}>
                       Remover essas baixas antigas
                     </button>
