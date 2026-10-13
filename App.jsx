@@ -190,7 +190,10 @@ async function gerarEtiquetaCanvas(caso, tamanho) {
     x.font = `900 30px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 56);
     let fs = 62; x.font = `900 ${fs}px ${F}`;
     while (x.measureText(nome).width > LARG && fs > 26) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
-    x.fillText(nome, 34, 148);
+    // Nome enorme: encolher até 26 px não basta — corta antes de invadir o QR
+    let nome30 = nome;
+    while (x.measureText(nome30).width > LARG && nome30.length > 3) nome30 = nome30.slice(0, -2);
+    x.fillText(nome30, 34, 148);
     linha(caso.tipoTrabalho, 226, `700 42px ${F}`, LARG);
     linha(caso.dentista, 294, `400 38px ${F}`, LARG);
     x.font = `800 36px ${F}`;
@@ -206,7 +209,9 @@ async function gerarEtiquetaCanvas(caso, tamanho) {
     x.font = `900 24px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 40);
     let fs = 54; x.font = `900 ${fs}px ${F}`;
     while (x.measureText(nome).width > LARG && fs > 22) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
-    x.fillText(nome, 34, 104);
+    let nome20 = nome;
+    while (x.measureText(nome20).width > LARG && nome20.length > 3) nome20 = nome20.slice(0, -2);
+    x.fillText(nome20, 34, 104);
     linha(caso.tipoTrabalho, 158, `700 34px ${F}`, LARG);
     linha(caso.dentista, 206, `400 30px ${F}`, LARG);
     x.font = `800 30px ${F}`;
