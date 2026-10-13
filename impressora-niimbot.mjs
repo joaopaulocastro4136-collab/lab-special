@@ -180,8 +180,9 @@ function contarPartes(linha) {
 
 // Converte o canvas da etiqueta (fundo branco, tinta preta) nos bits da máquina:
 // largura 384 pontos (48 mm na cabeça), 1 bit por ponto, "1" = preto.
-function canvasParaLinhas(canvas) {
-  const L = 384, A = 240;
+function canvasParaLinhas(canvas, dim) {
+  // Padrão 50×30 (384×240 pontos); o 50×20 manda 384×160
+  const L = (dim && dim.largura) || 384, A = (dim && dim.altura) || 240;
   const c = document.createElement('canvas'); c.width = L; c.height = A;
   const x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, L, A);
@@ -202,19 +203,19 @@ function canvasParaLinhas(canvas) {
 
 // Imprime o canvas da etiqueta. Conecta se ainda não estiver conectada.
 // Cada passo carimba onde estamos, pra mensagem de erro dizer onde travou.
-export async function imprimirDireto(canvasEtiqueta) {
+export async function imprimirDireto(canvasEtiqueta, dim) {
   let passo = 'procurar/conectar a impressora';
   try {
     await conectarImpressora();
     passo = 'preparar a impressão';
-    return await _imprimir(canvasEtiqueta);
+    return await _imprimir(canvasEtiqueta, dim);
   } catch (e) {
     const detalhe = String((e && e.message) || e);
     throw new Error(`falhou em: ${passo} — ${detalhe}`);
   }
 }
-async function _imprimir(canvasEtiqueta) {
-  const { linhas, largura, altura } = canvasParaLinhas(canvasEtiqueta);
+async function _imprimir(canvasEtiqueta, dim) {
+  const { linhas, largura, altura } = canvasParaLinhas(canvasEtiqueta, dim);
 
   // ── Início (receita da B1) ──
   await enviar(CMD.DENSIDADE, [3]);              // densidade 3

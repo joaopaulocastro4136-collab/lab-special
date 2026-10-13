@@ -153,43 +153,72 @@ function proximoDiaUtil(iso, diasTrabalho) {
   }
   return isoLocal(d);
 }
-// ── Etiqueta térmica do trabalho (NIIMBOT B1, rótulo 50×30 mm) ──
-// Gera a imagem no formato do rótulo; o QR guarda "LS-<id do caso>" e é lido
-// pelo botão "Ler etiqueta" (abre a ficha do trabalho na hora).
-async function gerarEtiquetaCanvas(caso) {
-  const W = 800, H = 480; // 50×30 mm em dobro de definição — o app da NIIMBOT ajusta ao rótulo
+// ── Etiqueta térmica do trabalho (NIIMBOT B1) ──
+// Dois rótulos: 50×30 mm (padrão) e 50×20 mm (o menor). A imagem é gerada em
+// 16 px/mm; a máquina imprime a 8 pontos/mm (cabeça de 48 mm = 384 pontos).
+// O QR guarda "LS-<id do caso>" e é lido pelo botão "Ler etiqueta".
+const TAMANHOS_ETIQUETA = {
+  '50x30': { rotulo: '50×30', W: 800, H: 480, pontosL: 384, pontosA: 240 },
+  '50x20': { rotulo: '50×20', W: 800, H: 320, pontosL: 384, pontosA: 160 },
+};
+function tamanhoEtiquetaSalvo() {
+  try { const t = localStorage.getItem('etiqueta-tamanho'); return TAMANHOS_ETIQUETA[t] ? t : '50x30'; } catch (e) { return '50x30'; }
+}
+async function gerarEtiquetaCanvas(caso, tamanho) {
+  const T = TAMANHOS_ETIQUETA[tamanho] || TAMANHOS_ETIQUETA['50x30'];
+  const W = T.W, H = T.H;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
-  const qr = document.createElement('canvas');
-  await QRCode.toCanvas(qr, 'LS-' + caso.id, { width: 300, margin: 1 });
-  x.drawImage(qr, W - 322, (H - 300) / 2);
-  x.fillStyle = '#000';
   const F = "-apple-system, 'Segoe UI', Arial, sans-serif";
-  const LARG = W - 322 - 56; // área de texto à esquerda do QR
-  x.font = `900 30px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 56);
   const nome = String(caso.paciente || 'Trabalho').toUpperCase();
-  let fs = 62; x.font = `900 ${fs}px ${F}`;
-  while (x.measureText(nome).width > LARG && fs > 26) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
-  x.fillText(nome, 34, 148);
-  const linha = (t, y, fonte) => {
+  const cod = 'Nº ' + String(caso.id).slice(-4).toUpperCase();
+  const linha = (t, y, fonte, larg) => {
     x.font = fonte;
     let s = String(t || '');
-    while (x.measureText(s).width > LARG && s.length > 3) s = s.slice(0, -2);
+    while (x.measureText(s).width > larg && s.length > 3) s = s.slice(0, -2);
     x.fillText(s, 34, y);
   };
-  linha(caso.tipoTrabalho, 226, `700 42px ${F}`);
-  linha(caso.dentista, 294, `400 38px ${F}`);
-  const cod = 'Nº ' + String(caso.id).slice(-4).toUpperCase();
-  x.font = `800 36px ${F}`;
-  x.lineWidth = 5; x.strokeStyle = '#000';
-  x.strokeRect(34, 376, x.measureText(cod).width + 44, 68);
-  x.fillText(cod, 56, 424);
+  const qr = document.createElement('canvas');
+  x.fillStyle = '#000';
+  if (H >= 480) {
+    // 50×30: QR grande à direita, quatro linhas à esquerda
+    await QRCode.toCanvas(qr, 'LS-' + caso.id, { width: 300, margin: 1 });
+    x.drawImage(qr, W - 322, (H - 300) / 2);
+    x.fillStyle = '#000';
+    const LARG = W - 322 - 56;
+    x.font = `900 30px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 56);
+    let fs = 62; x.font = `900 ${fs}px ${F}`;
+    while (x.measureText(nome).width > LARG && fs > 26) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
+    x.fillText(nome, 34, 148);
+    linha(caso.tipoTrabalho, 226, `700 42px ${F}`, LARG);
+    linha(caso.dentista, 294, `400 38px ${F}`, LARG);
+    x.font = `800 36px ${F}`;
+    x.lineWidth = 5; x.strokeStyle = '#000';
+    x.strokeRect(34, 376, x.measureText(cod).width + 44, 68);
+    x.fillText(cod, 56, 424);
+  } else {
+    // 50×20: QR menor à direita, texto mais apertado (nome, tipo, dentista + número)
+    await QRCode.toCanvas(qr, 'LS-' + caso.id, { width: 260, margin: 1 });
+    x.drawImage(qr, W - 280, (H - 260) / 2);
+    x.fillStyle = '#000';
+    const LARG = W - 280 - 50;
+    x.font = `900 24px ${F}`; x.fillText('✦ SPECIAL LAB', 34, 40);
+    let fs = 54; x.font = `900 ${fs}px ${F}`;
+    while (x.measureText(nome).width > LARG && fs > 22) { fs -= 4; x.font = `900 ${fs}px ${F}`; }
+    x.fillText(nome, 34, 104);
+    linha(caso.tipoTrabalho, 158, `700 34px ${F}`, LARG);
+    linha(caso.dentista, 206, `400 30px ${F}`, LARG);
+    x.font = `800 30px ${F}`;
+    x.lineWidth = 4; x.strokeStyle = '#000';
+    x.strokeRect(34, 238, x.measureText(cod).width + 36, 56);
+    x.fillText(cod, 52, 278);
+  }
   return c;
 }
-async function compartilharEtiqueta(caso) {
+async function compartilharEtiqueta(caso, tamanho) {
   try {
-    const dataURL = (await gerarEtiquetaCanvas(caso)).toDataURL('image/png');
+    const dataURL = (await gerarEtiquetaCanvas(caso, tamanho)).toDataURL('image/png');
     const blob = await (await fetch(dataURL)).blob();
     const nomeArq = 'etiqueta-' + String(caso.paciente || 'trabalho').trim().replace(/[^\w]+/g, '-').toLowerCase() + '.png';
     const arquivo = new File([blob], nomeArq, { type: 'image/png' });
@@ -202,11 +231,12 @@ async function compartilharEtiqueta(caso) {
 }
 // Imprime a etiqueta: no app do celular tenta DIRETO pelo Bluetooth (NIIMBOT);
 // se não der (sem Bluetooth, cancelou a escolha, máquina desligada), cai no compartilhar.
-async function imprimirEtiqueta(caso) {
+async function imprimirEtiqueta(caso, tamanho) {
+  const T = TAMANHOS_ETIQUETA[tamanho] || TAMANHOS_ETIQUETA['50x30'];
   const nativo = typeof window !== 'undefined' && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
   if (nativo) {
     try {
-      await imprimirDireto(await gerarEtiquetaCanvas(caso));
+      await imprimirDireto(await gerarEtiquetaCanvas(caso, tamanho), { largura: T.pontosL, altura: T.pontosA });
       return true;
     } catch (e) {
       console.error('impressão direta', e);
@@ -216,7 +246,7 @@ async function imprimirEtiqueta(caso) {
       if (cancelou) return false;
     }
   }
-  await compartilharEtiqueta(caso);
+  await compartilharEtiqueta(caso, tamanho);
   return false;
 }
 
@@ -2788,10 +2818,10 @@ export default function App() {
             tiposTrabalho={tiposTrabalho}
             onSalvarItens={(novosItens) => salvarItensCaso(selectedCaso.id, novosItens)}
             onImprimir={() => setImprimindoCasoId(selectedCaso.id)}
-            onEtiqueta={async () => {
+            onEtiqueta={async (tamanho) => {
               const nativo = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
               if (nativo) mostrarAviso('Procurando a impressora NIIMBOT...');
-              if (await imprimirEtiqueta(selectedCaso)) mostrarAviso('Etiqueta impressa ✓');
+              if (await imprimirEtiqueta(selectedCaso, tamanho)) mostrarAviso('Etiqueta impressa ✓');
             }}
             confirmandoExclusao={confirmandoExclusao}
             setConfirmandoExclusao={setConfirmandoExclusao}
@@ -8139,6 +8169,9 @@ function IdCopiavel({ id }) {
 }
 
 function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, comissaoRegistrada, onVoltar, onStatusChange, onIniciarEtapa, onCancelarEtapa, onConcluirEtapa, onDesfazerEtapa, onPularEtapa, onToggleClinica, onEntregarProva, onConfirmarRetirada, onSalvarObs, onAddAnexo, getAnexoData, onRemoveAnexo, onAtualizarAnexo, onAbrirSeletorUsuario, ehGestor, onSalvarValor, tiposTrabalho, onSalvarItens, onImprimir, onEtiqueta, confirmandoExclusao, setConfirmandoExclusao, onExcluir }) {
+  // Tamanho do rótulo da etiqueta: fica lembrado no aparelho (a última escolha vale pra próxima)
+  const [tamEtiqueta, setTamEtiqueta] = useState(tamanhoEtiquetaSalvo);
+  const escolherTamEtiqueta = (t) => { setTamEtiqueta(t); try { localStorage.setItem('etiqueta-tamanho', t); } catch (e) { /* sem armazenamento */ } };
   const urg = getUrgencia(caso);
   const style = URGENCIA_STYLES[urg];
   const dias = diasRestantes(caso.prazo);
@@ -8342,8 +8375,17 @@ function DetalheView({ caso, endereco, horasRestantes, usuarioAtivo, comissaoReg
       <button onClick={onImprimir} className="w-full mb-2 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: INK, color: INK, background: 'white' }}>
         <FileText size={16} /> Imprimir ficha do trabalho (A4)
       </button>
-      <button onClick={onEtiqueta} className="w-full mb-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: GOLD, color: '#8A6D3B', background: 'white' }}>
-        <Package size={16} /> Imprimir etiqueta (50×30)
+      <div className="flex gap-2 mb-2">
+        {Object.entries(TAMANHOS_ETIQUETA).map(([k, t]) => (
+          <button key={k} onClick={() => escolherTamEtiqueta(k)}
+            className="flex-1 py-2 rounded-xl text-xs font-bold"
+            style={{ border: tamEtiqueta === k ? `1.5px solid ${GOLD}` : '1px solid #E7E5E4', background: tamEtiqueta === k ? GOLD_SOFT : '#fff', color: tamEtiqueta === k ? '#7A6234' : '#78716C' }}>
+            Rótulo {t.rotulo} mm{k === '50x20' ? ' (pequeno)' : ''}
+          </button>
+        ))}
+      </div>
+      <button onClick={() => onEtiqueta(tamEtiqueta)} className="w-full mb-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border" style={{ borderColor: GOLD, color: '#8A6D3B', background: 'white' }}>
+        <Package size={16} /> Imprimir etiqueta ({TAMANHOS_ETIQUETA[tamEtiqueta].rotulo})
       </button>
 
       <EtapasCaso caso={caso} usuarioAtivo={usuarioAtivo}

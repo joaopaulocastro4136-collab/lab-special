@@ -25,6 +25,7 @@
     "jsqr": "^1.4.0",
     "lucide-react": "^1.24.0",
     "pdf-parse": "^2.4.5",
+    "playwright-core": "^1.64.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
