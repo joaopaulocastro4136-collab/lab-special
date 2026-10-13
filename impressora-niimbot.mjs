@@ -143,6 +143,33 @@ export async function conectarImpressora() {
 
 const dorme = (ms) => new Promise(r => setTimeout(r, ms));
 
+// A máquina avisa quando RECUSA (pacote 0xDB + código). Sem ouvir isso, o app
+// ficava mudo: "não conectou" quando na verdade era tampa aberta ou rolo errado.
+const ERROS_MAQUINA = {
+  1: 'tampa da NIIMBOT aberta — feche a tampa e tente de novo',
+  2: 'sem papel — confira se o rolo está encaixado',
+  3: 'bateria fraca — carregue a NIIMBOT',
+  4: 'problema na bateria da máquina',
+  5: 'impressão cancelada na máquina',
+  6: 'a máquina não entendeu os dados — tente de novo',
+  7: 'máquina muito quente — espere esfriar',
+  8: 'o papel acabou no meio da impressão',
+  9: 'máquina ocupada — espere terminar e tente de novo',
+  10: 'cabeça de impressão não detectada',
+  11: 'máquina muito fria',
+  12: 'cabeça de impressão solta — reencaixe',
+  16: 'rolo não reconhecido pela máquina — desligue e ligue a NIIMBOT com o rolo encaixado e tente de novo',
+  17: 'a máquina não aceitou esse papel — desligue e ligue a NIIMBOT e tente de novo',
+  24: 'tamanho da etiqueta não aceito — confira o rótulo escolhido (50×30 ou 50×20)',
+  25: 'imagem maior que o rótulo — escolha o tamanho certo da etiqueta',
+};
+function erroDaMaquina() {
+  const e = recebidos.find(p => p.cmd === 0xdb);
+  if (!e) return null;
+  const codigo = e.dados && e.dados.length ? e.dados[0] : 0;
+  return new Error(ERROS_MAQUINA[codigo] || ('a máquina recusou a impressão (código ' + codigo + ')'));
+}
+
 async function enviar(cmd, dados) {
   const pk = pacote(cmd, dados);
   const dv = new DataView(pk.buffer);
@@ -233,6 +260,8 @@ export async function imprimirDireto(canvasEtiqueta, dim) {
 }
 async function _imprimir(canvasEtiqueta, dim) {
   const { linhas, largura, altura } = canvasParaLinhas(canvasEtiqueta, dim);
+  recebidos = []; // começa limpo: recusa antiga não pode contaminar esta impressão
+  const conferir = () => { const e = erroDaMaquina(); if (e) throw e; };
 
   // ── Início (receita da B1) ──
   await enviar(CMD.DENSIDADE, [3]);              // densidade 3
@@ -241,14 +270,16 @@ async function _imprimir(canvasEtiqueta, dim) {
   await dorme(20);
   // printStart da B1: 1 página, 7 bytes (páginas + reservado + cor)
   await enviar(CMD.INICIAR, [0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]);
-  await dorme(60);
+  await dorme(aparelho.temAviso ? 250 : 60);
+  conferir(); // tampa aberta / sem papel / rolo não reconhecido aparecem AQUI
 
   // ── Página ──
   await enviar(CMD.PAGINA, []);                  // pageStart: SEM dados na B1
   await dorme(20);
   // tamanho da página da B1: linhas, colunas E cópias (6 bytes) — 1 cópia
   await enviar(CMD.DIMENSAO, [altura >> 8, altura & 0xff, largura >> 8, largura & 0xff, 0x00, 0x01]);
-  await dorme(20);
+  await dorme(aparelho.temAviso ? 120 : 20);
+  conferir(); // tamanho recusado aparece aqui
 
   // ── Linhas da imagem (com a contagem de pixels pretos por terço) ──
   // Uma pausinha em CADA linha: sem isso, no iPhone o Bluetooth manda rápido
@@ -261,6 +292,8 @@ async function _imprimir(canvasEtiqueta, dim) {
 
   // ── Fim da página ──
   await enviar(CMD.FIM_PAGINA, []);              // pageEnd: SEM dados na B1
+  await dorme(60);
+  conferir(); // papel acabou / travou no meio
 
   // ESPERA a máquina realmente terminar de imprimir antes de encerrar —
   // encerrar cedo demais corta a impressão no meio (o "barulhinho e parou").
