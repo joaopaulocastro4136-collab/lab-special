@@ -1,6 +1,6 @@
 {
-  "versionCode": 77,
-  "versionName": "13.4",
+  "versionCode": 79,
+  "versionName": "13.6",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Etiqueta 50×20 mm (além do 50×30): escolha o rótulo na ficha do trabalho\n• Nome de paciente longo não cobre mais o QR da etiqueta"
+  "novidades": "• Impressora NIIMBOT: avisa o motivo real quando não imprime (tampa aberta, sem papel, rolo não reconhecido) e reconecta sozinha\n• Etiqueta 50×20 mm além do 50×30"
 }
