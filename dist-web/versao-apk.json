@@ -1,6 +1,6 @@
 {
-  "versionCode": 76,
-  "versionName": "13.3",
+  "versionCode": 77,
+  "versionName": "13.4",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Etiqueta 50×20 mm: escolha o tamanho do rótulo na ficha do trabalho (a escolha fica salva)"
+  "novidades": "• Etiqueta 50×20 mm (além do 50×30): escolha o rótulo na ficha do trabalho\n• Nome de paciente longo não cobre mais o QR da etiqueta"
 }
