@@ -23,3 +23,5 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: node destravar-testflight.mjs && node ligar-interna.mjs
+
+# conferencia 20261013T161513
