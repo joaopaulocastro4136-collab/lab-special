@@ -205,12 +205,29 @@ function canvasParaLinhas(canvas, dim) {
 // Cada passo carimba onde estamos, pra mensagem de erro dizer onde travou.
 export async function imprimirDireto(canvasEtiqueta, dim) {
   let passo = 'procurar/conectar a impressora';
+  const tinhaConexaoGuardada = !!aparelho;
   try {
     await conectarImpressora();
     passo = 'preparar a impressão';
     return await _imprimir(canvasEtiqueta, dim);
   } catch (e) {
     const detalhe = String((e && e.message) || e);
+    // A conexão guardada pode ter morrido sem avisar (máquina desligou e ligou, app
+    // ficou em segundo plano, Bluetooth caiu): esquece a antiga e tenta UMA vez do
+    // zero antes de desistir — senão "não conecta" pra sempre até reabrir o app.
+    if (tinhaConexaoGuardada) {
+      const idAntigo = aparelho && aparelho.deviceId;
+      aparelho = null;
+      if (idAntigo) { try { await BleClient.disconnect(idAntigo); } catch (e2) { /* já caiu */ } }
+      try {
+        passo = 'reconectar a impressora';
+        await conectarImpressora();
+        passo = 'preparar a impressão (2ª tentativa)';
+        return await _imprimir(canvasEtiqueta, dim);
+      } catch (e3) {
+        throw new Error(`falhou em: ${passo} — ${String((e3 && e3.message) || e3)}`);
+      }
+    }
     throw new Error(`falhou em: ${passo} — ${detalhe}`);
   }
 }
