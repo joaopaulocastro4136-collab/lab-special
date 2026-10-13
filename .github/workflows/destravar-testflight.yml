@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/destravar-testflight.yml
       - destravar-testflight.mjs
+      - ligar-interna.mjs
 env:
   EMAILS: "ds213328@gmail.com"
   BUNDLE: "com.laboratorio.special"
