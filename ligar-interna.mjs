@@ -44,3 +44,15 @@ for (const email of EMAILS) {
     console.log(`   grupo interno "${g.attributes.name}": ${r.status < 300 ? 'adicionada ✓' : 'não deu (' + r.status + ') ' + JSON.stringify(r.d || {}).slice(0, 220)}`);
   }
 }
+
+// ── O grupo interno tem o build 13.4? ──
+console.log('\n── BUILDS DOS GRUPOS INTERNOS ──');
+const builds = await api('GET', `/v1/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=15&include=preReleaseVersion`);
+const versoes = {}; for (const inc of (builds.d && builds.d.included) || []) versoes[inc.id] = inc.attributes.version;
+for (const g of internos) {
+  const det = await api('GET', `/v1/betaGroups/${g.id}`);
+  const todos = det.d && det.d.data ? det.d.data.attributes.hasAccessToAllBuilds : '?';
+  const bs = await api('GET', `/v1/betaGroups/${g.id}/builds?limit=10`);
+  const nomes = ((bs.d && bs.d.data) || []).map(b => { const bi = ((builds.d && builds.d.data) || []).find(x => x.id === b.id); return bi ? `${versoes[bi.relationships?.preReleaseVersion?.data?.id] || '?'} (${bi.attributes.version})` : b.id; });
+  console.log(`"${g.attributes.name}": acesso a todos os builds = ${todos} | builds no grupo: ${nomes.join(', ') || '(nenhum listado)'}`);
+}
