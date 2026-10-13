@@ -1,0 +1,30 @@
+# Convida testadores no TestFlight do Lab Special e mostra o link público.
+# Pra convidar: edite EMAILS abaixo e dê push (o push dispara o robô).
+name: Convidar testador (TestFlight)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/convidar-testador.yml
+      - convidar-testador.mjs
+
+env:
+  EMAILS: "ds213328@gmail.com"
+  BUNDLE: "com.laboratorio.special"
+
+jobs:
+  convidar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Convida no TestFlight e liga o link público
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node convidar-testador.mjs
