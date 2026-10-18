@@ -274,6 +274,24 @@ const TONS_DENTE = {
   escuro: 'a discreet, slightly warmer natural ivory (VITA A2-A3 shade), realistic and understated',
 };
 
+// Estilos de forma do sorriso — inspirados nas bibliotecas de dentes do exocad
+// (Smile Creator): o dentista escolhe o "jeito" dos dentes, não só a cor.
+const ESTILOS_SORRISO = {
+  natural: 'a natural, individual smile: soft natural incisal edges with realistic, slightly varied tooth shapes that keep the person\'s own character',
+  hollywood: 'a glamorous "Hollywood smile": perfectly even teeth with dominant central incisors, flat uniform incisal edges and a full, broad smile line',
+  suave: 'a soft, delicate smile design: rounded incisal corners, gentle curved contours and slightly softer lateral incisors (classic rounded tooth-library shape)',
+  marcante: 'a bold, strong smile design: squared incisal edges, flat prominent contours and well-defined angular line angles (classic squared tooth-library shape)',
+};
+
+// O que corrigir — o dentista marca só o que quer mexer; sem escolha, corrige
+// o conjunto clássico (como a IA sempre fez).
+const CORRECOES_SORRISO = {
+  alinhar: 'align crooked, crowded or rotated teeth and make the smile symmetric',
+  fechar: 'close gaps and diastemas between the teeth',
+  restaurar: 'repair chipped, broken, worn or damaged teeth, rebuilding their natural shape',
+  gengiva: 'gently reduce excessive gum display (gummy smile) by harmonizing the gum line in a subtle, realistic way',
+};
+
 exports.transformarSorriso = onCall(
   { region: 'southamerica-east1', timeoutSeconds: 120, memory: '512MiB' },
   async (request) => {
@@ -282,6 +300,10 @@ exports.transformarSorriso = onCall(
     if (!chave) throw new HttpsError('failed-precondition', 'A IA Special ainda está sendo ativada pelo laboratório.');
     const foto = String((request.data && request.data.foto) || '');
     const tom = TONS_DENTE[request.data && request.data.tom] ? request.data.tom : 'a1';
+    const estilo = ESTILOS_SORRISO[request.data && request.data.estilo] ? request.data.estilo : 'natural';
+    const pedidas = Array.isArray(request.data && request.data.correcoes)
+      ? request.data.correcoes.filter((c) => CORRECOES_SORRISO[c]) : [];
+    const correcoes = pedidas.length ? pedidas : ['alinhar', 'fechar', 'restaurar'];
     if (foto.length < 100) throw new HttpsError('invalid-argument', 'Foto não recebida.');
     if (foto.length > 6000000) throw new HttpsError('invalid-argument', 'Foto grande demais.');
 
@@ -299,9 +321,12 @@ exports.transformarSorriso = onCall(
     });
     if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário da IA Special. Amanhã pode transformar mais sorrisos! ✨');
 
+    const mexeGengiva = correcoes.includes('gengiva');
     const prompt = `Edit this photo: perform a photorealistic cosmetic dental smile makeover.
-Redesign ONLY the teeth: make them well aligned and symmetric, with beautiful natural proportions and smooth healthy edges — close gaps, fix chips and worn edges, correct crowding and rotated teeth. Set the tooth color to ${TONS_DENTE[tom]}.
-Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, gums, expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
+Redesign ONLY the teeth: ${correcoes.map((c) => CORRECOES_SORRISO[c]).join('; ')}.
+Tooth shape style: ${ESTILOS_SORRISO[estilo]}.
+Follow the golden proportion for the visible widths of the upper front teeth, keeping tooth size and length in harmony with the person's lips and face. Set the tooth color to ${TONS_DENTE[tom]}.
+Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, ${mexeGengiva ? '' : 'gums, '}expression, framing, lighting and background must not change at all. The result must look like a real photograph of the same person after high-end dental treatment — realistic, never artificial or cartoonish.`;
 
     // Tenta os modelos em sequência: cada um tem cota própria — se um esgotar, o próximo assume
     const MODELOS = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
@@ -335,7 +360,7 @@ Keep EVERYTHING else exactly the same: the person's identity, face, skin, lips, 
       console.error('Gemini respondeu sem imagem:', JSON.stringify(dados).slice(0, 500));
       throw new HttpsError('internal', 'A IA não devolveu a imagem. Tente uma foto mais nítida do sorriso.');
     }
-    console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | ${Math.round(parteImg.data.length / 1024)}KB`);
+    console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | estilo ${estilo} | ${correcoes.join(',')} | ${Math.round(parteImg.data.length / 1024)}KB`);
     return { foto: parteImg.data, mime: parteImg.mimeType || parteImg.mime_type || 'image/png' };
   }
 );

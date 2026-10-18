@@ -80,6 +80,26 @@ function rotuloTom(v) {
   return { claro: 'Mais claro', natural: 'Natural', escuro: 'Mais escuro' }[v] || v || 'A1';
 }
 
+// Estilos de forma do sorriso (inspirados nas bibliotecas de dentes do exocad)
+const ESTILOS_IA = [
+  { rotulo: 'Natural', valor: 'natural', icone: '🙂', desc: 'mantém a personalidade do sorriso — bordas suaves e naturais' },
+  { rotulo: 'Hollywood', valor: 'hollywood', icone: '🌟', desc: 'alinhadíssimo e uniforme, centrais dominantes — sorriso de capa' },
+  { rotulo: 'Suave', valor: 'suave', icone: '🌸', desc: 'cantos arredondados e contornos delicados' },
+  { rotulo: 'Marcante', valor: 'marcante', icone: '💎', desc: 'bordas retas e contornos fortes, bem definidos' },
+];
+function rotuloEstilo(v) {
+  const e = ESTILOS_IA.find(x => x.valor === v);
+  return e ? e.rotulo : '';
+}
+
+// O que a IA deve corrigir — marca só o que quer mexer
+const CORRECOES_IA = [
+  { rotulo: 'Alinhar', valor: 'alinhar', desc: 'alinhamento e simetria' },
+  { rotulo: 'Fechar espaços', valor: 'fechar', desc: 'diastemas e espacinhos' },
+  { rotulo: 'Restaurar', valor: 'restaurar', desc: 'dentes quebrados ou gastos' },
+  { rotulo: 'Sorriso gengival', valor: 'gengiva', desc: 'reduzir gengiva aparente' },
+];
+
 function mensagemErroIA(e) {
   const codigo = String((e && e.code) || '');
   if (codigo.includes('resource-exhausted')) return 'A IA atingiu o limite de agora. Tente de novo em alguns minutos.';
@@ -117,6 +137,7 @@ function ComparadorTelaCheia({ antes, depois, nome, aoFechar }) {
   const [corte, setCorte] = useState(50);
   const [escala, setEscala] = useState(1);
   const [arrastando, setArrastando] = useState(false);
+  const [ladoALado, setLadoALado] = useState(false); // modo exocad: antes | depois juntos
   const gesto = useRef({});
   const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
   const mover = (clientX, el) => {
@@ -151,6 +172,16 @@ function ComparadorTelaCheia({ antes, depois, nome, aoFechar }) {
         onMouseUp={() => setArrastando(false)}
         onWheel={e => setEscala(v => Math.max(1, Math.min(4, v - e.deltaY / 400)))}
         onDoubleClick={() => setEscala(1)}>
+        {ladoALado ? (
+          <div style={{ display: 'flex', gap: 3, transform: `scale(${escala})`, transition: arrastando ? 'none' : 'transform 0.18s ease', maxWidth: '100vw' }}>
+            {[{ src: antes, rot: 'ANTES', dourada: false }, { src: depois, rot: 'DEPOIS ✨', dourada: true }].map(m => (
+              <div key={m.rot} style={{ position: 'relative', width: '50%' }}>
+                <img src={m.src} alt={m.rot} draggable={false} style={{ display: 'block', width: '100%', maxHeight: 'calc(100vh - 190px)', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
+                <span style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: m.dourada ? INK : '#fff', background: m.dourada ? GOLD : 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{m.rot}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div style={{ position: 'relative', transform: `scale(${escala})`, transition: arrastando ? 'none' : 'transform 0.18s ease' }}>
           <img src={depois} alt="Depois" draggable={false} style={{ display: 'block', maxWidth: '100vw', maxHeight: 'calc(100vh - 190px)', pointerEvents: 'none', userSelect: 'none' }} />
           <img src={antes} alt="Antes" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', clipPath: `inset(0 ${100 - corte}% 0 0)`, transition: trans, pointerEvents: 'none', userSelect: 'none' }} />
@@ -160,13 +191,15 @@ function ComparadorTelaCheia({ antes, depois, nome, aoFechar }) {
           <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>ANTES</span>
           <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: INK, background: GOLD, borderRadius: 999, padding: '4px 10px', pointerEvents: 'none' }}>DEPOIS ✨</span>
         </div>
+        )}
       </div>
       <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))' }}>
-        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 9 }}>arraste sobre a foto • pinça para zoom • toque duplo volta o zoom</div>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginBottom: 9 }}>{ladoALado ? 'pinça para zoom • toque duplo volta o zoom' : 'arraste sobre a foto • pinça para zoom • toque duplo volta o zoom'}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          <button onClick={() => setCorte(100)} style={btnRodape(corte > 85)}>Antes</button>
-          <button onClick={() => setCorte(50)} style={{ ...btnRodape(corte >= 15 && corte <= 85), maxWidth: 70 }}>⇄</button>
-          <button onClick={() => setCorte(0)} style={btnRodape(corte < 15)}>Depois ✨</button>
+          {!ladoALado && <button onClick={() => setCorte(100)} style={btnRodape(corte > 85)}>Antes</button>}
+          {!ladoALado && <button onClick={() => setCorte(50)} style={{ ...btnRodape(corte >= 15 && corte <= 85), maxWidth: 70 }}>⇄</button>}
+          {!ladoALado && <button onClick={() => setCorte(0)} style={btnRodape(corte < 15)}>Depois ✨</button>}
+          <button onClick={() => setLadoALado(v => !v)} style={{ ...btnRodape(ladoALado), maxWidth: ladoALado ? 220 : 70 }} title="Lado a lado">{ladoALado ? '⇄ Voltar a deslizar' : '◫'}</button>
         </div>
       </div>
     </div>
@@ -184,7 +217,7 @@ function carregarImg(src) {
   });
 }
 
-async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente) {
+async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente, legenda) {
   const [a, d] = await Promise.all([carregarImg(antesSrc), carregarImg(depoisSrc)]);
   const W = 1080, HIMG = 850, RODAPE = 140, H = HIMG + RODAPE;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -228,7 +261,7 @@ async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente) {
   x.fillText('S P E C I A L', 108, yR - 16);
   x.font = '700 24px Manrope, -apple-system, sans-serif';
   x.fillStyle = '#B8935A';
-  x.fillText('IA SPECIAL — simulação de sorriso', 108, yR + 26);
+  x.fillText('IA SPECIAL — simulação de sorriso' + (legenda ? ` • ${legenda}` : ''), 108, yR + 26);
   if (paciente) {
     x.textAlign = 'right';
     x.font = '800 30px Manrope, -apple-system, sans-serif';
@@ -241,9 +274,9 @@ async function gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente) {
   return c.toDataURL('image/jpeg', 0.92);
 }
 
-async function compartilharAntesDepois(antesSrc, depoisSrc, paciente, aoAvisar) {
+async function compartilharAntesDepois(antesSrc, depoisSrc, paciente, aoAvisar, legenda) {
   try {
-    const dataURL = await gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente);
+    const dataURL = await gerarCartaoAntesDepois(antesSrc, depoisSrc, paciente, legenda);
     const blob = dataURLparaBlob(dataURL, 'image/jpeg');
     const nome = `antes-depois-${String(paciente || 'sorriso').replace(/\s+/g, '-').toLowerCase()}.jpg`;
     const file = new File([blob], nome, { type: 'image/jpeg' });
@@ -267,6 +300,9 @@ export function IASpecialLab({ aoFechar }) {
   const [resultado, setResultado] = useState(null);
   const [processando, setProcessando] = useState(false);
   const [tom, setTom] = useState('a1');
+  const [estilo, setEstilo] = useState('natural'); // forma do sorriso (bibliotecas exocad)
+  const [correcoes, setCorrecoes] = useState(['alinhar', 'fechar', 'restaurar']); // o que a IA corrige
+  const [versoes, setVersoes] = useState([]); // versões geradas desta foto, pra escolher
   const [corte, setCorte] = useState(50);
   const [paciente, setPaciente] = useState('');
   const [historico, setHistorico] = useState(null);
@@ -287,7 +323,7 @@ export function IASpecialLab({ aoFechar }) {
     return () => { ativo = false; };
   }, []);
 
-  const salvarSimulacao = async (antesDataURL, depoisDataURL, tomUsado) => {
+  const salvarSimulacao = async (antesDataURL, depoisDataURL, tomUsado, estiloUsado) => {
     try {
       const nome = paciente.trim() || 'Paciente';
       const [antesUp, depoisUp] = await Promise.all([
@@ -295,7 +331,7 @@ export function IASpecialLab({ aoFechar }) {
         window.arquivos.subir(dataURLparaBlob(depoisDataURL, depoisDataURL.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'), `ia-depois-${novoId()}.jpg`),
       ]);
       const sim = {
-        id: novoId(), dentista: 'Laboratório Special', paciente: nome, tom: tomUsado, data: todayISO(),
+        id: novoId(), dentista: 'Laboratório Special', paciente: nome, tom: tomUsado, estilo: estiloUsado || 'natural', data: todayISO(),
         antesUrl: antesUp.url, antesCaminho: antesUp.caminho,
         depoisUrl: depoisUp.url, depoisCaminho: depoisUp.caminho,
       };
@@ -314,20 +350,24 @@ export function IASpecialLab({ aoFechar }) {
       setVerSim(null);
       setFoto(dataURL);
       setResultado(null);
+      setVersoes([]);
       setCorte(50);
     } catch (err) { aoAvisar('Não consegui ler essa foto. Tente outra.'); }
   };
 
-  const gerar = async (tomNovo) => {
+  const gerar = async (tomNovo, estiloNovo) => {
     if (!foto || processando) return;
     const alvo = tomNovo ?? tom;
+    const alvoEstilo = estiloNovo ?? estilo;
     setTom(alvo);
+    setEstilo(alvoEstilo);
     setProcessando(true);
     try {
-      const out = await window.iaNuvem.transformar(foto, alvo);
+      const out = await window.iaNuvem.transformar(foto, alvo, alvoEstilo, correcoes);
       setResultado(out);
+      setVersoes(v => [...v, { id: novoId(), img: out, tom: alvo, estilo: alvoEstilo }].slice(-6));
       setCorte(50);
-      salvarSimulacao(foto, out, alvo);
+      salvarSimulacao(foto, out, alvo, alvoEstilo);
     } catch (e) {
       console.error('IA Special', e);
       aoAvisar(mensagemErroIA(e));
@@ -335,10 +375,12 @@ export function IASpecialLab({ aoFechar }) {
     setProcessando(false);
   };
 
-  const compartilhar = () => compartilharAntesDepois(foto, resultado, paciente.trim() || 'Paciente', aoAvisar);
+  const legendaAtual = () => `cor ${rotuloTom(tom)} • ${rotuloEstilo(estilo) || 'Natural'}`;
+
+  const compartilhar = () => compartilharAntesDepois(foto, resultado, paciente.trim() || 'Paciente', aoAvisar, legendaAtual());
   const baixar = async () => {
     try {
-      const dataURL = await gerarCartaoAntesDepois(foto, resultado, paciente.trim() || 'Paciente');
+      const dataURL = await gerarCartaoAntesDepois(foto, resultado, paciente.trim() || 'Paciente', legendaAtual());
       const a = document.createElement('a');
       a.href = dataURL;
       a.download = `antes-depois-${todayISO()}.jpg`;
@@ -405,7 +447,7 @@ export function IASpecialLab({ aoFechar }) {
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.paciente}</span>
                   <span style={{ display: 'block', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-                    {formatDateBR(s.data)} • cor {rotuloTom(s.tom)}
+                    {formatDateBR(s.data)} • cor {rotuloTom(s.tom)}{s.estilo ? ` • ${rotuloEstilo(s.estilo)}` : ''}
                   </span>
                 </span>
                 <span style={{ color: GOLD, fontSize: 18, flexShrink: 0, fontWeight: 300 }}>›</span>
@@ -420,7 +462,7 @@ export function IASpecialLab({ aoFechar }) {
               <button onClick={() => setVerSim(null)} style={{ width: 34, height: 34, borderRadius: 17, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}>‹</button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{verSim.paciente}</div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • cor {rotuloTom(verSim.tom)}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{formatDateBR(verSim.data)} • cor {rotuloTom(verSim.tom)}{verSim.estilo ? ` • ${rotuloEstilo(verSim.estilo)}` : ''}</div>
               </div>
             </div>
             <div style={{ borderRadius: 20, overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 22px 50px -22px rgba(0,0,0,0.8)' }}>
@@ -431,7 +473,7 @@ export function IASpecialLab({ aoFechar }) {
               style={{ width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.12)', color: GOLD, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Maximize2 size={14} color={GOLD} /> Ver em tela cheia
             </button>
-            <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar)}
+            <button onClick={() => compartilharAntesDepois(verSim.antesUrl, verSim.depoisUrl, verSim.paciente, aoAvisar, `cor ${rotuloTom(verSim.tom)}${verSim.estilo ? ' • ' + rotuloEstilo(verSim.estilo) : ''}`)}
               style={{ ...btnDourado, width: '100%', marginTop: 12, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Share2 size={16} /> Compartilhar antes e depois
             </button>
@@ -463,6 +505,38 @@ export function IASpecialLab({ aoFechar }) {
               </>
             )}
 
+            {/* Versões geradas desta foto: toque numa miniatura pra comparar e escolher */}
+            {versoes.length > 1 && !processando && (
+              <>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '14px 2px 7px' }}>Versões — toque pra escolher</div>
+                <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                  {versoes.map((v, i) => (
+                    <button key={v.id} onClick={() => { setResultado(v.img); setTom(v.tom); setEstilo(v.estilo); setCorte(50); }}
+                      style={{ flexShrink: 0, width: 76, padding: 0, borderRadius: 13, overflow: 'hidden', cursor: 'pointer', fontFamily: FONTE, background: 'rgba(255,255,255,0.05)', border: resultado === v.img ? `2px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)' }}>
+                      <img src={v.img} alt={`Versão ${i + 1}`} style={{ display: 'block', width: '100%', height: 64, objectFit: 'cover' }} />
+                      <span style={{ display: 'block', fontSize: 9, fontWeight: 800, color: resultado === v.img ? GOLD : 'rgba(255,255,255,0.6)', padding: '4px 2px', whiteSpace: 'nowrap' }}>
+                        {i + 1} • {rotuloTom(v.tom)} {rotuloEstilo(v.estilo)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Estilo do sorriso: forma dos dentes, como as bibliotecas do exocad */}
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Estilo do sorriso</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {ESTILOS_IA.map(n => (
+                <button key={n.valor} onClick={() => resultado ? gerar(null, n.valor) : setEstilo(n.valor)} disabled={processando}
+                  style={{ padding: '10px 6px', borderRadius: 12, fontFamily: FONTE, fontSize: 12, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: estilo === n.valor ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: estilo === n.valor ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: estilo === n.valor ? GOLD : 'rgba(255,255,255,0.7)', opacity: processando ? 0.5 : 1 }}>
+                  <span style={{ fontSize: 13 }}>{n.icone}</span>{n.rotulo}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
+              {(ESTILOS_IA.find(e => e.valor === estilo) || {}).desc}
+            </div>
+
             <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>Cor dos dentes</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {TONS_IA.map(n => (
@@ -476,8 +550,27 @@ export function IASpecialLab({ aoFechar }) {
             <div style={{ fontSize: 11, color: GOLD, fontWeight: 700, textAlign: 'center', marginTop: 8 }}>
               {(TONS_IA.find(t => t.valor === tom) || {}).desc}
             </div>
+
+            {/* O que corrigir: a IA só mexe no que for marcado */}
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '16px 2px 7px' }}>O que corrigir</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {CORRECOES_IA.map(n => {
+                const ligada = correcoes.includes(n.valor);
+                return (
+                  <button key={n.valor} disabled={processando}
+                    onClick={() => setCorrecoes(c => ligada ? c.filter(x => x !== n.valor) : [...c, n.valor])}
+                    style={{ padding: '9px 8px', borderRadius: 12, fontFamily: FONTE, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 7, border: ligada ? `1.5px solid ${GOLD}` : '1px solid rgba(255,255,255,0.14)', background: ligada ? 'rgba(184,147,90,0.18)' : 'rgba(255,255,255,0.06)', color: ligada ? GOLD : 'rgba(255,255,255,0.65)', opacity: processando ? 0.5 : 1 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: ligada ? GOLD : 'rgba(255,255,255,0.1)', color: INK, fontWeight: 800 }}>{ligada ? '✓' : ''}</span>
+                    <span style={{ minWidth: 0 }}>
+                      {n.rotulo}
+                      <span style={{ display: 'block', fontSize: 9.5, fontWeight: 600, color: ligada ? 'rgba(232,196,138,0.8)' : 'rgba(255,255,255,0.4)' }}>{n.desc}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             {resultado && !processando && (
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 }}>Toque em outra cor para gerar de novo com ela</div>
+              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 8 }}>Toque em outra cor ou estilo para gerar uma nova versão</div>
             )}
 
             {!resultado && (
@@ -488,15 +581,20 @@ export function IASpecialLab({ aoFechar }) {
             )}
 
             {resultado && !processando && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button onClick={compartilhar} style={{ ...btnDourado, flex: 1, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Share2 size={16} /> Compartilhar antes e depois
+              <>
+                <button onClick={() => gerar()} style={{ width: '100%', marginTop: 12, padding: 13, borderRadius: 13, border: '1px solid rgba(184,147,90,0.5)', background: 'rgba(184,147,90,0.1)', color: GOLD, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: FONTE, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Sparkles size={15} /> Gerar outra versão
                 </button>
-                <button onClick={baixar} title="Baixar"
-                  style={{ width: 54, borderRadius: 14, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Download size={18} />
-                </button>
-              </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={compartilhar} style={{ ...btnDourado, flex: 1, padding: 15, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <Share2 size={16} /> Compartilhar antes e depois
+                  </button>
+                  <button onClick={baixar} title="Baixar"
+                    style={{ width: 54, borderRadius: 14, border: '1px solid rgba(255,255,255,0.16)', background: 'rgba(255,255,255,0.07)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Download size={18} />
+                  </button>
+                </div>
+              </>
             )}
 
             <button onClick={() => inputRef.current && inputRef.current.click()}
