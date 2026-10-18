@@ -66,6 +66,34 @@
       ]
     },
     {
+      "target": "ia",
+      "public": "dist-ia",
+      "ignore": [
+        "firebase.json",
+        "**/.*"
+      ],
+      "headers": [
+        {
+          "source": "**/*.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(png|webmanifest)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=3600"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "target": "home",
       "public": "dist-home",
       "ignore": [

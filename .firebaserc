@@ -11,6 +11,9 @@
         "clinic": [
           "special-clinic"
         ],
+        "ia": [
+          "special-ia"
+        ],
         "home": [
           "labspecial"
         ]
