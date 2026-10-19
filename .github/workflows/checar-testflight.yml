@@ -4,7 +4,6 @@ name: Estado do TestFlight
 on:
   workflow_dispatch:
   push:
-    branches: [claude/special-lab-test-mode-9jrxb1]
     paths: ['checar-testflight.mjs', '.github/workflows/checar-testflight.yml']
 
 jobs:
