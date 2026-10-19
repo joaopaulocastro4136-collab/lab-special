@@ -32,15 +32,21 @@ console.log('── GRUPOS EXTERNOS ──');
 for (const g of ((grupos.d && grupos.d.data) || []).filter(g => !g.attributes.isInternalGroup)) {
   console.log(`\n${g.attributes.name} | link: ${g.attributes.publicLink || '(sem link)'} | limite: ${g.attributes.publicLinkLimitEnabled ? g.attributes.publicLinkLimit : 'sem limite'}`);
   const bs = await api('GET', `/v1/betaGroups/${g.id}/builds?limit=20`);
+  const pendentes = [];
   for (const b of (bs.d && bs.d.data) || []) {
     const rev = await api('GET', `/v1/builds/${b.id}/betaAppReviewSubmission`);
     const estado = rev.d && rev.d.data ? rev.d.data.attributes.betaReviewState : 'NUNCA ENVIADO PRA REVISÃO';
     const bInfo = ((builds.d && builds.d.data) || []).find(x => x.id === b.id);
     console.log(`   build ${bInfo ? nomeBuild(bInfo) : b.id}: ${estado}`);
-    if (!rev.d || !rev.d.data) {
-      const sub = await api('POST', '/v1/betaAppReviewSubmissions', { data: { type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: b.id } } } } });
-      console.log(`     → enviado pra revisão do beta: ${sub.status < 300 ? 'ok ✓' : 'falhou ' + sub.status + ' ' + JSON.stringify(sub.d || {}).slice(0, 160)}`);
-    }
+    if (!rev.d || !rev.d.data) pendentes.push({ b, subiu: String((bInfo && bInfo.attributes.uploadedDate) || ''), nome: bInfo ? nomeBuild(bInfo) : b.id });
+  }
+  // Só o build MAIS NOVO sem revisão entra na fila da Apple — mandar os antigos
+  // junto só atrasa (e quem entra pelo link recebe sempre o mais novo aprovado)
+  const maisNovo = pendentes.sort((x, y) => y.subiu.localeCompare(x.subiu))[0];
+  if (maisNovo) {
+    const sub = await api('POST', '/v1/betaAppReviewSubmissions', { data: { type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: maisNovo.b.id } } } } });
+    console.log(`   → build ${maisNovo.nome} enviado pra revisão do beta: ${sub.status < 300 ? 'ok ✓' : 'falhou ' + sub.status + ' ' + JSON.stringify(sub.d || {}).slice(0, 160)}`);
+    if (pendentes.length > 1) console.log(`   (outros ${pendentes.length - 1} sem revisão ficam de fora de propósito)`);
   }
 }
 
