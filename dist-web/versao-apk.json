@@ -1,6 +1,6 @@
 {
-  "versionCode": 79,
-  "versionName": "13.6",
+  "versionCode": 80,
+  "versionName": "13.7",
   "url": "https://laboratorio-special.web.app/LabSpecial.apk",
-  "novidades": "• Impressora NIIMBOT: avisa o motivo real quando não imprime (tampa aberta, sem papel, rolo não reconhecido) e reconecta sozinha\n• Etiqueta 50×20 mm além do 50×30"
+  "novidades": "• Acerto de conta: o Desfazer devolve o valor que já estava pago antes\n• Remover baixas antigas de uma vez\n• Exclusão de comissão avisa se não gravar na nuvem\n• Comissão lançada em outro celular aparece na hora\n• Impressora NIIMBOT: aviso de erro completo"
 }
