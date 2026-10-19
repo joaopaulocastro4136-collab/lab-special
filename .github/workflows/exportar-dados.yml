@@ -1,0 +1,44 @@
+# Exporta os dados do laboratório (trabalhos, configuração, pagamentos, comissões) num
+# JSON guardado como ARTEFATO PRIVADO do robô (1 dia) — pra montar relatórios fora do app.
+# Nada de dado pessoal no log (o repositório é público). Pra rodar: edite o comentário
+# no fim deste arquivo e dê push (o disparo manual não funciona fora da main).
+name: Exportar dados do laboratório
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/exportar-dados.yml
+      - exportar-dados.mjs
+
+env:
+  LAB: "principal"
+
+jobs:
+  exportar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Lê o banco e grava o JSON
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          node exportar-dados.mjs
+
+      - name: Guarda o JSON como artefato privado (1 dia)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dados-lab
+          path: saida-dados/dados.json
+          retention-days: 1
+          if-no-files-found: error
+
+# exportacao 20261019T1
