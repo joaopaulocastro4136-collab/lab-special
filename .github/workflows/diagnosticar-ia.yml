@@ -1,0 +1,30 @@
+# Diagnóstico da IA Special (sorriso): erros recentes da função na nuvem + teste da
+# chave do Gemini. Sem dado pessoal no log. Pra rodar: mude o comentário no fim e dê push.
+name: Diagnosticar IA Special
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/diagnosticar-ia.yml
+      - diagnosticar-ia.mjs
+
+jobs:
+  diagnosticar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lê os logs e testa a chave
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          node diagnosticar-ia.mjs
+
+# diagnostico 20261021T1
