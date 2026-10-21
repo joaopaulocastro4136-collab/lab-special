@@ -27,4 +27,4 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
           node diagnosticar-ia.mjs
 
-# diagnostico 20261021T181403
+# diagnostico 20261021T181618
