@@ -322,14 +322,11 @@ exports.transformarSorriso = onCall(
     const quem = String(request.auth.token.email || request.auth.uid).toLowerCase().replace(/[^\w@.-]/g, '_');
     const dia = new Date().toISOString().slice(0, 10);
     const refUso = admin.firestore().doc(`labs/principal/iaUso/${dia}_${quem}`);
-    const usoOk = await admin.firestore().runTransaction(async (tx) => {
-      const s = await tx.get(refUso);
-      const n = (s.exists ? (s.data().n || 0) : 0) + 1;
-      if (n > LIMITE_DIA) return false;
-      tx.set(refUso, { n, quem, dia }, { merge: true });
-      return true;
-    });
-    if (!usoOk) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário da IA Special. Amanhã pode transformar mais sorrisos! ✨');
+    // Só conta o que DEU CERTO: tentativa que falhou (sem crédito no Google, foto recusada)
+    // não gasta o limite da pessoa — antes, erros seguidos travavam o dia inteiro.
+    const usoAtual = await refUso.get();
+    const jaUsou = usoAtual.exists ? (usoAtual.data().n || 0) : 0;
+    if (jaUsou >= LIMITE_DIA) throw new HttpsError('resource-exhausted', 'Você atingiu o limite diário da IA Special. Amanhã pode transformar mais sorrisos! ✨');
 
     const prompt = `Edit this photo: professional DIGITAL SMILE DESIGN makeover performed by a master dental ceramist.
 
@@ -391,6 +388,7 @@ RESULT: one photorealistic photograph of the SAME person after high-end cosmetic
       console.error('Gemini respondeu sem imagem:', JSON.stringify(dados).slice(0, 500));
       throw new HttpsError('internal', 'A IA não devolveu a imagem. Tente uma foto mais nítida do sorriso.');
     }
+    await refUso.set({ n: admin.firestore.FieldValue.increment(1), quem, dia }, { merge: true }).catch((e) => console.error('contador da IA', e));
     console.log(`transformarSorriso ok: ${request.auth.token.email || '?'} | tom ${tom} | forma ${formato || estilo || 'natural'}${correcoes ? ' | ' + correcoes.join(',') : ''} | ${Math.round(parteImg.data.length / 1024)}KB`);
     return { foto: parteImg.data, mime: parteImg.mimeType || parteImg.mime_type || 'image/png' };
   }

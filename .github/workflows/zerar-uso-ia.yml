@@ -1,0 +1,28 @@
+# Zera o contador diário da IA Special (hoje) — quando erros sem crédito gastaram o limite.
+# Pra rodar: mude o comentário no fim e dê push.
+name: Zerar uso diário da IA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/zerar-uso-ia.yml
+      - zerar-uso-ia.mjs
+
+jobs:
+  zerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          node zerar-uso-ia.mjs
+
+# zerar 20261021T1
