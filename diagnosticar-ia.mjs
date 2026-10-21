@@ -37,6 +37,8 @@ for (let i = 0; i < 3; i++) {
     const msg = e.textPayload || (e.jsonPayload && (e.jsonPayload.message || JSON.stringify(e.jsonPayload))) || (e.protoPayload && e.protoPayload.status && e.protoPayload.status.message) || '';
     const svc = (e.resource && e.resource.labels && (e.resource.labels.service_name || e.resource.labels.function_name)) || '?';
     if (total <= 60) console.log(`${(e.timestamp || '').slice(0, 19)} ${String(e.severity || '').padEnd(8)} ${svc} | ${limpa(msg)}`);
+    // Sem mensagem legível? Mostra a entrada inteira (sem dado pessoal) pra entender o que foi
+    if (total <= 12 && !msg) { const { timestamp, severity, textPayload, jsonPayload, protoPayload, httpRequest, labels } = e; console.log('      detalhe: ' + limpa(JSON.stringify({ timestamp, severity, textPayload, jsonPayload, protoPayload, httpRequest, labels })).slice(0, 420)); }
   }
   pagina = j.nextPageToken || '';
   if (!pagina) break;
